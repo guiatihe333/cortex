@@ -1,3 +1,4 @@
-__pycache__/
-*.pyc
 facebook_session.pkl
+seen.json
+*.zip
+*.pdf
