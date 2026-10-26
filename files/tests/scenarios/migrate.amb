@@ -53,3 +53,15 @@ expect par30 1
 expect par72 0
 expect pat0_135 2
 expect pat0_18 2
+# a project of 1.3.93 (format 7) loads as it was, its patches too (the pad's edits above), each voice playing as AMB-1
+# does (ENV, par156 on: 0) with its GATE at the default (70)
+storev7
+reboot
+wait 300
+expect piece 4
+expect par32 44
+expect par116 44
+expect pat0_135 2
+expect pat0_18 2
+expect par156 0
+expect par157 70

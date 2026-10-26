@@ -47,6 +47,8 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     {w " own", 0, 1, 0}, {w " index", -24, 24, 0}, MS_PARAMS(w, "1"), MS_PARAMS(w, "2"), MS_PARAMS(w, "3"),        \
     MS_PARAMS(w, "4"), MS_PARAMS(w, "5")
     VOX_PARAMS("V1"), VOX_PARAMS("V2"), VOX_PARAMS("V3"),
+    {"V1 env", 0, 1, 0},      {"V1 gate", 5, 100, 70},  {"V2 env", 0, 1, 0},      {"V2 gate", 5, 100, 25},
+    {"V3 env", 0, 1, 0},      {"V3 gate", 5, 100, 80},
 #undef VOX_PARAMS
 #undef MS_PARAMS
 };
@@ -185,7 +187,7 @@ void en_param_text(int i, int v, char *b)
 {
     static const char *const ONOFF[2] = {"Off", "On"};
     const char *s = 0;
-    int vv = i >= P_VOX ? (i - P_VOX) / VX_N : -1, vk = i >= P_VOX ? (i - P_VOX) % VX_N : -1,
+    int vox = i >= P_VOX && i < P_PLAY, vv = vox ? (i - P_VOX) / VX_N : -1, vk = vox ? (i - P_VOX) % VX_N : -1,
         ms = vk >= VX_SLOT ? (vk - VX_SLOT) / MS_N : -1, mk = vk >= VX_SLOT ? (vk - VX_SLOT) % MS_N : -1;
     if (i == P_ETIME)
         s = ETIME_NAME[(unsigned)v < 6u ? v : 0];
@@ -218,7 +220,10 @@ void en_param_text(int i, int v, char *b)
         s = DIV_NAME[div_of(v < 0 ? 0 : v > 100 ? 100 : v)];
     else if (mk == MS_FADE && v == 0)
         s = "Off";
-    else if (i == P_MODE)
+    else if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_ENV) {   /* AMB-1's own way, or the patch's envelopes */
+        static const char *const OWN[EN_NVOX] = {"Breath", "A beat", "Held"};
+        s = v ? "Patch" : OWN[(i - P_PLAY) / PL_N];
+    } else if (i == P_MODE)
         s = EN_MODE_NAME[(unsigned)v < EN_NMODES ? v : 0];
     else if (i == P_ROOT)
         s = EN_NOTE_NAME[(unsigned)v < 12u ? v : 0];
@@ -244,6 +249,12 @@ void en_param_text(int i, int v, char *b)
     if (mk == MS_RATE || mk == MS_FADE) {        /* a cycle: 60 s .. 0.12 s; the fade: to 8 s */
         b = tenths((int)((mk == MS_RATE ? mod_secs(v) : fade_secs(v)) * 10.0f + 0.5f), b);
         *b++ = 's';
+        *b = 0;
+        return;
+    }
+    if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_GATE) {
+        b = itoa_s(v, b);
+        *b++ = '%';
         *b = 0;
         return;
     }
@@ -531,10 +542,13 @@ typedef struct {
     float hf;                                   /* a handoff's fade: 1 normal */
     uint8_t midi_note, hand;                    /* hand: 1 fading out of the old key, 2 into the new */
     uint8_t voices;                             /* the patch this breath sings (pad_gen as it started) */
+    uint8_t up;                                 /* the patch's envelopes (ENV Patch): its key let go this breath */
 } pad_t;
 static pad_t pad[EN_NPAD];
 static uint8_t pad_gen;                         /* the pad's patch: one more each new one (C_PDONE fresh) */
 static float pad_gate, pad_gain, pad_vol, bright, swell;
+#define PLAYS_PATCH(v) (par[P_PL(v, PL_ENV)] != 0)       /* the voice plays its patch's envelopes (amb.h PL_ENV) */
+#define GATE(v) ((float)par[P_PL(v, PL_GATE)] * 0.01f)
 static const float PAD_PAN[EN_NPAD] = {-0.55f, -0.18f, 0.18f, 0.55f};
 static const float BREATH[EN_NPAD] = {1.0f, 1.21f, 1.43f, 1.67f};    /* unequal cycles, as 2/1's 12..20 s loops */
 static const float START_T[EN_NPAD] = {0.0f, 0.9f, 0.82f, 0.95f};    /* the first breaths overlap */
@@ -615,6 +629,7 @@ static void pad_breathe(pad_t *v, int i)        /* a new breath: its length, its
     gen_note(i);
     fm6_note_init(&pad_fm[i], mod_patch(i, pad_patch, pad_vp[i]), (int32_t)v->note, 100, v->amp < 0.01f);
     fm6_lfo_reset(&pad_lfo[i], pad_vp[i]);
+    v->up = 0;
     if (en_playing)
         midi(0x90, v->midi_note, (uint32_t)(50.0f + 40.0f * v->peak));
 }
@@ -676,7 +691,17 @@ static void pad_coefs(pad_t *v, int i)          /* every FM6 block (32 samples):
         pad_breathe(v, i);
     }
     br = breath(v->t);
-    v->tgt = br * v->peak * pad_gain * v->hf;
+    if (PLAYS_PATCH(VOX_PAD)) {                 /* the patch's envelopes: struck at the breath, let go at GATE of it
+                                                 * (its sounding part, 0.9), its level steady; the bloom as at the top */
+        if (!v->up && v->t >= GATE(VOX_PAD) * 0.9f) {
+            fm6_note_key(&pad_fm[i], pad_vp[i], 0);
+            v->up = 1;
+        }
+        br = 0.7f;
+        v->tgt = v->peak * pad_gain * v->hf;
+    } else {
+        v->tgt = br * v->peak * pad_gain * v->hf;
+    }
     /* the bloom: the modulators about -15 .. +12 dB from the patch, with Bright, the breath, the arc and a slow drift
      * (as the vowel the Voices had moved) */
     v->bloom = -10.0f + 9.0f * bright * 0.01f + 6.0f * br + 3.0f * arcm + 2.0f * motion * mod[(i + 2) % NMOD_PAD].v;
@@ -699,6 +724,8 @@ static fm6_lfo_t bass_lfo;
 #define BASS_RS 138
 static int bass_rs;                             /* blocks to the restrike; 0 none */
 static uint8_t bass_xs;                         /* 1: fading out for it */
+static uint8_t bass_strike;                     /* the patch's envelopes (ENV Patch): a new chord, struck next block */
+static int32_t bass_held;                       /* samples until its key is let go (GATE of the chord); 0 let go */
 static float bass_xf = 1.0f;
 
 /* ----------------------------------------------------------------- bells --- */
@@ -1128,6 +1155,7 @@ static void bass_to(int pc)
     }
     if (bass.midi_note != n)                     /* a new note for MOD (its fade, SYNC Note, the envelope) */
         gen_note(NGEN - 1);
+    bass_strike = 1;                             /* (heard with the patch's envelopes: each chord struck) */
     bass.midi_note = (uint8_t)n;
 }
 
@@ -2194,7 +2222,7 @@ static void apply(int p, int v)
             en_midi_out(0xB0, 123, 0);
         break;
     default:
-        if (p >= P_VOX)                          /* a voice's own (FM, its envelopes, MOD) */
+        if (p >= P_VOX && p < P_PLAY)            /* a voice's own (FM, its envelopes, MOD) */
             vox_apply((p - P_VOX) / VX_N, (p - P_VOX) % VX_N, v);
         break;
     }
@@ -2306,6 +2334,7 @@ void en_init(void)
     }
     arcm = 0.0f;
     pad_gain = 0.0f;
+    bass.amp = 0.0f;
     for (i = 0; i < P_NPARAMS; i++)              /* (the patches built as their parameters arrive) */
         apply(i, PARAMS[i].def);
     pool_set(EN_MODE_POOL[par[P_MODE]]);
@@ -2320,6 +2349,8 @@ void en_init(void)
     fm6_lfo_reset(&bass_lfo, bass_vp);
     bass_rs = 0;
     bass_xs = 0;
+    bass_strike = 0;
+    bass_held = 0;
     bass_xf = 1.0f;
     for (i = 0; i < EN_NLOOP; i++) {
         loop_pos[i] = 0;
@@ -2363,6 +2394,7 @@ static void play_start(int from_top)
         }
     if (bass.amp < 1e-4f)
         bass.note = bass.target;
+    bass_strike = 1;
     midi(0x92, bass.midi_note, 80);
     if (!en_ext)
         midi(from_top ? 0xFA : 0xFB, 0, 0);
@@ -2491,7 +2523,8 @@ static void fm_block(void)
             fm_buf[i][j] = 0.0f;
     mod_step();
 
-    pad_gain += (pad_gate - pad_gain) * fm_minf((float)FM6_N / ((pad_gate > 0.0f ? 2.0f : 5.0f) * EN_SR), 1.0f);
+    pad_gain += (pad_gate - pad_gain) *        /* (the patch's envelopes: in at once, they shape it) */
+                fm_minf((float)FM6_N / ((pad_gate <= 0.0f ? 5.0f : PLAYS_PATCH(VOX_PAD) ? 0.01f : 2.0f) * EN_SR), 1.0f);
     for (i = 0; i < EN_NPAD; i++) {
         pad_t *v = &pad[i];
         float amp = v->amp, g, gl, gr, pn;
@@ -2559,6 +2592,8 @@ static void fm_block(void)
                     sus |= (car >> j2 & 1u) && p[j2 * FP_OP + FP_L1 + 2] && p[j2 * FP_OP + FP_OL];
                 v->held = sus ? (int32_t)(step_len * 4.0f) : 0;
             }
+            if (PLAYS_PATCH(VOX_BELLS))         /* the patch's envelopes: held GATE of a bar */
+                v->held = (int32_t)(step_len * 16.0f * GATE(VOX_BELLS));
             fm6_note_init(&bell_fm[i], p, v->note, (int32_t)(v->vel * 127.0f), 1);
             fm6_lfo_reset(&bell_lfo[i], p);
             fm6_lfo_key(&bell_lfo[i]);
@@ -2611,12 +2646,32 @@ static void fm_block(void)
         fm6_note_init(&bass_fm, mod_patch(NGEN - 1, bass_patch, bass_vp), (int32_t)bass.note, 100, 1);
         fm6_lfo_reset(&bass_lfo, bass_vp);
         bass_xs = 0;
+        bass_held = (int32_t)(drift_left * GATE(VOX_BASS));
     }
+    if (PLAYS_PATCH(VOX_BASS)) {                /* the patch's envelopes: each chord struck, let go at GATE of it */
+        if (bass_strike && en_playing) {
+            if (bass.rest) {                     /* (sitting this chord out: let go now) */
+                fm6_note_key(&bass_fm, bass_vp, 0);
+                bass_held = 0;
+            } else {
+                gen_note(NGEN - 1);
+                fm6_note_init(&bass_fm, mod_patch(NGEN - 1, bass_patch, bass_vp), (int32_t)bass.target, 100,
+                              bass.amp < 1e-4f);
+                fm6_lfo_reset(&bass_lfo, bass_vp);
+                bass_held = (int32_t)(drift_total * GATE(VOX_BASS));
+            }
+        }
+        if (bass_held > 0 && (bass_held -= FM6_N) <= 0)
+            fm6_note_key(&bass_fm, bass_vp, 0);
+    }
+    bass_strike = 0;
     if (bass.amp < 1e-5f && !en_playing) {
         bass.amp = 0.0f;
     } else {
-        const float g = bass_vol * 0.42f * 0.75f * vgain[VOX_BASS], tgt = en_playing && !bass.rest ? 1.0f : 0.0f,
-                    rate = tgt > 0.0f ? 1.0f / (2.5f * EN_SR) : 1.0f / (4.0f * EN_SR),
+        const int env = PLAYS_PATCH(VOX_BASS);   /* (the patch's envelopes: the level steady, the patch shapes it) */
+        const float g = bass_vol * 0.42f * 0.75f * vgain[VOX_BASS],
+                    tgt = en_playing && (env || !bass.rest) ? 1.0f : 0.0f,
+                    rate = tgt > 0.0f ? 1.0f / ((env ? 0.003f : 2.5f) * EN_SR) : 1.0f / (4.0f * EN_SR),
                     xt = bass_xs ? 0.0f : 1.0f;
         float amp = bass.amp, gl, gr, xf = bass_xf;
         int32_t lv = fm6_lfo_sample(&bass_lfo), ld = fm6_lfo_delay(&bass_lfo);

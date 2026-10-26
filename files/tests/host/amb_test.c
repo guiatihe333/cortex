@@ -341,6 +341,39 @@ int main(void)
         en_play(1);
     }
 
+    /* ENV: AMB-1's own, the pad breathes in and the bass fades in over seconds; the patch's, both struck at once, the
+     * patch's envelopes heard (its sound 0.3 s in, the pad's level then, the bass's) */
+    {
+        float lv[2][3];
+        int e, b2, j;
+        for (e = 0; e < 2; e++) {
+            float pk = 0.0f;
+            en_init();
+            en_set(P_BELLS, 0);
+            en_set(P_PULSE, 0);
+            en_set(P_ECHO, 0);
+            en_set(P_REVERB, 0);
+            en_set(P_PL(VOX_PAD, PL_ENV), e);
+            en_set(P_PL(VOX_BASS, PL_ENV), e);
+            en_play(1);
+            for (b2 = 0; b2 < (int)(0.3f * 44100.0f) / 256; b2++) {
+                en_render(buf, 256, 2048);
+                for (j = 0; j < 512; j++)
+                    if (fabsf((float)buf[j]) > pk)
+                        pk = fabsf((float)buf[j]);
+            }
+            lv[e][0] = pk, lv[e][1] = en_pad_level, lv[e][2] = en_bass_level;
+        }
+        CHECK(lv[1][0] > 3.0f * lv[0][0], "ENV Patch not struck at once: peak %f vs %f", (double)lv[1][0],
+              (double)lv[0][0]);
+        CHECK(lv[1][1] > 0.5f && lv[0][1] < 0.2f, "the pad's level 0.3 s in: %f (Patch), %f (Breath)",
+              (double)lv[1][1], (double)lv[0][1]);
+        CHECK(lv[1][2] > 0.9f && lv[0][2] < 0.2f, "the bass's level 0.3 s in: %f (Patch), %f (Held)",
+              (double)lv[1][2], (double)lv[0][2]);
+        en_init();
+        en_play(1);
+    }
+
     /* MOD: silent at depth 0; at depth 100 every generator moves, each its own way, inside -1..1, every target and
      * shape bounded and never NaN */
     {

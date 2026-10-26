@@ -1,7 +1,7 @@
 # each voice's own pages, in three groups: its page button pressed again goes to VOICE, again to OPERATOR, again to
 # MOD, and back; SELECT steps through a group's pages. parN: amb.h (P_VOX 30, a voice's block of 42: OWN, INDEX, five
-# modulators of 8); patV_OFF: voice V's patch byte (amb.h EP_*). Views: the pad's own 7..19, the bells' 20.., the
-# bass's 33..
+# modulators of 8); patV_OFF: voice V's patch byte (amb.h EP_*). Views: the pad's own 7..20, the bells' 21.., the
+# bass's 35..
 wait 300
 tap ENV
 wait 100
@@ -22,14 +22,14 @@ expect par30 1
 # OPERATOR: OP3's level, 80 -> 70 (OP3's bytes from 63: its level at 79)
 tap ENV
 wait 100
-expect view 11
+expect view 12
 shot pad_op.png
 turn K1 2 10
 spin K4 -10
 expect pat0_79 70
 # OP Env: its stage 2's rate, 30 -> 35 (at 64)
 turn SELECT 1 100
-expect view 12
+expect view 13
 turn K2 1 10
 spin K3 5
 expect pat0_64 35
@@ -37,7 +37,7 @@ shot pad_openv.png
 # MOD: the first modulator's depth, Garden's 20 -> 23 (the bells' and the bass's untouched); the second's target
 tap ENV
 wait 100
-expect view 17
+expect view 18
 shot mod.png
 turn K3 3 10
 expect par32 23
@@ -47,7 +47,7 @@ turn K1 1 10
 turn K2 9 100
 expect par43 9
 turn SELECT 1 100
-expect view 18
+expect view 19
 # back to the pad's page
 tap ENV
 wait 100
@@ -57,14 +57,14 @@ tap ARP
 wait 100
 tap ARP
 wait 100
-expect view 20
+expect view 21
 turn K1 1 10
 expect par28 1
 tap LFO
 wait 100
 tap LFO
 wait 100
-expect view 33
+expect view 35
 turn K4 2 10
 expect par115 2
 # another voice's button from a voice's page: that voice's own first page
@@ -111,7 +111,7 @@ tap ARP
 wait 100
 tap ARP
 wait 100
-expect view 20
+expect view 21
 turn K1 5 10
 expect par28 70
 expect par72 0
@@ -134,8 +134,24 @@ midi B0 06 32
 wait 50
 expect pat0_121 50
 # MIDI CC out: a knob turned (the bells' INDEX, CC 20 on channel 2)
-expect view 20
+expect view 21
 out
 turn K4 24 100
 expect par73 24
 expect_out USB B1 14 7F
+# Play, the PATCH group's second page: the pad plays its patch's envelopes (ENV Patch, par156), held a shorter GATE
+tap HOME
+wait 100
+tap ENV
+wait 100
+tap ENV
+wait 100
+expect view 7
+turn SELECT 1 100
+expect view 8
+shot pad_play.png
+turn K1 1 10
+expect par156 1
+turn K2 -2 10
+expect par157 68
+wait 3000

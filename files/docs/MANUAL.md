@@ -277,16 +277,17 @@ The top right of this page shows how much of the FM-1's time the sound takes (CP
 ### ENV, ARP or LFO again: the voice's own pages
 
 Each voice (the pad, the bells, the bass) has its own patch, a DX7 voice of six operators, edited as a DX7 edits it,
-and five generative modulators. Their pages come in three groups: press the voice's button again for **VOICE**, again
+and five generative modulators. Their pages come in three groups: press the voice's button again for **PATCH**, again
 for **OPERATOR**, again for **MOD**, and once more to come back to the voice's page. SELECT steps through the pages of
 the group (and the voice's); each group comes back on the page it was left on. The voice's button stays lit, and the
 dot of its page shows where you are. Each piece keeps all of it.
 
-**VOICE**
+**PATCH**
 
 | Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
 | --- | --- | --- | --- | --- |
-| Voice | Patch | Algorithm (1–32) | Feedback (0–7) | Index (±24 dB on the modulators) |
+| Patch | Patch | Algorithm (1–32) | Feedback (0–7) | Index (±24 dB on the modulators) |
+| Play | Envelope (AMB-1's own, Patch) | Gate (5–100 %) | | |
 | LFO | Speed | Delay | Pitch mod | Amp mod |
 | LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24) |
 | Pitch EG | Stage (1–4) | Rate | Level (±50) | Osc sync |
@@ -295,6 +296,12 @@ dot of its page shows where you are. Each piece keeps all of it.
   Tone, Vibes, Marimba, Tubular, Kalimba, Celesta; the bass: Sine, Round, Pick, Sub, Reed, Fretless), then the voices
   of the DX7 banks you sent (see [MIDI](#s8)), by name; empty slots are passed by. Turning it loads the patch as it
   is; any edit after that makes it the piece's own, shown with a `*` ("E.PIANO 1*").
+- **Envelope:** how the voice plays its notes. AMB-1's own (the pad: **Breath**, each voice swelling in and out over
+  seconds, set by Swell; the bells: **A beat**, let go after a beat; the bass: **Held**, one note held down, gliding,
+  fading in over 2.5 s) or **Patch**: each note struck and let go as a DX7 plays it, so its envelopes are heard, the
+  attack and the release too. The pad then strikes each of its four voices at its breath (Swell still sets how often),
+  the bass each chord, the bells each note. **Gate**, with Patch, how long the key is held down: of the pad's breath, of
+  the chord for the bass, of a bar for the bells. Each voice its own; each piece keeps them.
 - The pad's voices cross over to a new patch as they do for a new key; the bells take it at their next strike; the
   bass is struck anew once the knob rests. An edit is heard at once on the notes sounding.
 
@@ -377,6 +384,7 @@ What the knobs set comes and goes as MIDI CC (out with MIDI out on; what comes i
 | 16 | 20–49 | the parameters 0–29 (amb.h P_*: the layers, the space, the tone, setup; a patch source as its number) |
 | 1 (pad), 2 (bells), 3 (bass) | 20 | the voice's Index |
 | 1, 2, 3 | 21–60 | its five modulators, eight each: Depth, Rate, Shape, Target, Spread, Fade, Sync, Smooth |
+| 1, 2, 3 | 61, 62 | its Envelope (0–63 AMB-1's own, 64–127 Patch), its Gate |
 | 1, 2, 3 | NRPN: 99 = 0/1, 98 = 0..127, 6 = value | its patch, byte by byte (the DX7's VCED order, 0..154) |
 
 A value is scaled to its range (0..127 to Depth's 0..100, Index's −24..+24). The patch's bytes go as they are.
@@ -498,6 +506,8 @@ The defaults are Garden's; each piece has its own.
 | Each voice's VOICE | Patch | the voice's own six, then the banks' voices | Rhodes, Bell, Sine |
 | Each voice's VOICE | Algorithm, Feedback, LFO, Pitch EG, Transpose | as a DX7 | as the patch |
 | Each voice's VOICE | Index | −24 – +24 dB | 0 dB |
+| Each voice's Play | Envelope | Breath / A beat / Held (AMB-1's own), Patch | AMB-1's own |
+| Each voice's Play | Gate | 5–100 % | 70 % (pad), 25 % (bells), 80 % (bass) |
 | Each voice's OPERATOR | Ratio, Fine, Level, Envelope, Mode, Detune, Velocity, Break, Depths, Curves, Rate scale, Amp sens | as a DX7 | as the patch |
 | Each voice's MOD (×5) | Depth | 0–100 | 20 (the first), 0 |
 | Each voice's MOD (×5) | Rate | 0–100 (60 s – 0.12 s a cycle; Tempo: 8 bars – 1/16) | 27 (11 s) |
