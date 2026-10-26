@@ -1,0 +1,656 @@
+From 5a4a4bb8fb714310863e3385eeff8c6b2c1bd631 Mon Sep 17 00:00:00 2001
+From: AMB-1 FM6 <noreply@anthropic.com>
+Date: Mon, 26 Oct 2026 19:43:28 -0300
+Subject: [PATCH] 1.3.95: the patch's Transpose heard, a patch sent whole in
+ one command, values past their range held
+
+- TRANSPOSE (the DX7's TRNSP, 24 C3) moves the voice's pitch and its key scaling (fm_note_on, fm_voice): 214 of the
+  512 voices of the factory ROMs and the banks sent played an octave or two off; the Transpose knob did nothing
+- a patch goes to the engine whole through each voice's mailbox (en_patch_load, a count either side: the engine keeps
+  the newest), one command instead of 156: a piece was some 640, so two quick turns of PRESETS could overrun the
+  queue of 1024 and drop patch bytes unheard
+- a bank's voice, a DX7 single voice and a saved patch: a value past its range held to it, not refused (an old bank's
+  stray 127s; one byte no longer drops every piece's patches); erased or empty slots still no voice
+- the Patch knob names a bank voice as the piece keeps it, not as the bank holds it since
+- an external clock's tempo, measured a beat at a time (en_tempo), drives what hangs on the tempo: the step, the echo,
+  SYNC Tempo, the bells' beat and Gate; the clock gone, Tempo's again
+- the header names the voice and its page as SELECT turns them, not only on the button
+- static checks: the command's 8-bit parameter index and patch offset
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ app/bank.c            |   7 +-
+ app/dsp/amb.c         | 155 +++++++++++++++++++++++++++++++++---------
+ app/dsp/amb.h         |   4 ++
+ app/project.c         |  15 ++--
+ app/ui.c              |  38 ++++++++---
+ docs/MANUAL.md        |   5 +-
+ tests/host/amb_test.c |  99 ++++++++++++++++++++++++++-
+ 7 files changed, 264 insertions(+), 59 deletions(-)
+
+diff --git a/app/bank.c b/app/bank.c
+index eeb9f8b..7571ccd 100644
+--- a/app/bank.c
++++ b/app/bank.c
+@@ -118,11 +118,8 @@ int app_sysex(const uint8_t *p, uint32_t n)
+             sum += p[5 + k];
+         if (((128u - (sum & 127u)) & 127u) != p[160])
+             return 1;                            /* (a bad checksum: taken, and dropped) */
+-        for (k = 0; k < 155u; k++)
+-            if (p[5 + k] > en_patch_max((int)k))
+-                return 1;
+-        for (k = 0; k < 155u; k++)
+-            vpatch[v][k] = p[5 + k];
++        for (k = 0; k < 155u; k++)               /* (a value past its range: held to it, as a DX7 plays it) */
++            vpatch[v][k] = p[5 + k] > en_patch_max((int)k) ? en_patch_max((int)k) : p[5 + k];
+         proj.par[P_VX(v, VX_OWN)] = 1;
+         en_set(P_VX(v, VX_OWN), 1);
+         project_patch_send(v, 1);
+diff --git a/app/dsp/amb.c b/app/dsp/amb.c
+index 45c3525..7b18e71 100644
+--- a/app/dsp/amb.c
++++ b/app/dsp/amb.c
+@@ -425,7 +425,9 @@ const char *en_chord_name(const int *pcs, int n, char *buf)
+ }
+ 
+ /* ------------------------------------------------------------ commands --- */
+-enum { C_SET, C_POOL, C_PLAY, C_NEXT, C_FREEZE, C_SEED, C_PANIC, C_CLOCK, C_REGROW, C_PBYTE, C_PDONE };
++enum { C_SET, C_POOL, C_PLAY, C_NEXT, C_FREEZE, C_SEED, C_PANIC, C_CLOCK, C_REGROW, C_PBYTE, C_PDONE, C_PLOAD };
++_Static_assert(P_NPARAMS <= 256, "C_SET carries a parameter's index in 8 bits");
++_Static_assert(FP_SIZE <= 256, "C_PBYTE carries a patch byte's offset in 8 bits");
+ #define QN 1024u                              /* a piece (project_apply) posts every parameter and patch byte at once */
+ static uint32_t q[QN];
+ static volatile uint32_t q_w, q_r;
+@@ -449,11 +451,30 @@ void en_clock(int msg) { post(C_CLOCK, msg, 0); }
+ void en_regrow(void) { post(C_REGROW, 0, 0); }
+ void en_patch_byte(int voice, int off, int v) { post(C_PBYTE, voice, off << 8 | (v & 0xFF)); }
+ void en_patch_done(int voice, int fresh) { post(C_PDONE, voice, fresh); }
++/* each voice's patch mailbox: the UI writes it whole between two counts (odd while writing), the engine copies it on
++ * C_PLOAD and keeps the copy only if the count stood still and even (a write it raced is followed by its own C_PLOAD) */
++static struct {
++    volatile uint32_t seq;
++    uint8_t p[FP_SIZE];
++} pbox[EN_NVOX];
++void en_patch_load(int voice, const uint8_t *p, int fresh)
++{
++    int k;
++    if ((unsigned)voice >= EN_NVOX)
++        return;
++    pbox[voice].seq++;
++    BARRIER();
++    for (k = 0; k < FP_SIZE; k++)
++        pbox[voice].p[k] = p[k];
++    BARRIER();
++    pbox[voice].seq++;
++    post(C_PLOAD, voice, fresh);
++}
+ 
+ /* -------------------------------------------------------------- state --- */
+ volatile uint8_t en_playing, en_frozen, en_ext;
+ volatile uint8_t en_chord[EN_NPAD], en_chord_root, en_chord_n;
+-volatile float en_drift, en_pad_level, en_bass_level;
++volatile float en_drift, en_pad_level, en_bass_level, en_tempo;
+ volatile uint8_t en_loop_pos[EN_NLOOP];
+ volatile int8_t en_loop_note[EN_NLOOP][EN_LOOP_MAX];
+ volatile float en_loop_glow[EN_NLOOP];
+@@ -583,6 +604,9 @@ static int32_t fm_logfreq(float note)          /* log2 Hz, Q24, of a MIDI pitch
+     return FM6_LOGF0 + k * 1398101 + (int32_t)(fr * 1398101.33f);   /* (1 << 24) / 12 a semitone */
+ }
+ 
++/* the patch's TRANSPOSE (the DX7's: 24 is C3, as played), in semitones */
++static int32_t fm_trnsp(const uint8_t *p) { return (int32_t)p[FP_TRNSP] - 24; }
++
+ /* a voice's next block into x (float, its DC blocked as JIANT's FM6 does: FM puts sidebands at 0 Hz); 0: every
+  * carrier silent (x untouched) */
+ static int fm_voice(fm6_note_t *n, const uint8_t *p, float note, int32_t lfo_v, int32_t lfo_d, float bloom_db,
+@@ -590,7 +614,7 @@ static int fm_voice(fm6_note_t *n, const uint8_t *p, float note, int32_t lfo_v,
+ {
+     int32_t bus[FM6_N], fb = (int32_t)(p[FP_FB] & 7u) * 256 + fb_add;   /* feedback in 1/256 steps */
+     uint32_t i;
+-    if (!fm6_note_compute(n, p, bus, lfo_v, lfo_d, fm_logfreq(note), p[FP_ALG] & 31u,
++    if (!fm6_note_compute(n, p, bus, lfo_v, lfo_d, fm_logfreq(note + (float)fm_trnsp(p)), p[FP_ALG] & 31u,
+                           fb < 0 ? 0 : fb > 9 * 256 ? 9 * 256 : fb, dt, (int32_t)(bloom_db * FM_DB), ol))
+         return 0;
+     for (i = 0; i < FM6_N; i++) {
+@@ -601,6 +625,13 @@ static int fm_voice(fm6_note_t *n, const uint8_t *p, float note, int32_t lfo_v,
+     return 1;
+ }
+ 
++/* a note-on of patch p (fm6_note_init) at MIDI note `note` transposed as the patch says: its key scaling and rate
++ * scaling as a DX7 has them, its pitch then from fm_voice (which transposes it the same) */
++static void fm_note_on(fm6_note_t *n, const uint8_t *p, int32_t note, int32_t vel, int fresh)
++{
++    fm6_note_init(n, p, note + fm_trnsp(p), vel, fresh);
++}
++
+ static float breath(float t)                    /* rise, hang, fall, a short rest */
+ {
+     if (t < 0.4f)
+@@ -627,7 +658,7 @@ static void pad_breathe(pad_t *v, int i)        /* a new breath: its length, its
+     v->midi_note = (uint8_t)v->target;
+     /* the note struck anew (between breaths, or as a handoff fades in: from silence then, phases from 0) */
+     gen_note(i);
+-    fm6_note_init(&pad_fm[i], mod_patch(i, pad_patch, pad_vp[i]), (int32_t)v->note, 100, v->amp < 0.01f);
++    fm_note_on(&pad_fm[i], mod_patch(i, pad_patch, pad_vp[i]), (int32_t)v->note, 100, v->amp < 0.01f);
+     fm6_lfo_reset(&pad_lfo[i], pad_vp[i]);
+     v->up = 0;
+     if (en_playing)
+@@ -835,11 +866,12 @@ static void mod_init(void)
+             vx[v].s[s].fade_k = vx[v].s[s].slew = 1.0f;
+ }
+ 
++static float tempo_bpm(void);
+ static void vox_rate(int v, int s)              /* RATE, by SYNC: free (60 s .. 0.12 s) or a note value at the tempo */
+ {
+     int r = par[P_MS(v, s, MS_RATE)];
+     vx[v].s[s].rate = par[P_MS(v, s, MS_SYNC)] == SYNC_TEMPO
+-                          ? (float)par[P_TEMPO] * (1.0f / 60.0f) / DIV_BEATS[div_of(r)]
++                          ? tempo_bpm() * (1.0f / 60.0f) / DIV_BEATS[div_of(r)]
+                           : 1.0f / mod_secs(r);
+ }
+ 
+@@ -1588,8 +1620,8 @@ uint8_t en_patch_max(int off)
+ }
+ 
+ /* a DX7 bank's voice (VMEM, 128 bytes, the 32-voice bulk dump's) into the edit buffer's layout (VCED: one byte a
+- * parameter): six operators of 17 bytes (OP6 first), the pitch envelope, the packed bytes, the name. Every value
+- * checked against its range: an empty slot (erased flash) or a bad one is not a voice */
++ * parameter): six operators of 17 bytes (OP6 first), the pitch envelope, the packed bytes, the name. An empty slot
++ * (erased flash, or all zeros) is not a voice; a value past its range is held to it */
+ int en_unpack(const uint8_t *m, uint8_t *p)
+ {
+     int o, k;
+@@ -1625,15 +1657,23 @@ int en_unpack(const uint8_t *m, uint8_t *p)
+     for (k = 0; k < 10; k++)
+         p[FP_NAME + k] = m[118 + k];
+     p[FP_SIZE] = 0;
+-    for (k = 0; k < 128; k++)
+-        if (m[k] > 127u)
++    {
++        int any = 0;
++        for (k = 0; k < 128; k++) {              /* erased flash (0xFF), or no voice at all (zeros) */
++            if (m[k] > 127u)
++                return 0;
++            any |= m[k];
++        }
++        if (!any)
+             return 0;
+-    for (k = 0; k < FP_SIZE; k++)
++    }
++    for (k = 0; k < FP_SIZE; k++)                /* a value past its range (old banks' stray 127s): held to it, as a
++                                                  * DX7 plays it; a name's control characters as spaces */
+         if (p[k] > en_patch_max(k))
+-            return 0;
+-    for (k = 0; k < 10; k++)                     /* a name of printable characters */
++            p[k] = en_patch_max(k);
++    for (k = 0; k < 10; k++)
+         if (p[FP_NAME + k] < 32u)
+-            return 0;
++            p[FP_NAME + k] = ' ';
+     return 1;
+ }
+ 
+@@ -2047,9 +2087,9 @@ static void echo_time(void)
+ {
+     int i = par[P_ETIME];
+     float beat, t;
+-    if (par[P_TEMPO] <= 0)
++    if (tempo_bpm() <= 0.0f)
+         return;                                  /* not yet (en_init applies in order) */
+-    beat = 60.0f / (float)par[P_TEMPO];
++    beat = 60.0f / tempo_bpm();
+     t = ETIME_BEATS[i] * beat;
+     while (t * TAPE_SR > (float)(TAPE_N - 8) && i > 0)
+         t = ETIME_BEATS[--i] * beat;             /* too long for the tape: the next shorter */
+@@ -2131,15 +2171,47 @@ static inline void echoes(float in, float *el, float *er, float *xl, float *xr)
+ /* ------------------------------------------------------------ parameters --- */
+ static int pulse;
+ static uint32_t ext_age;
+-
+-static void tempo_set(void) { step_len = EN_SR * 60.0f / ((float)par[P_TEMPO] * 4.0f); }
++/* an external MIDI clock's tempo: measured a beat (24 pulses) at a time, by the samples rendered (the pulses arrive at
++ * a chunk's start: a beat's count is off by a chunk at most, under 1 %), half towards each new beat's; 0 none */
++static uint32_t smp_clock, ext_t0, ext_n;
++static float ext_bpm;
++static float tempo_bpm(void) { return en_ext && ext_bpm > 0.0f ? ext_bpm : (float)par[P_TEMPO]; }
++
++static void tempo_set(void) { step_len = EN_SR * 60.0f / (tempo_bpm() * 4.0f); }
++static void tempo_changed(void)                 /* what follows the tempo: the step, the echo, SYNC Tempo's rates */
++{
++    int v, s;
++    en_tempo = tempo_bpm();
++    tempo_set();
++    echo_time();
++    for (v = 0; v < EN_NVOX; v++)
++        for (s = 0; s < EN_NSLOT; s++)
++            vox_rate(v, s);
++}
++static void ext_tick(void)                      /* an external clock's pulse */
++{
++    if (++ext_n < 24u)
++        return;
++    {
++        const uint32_t dt = smp_clock - ext_t0;
++        ext_n = 0;
++        ext_t0 = smp_clock;
++        if (dt > (uint32_t)(EN_SR * 60.0f / 300.0f) && dt < (uint32_t)(EN_SR * 60.0f / 20.0f)) {
++            const float b = EN_SR * 60.0f / (float)dt, nb = ext_bpm > 0.0f ? ext_bpm + (b - ext_bpm) * 0.5f : b,
++                        old = ext_bpm;
++            ext_bpm = nb;
++            if (fm_fabsf(nb - old) > 0.3f)
++                tempo_changed();
++        }
++    }
++}
+ 
+ static void bass_restrike(void) { bass_rs = BASS_RS; }   /* once the knob rests (fm_block) */
+ 
+ static void apply(int p, int v)
+ {
+     const en_param_t *pi = &PARAMS[p];
+-    int k, i;
++    int k;
+     if (v < pi->lo)
+         v = pi->lo;
+     if (v > pi->hi)
+@@ -2203,13 +2275,7 @@ static void apply(int p, int v)
+         }
+         break;
+     case P_TUNE: tunefac = fm_exp2f((float)v * (1.0f / 1200.0f)); break;
+-    case P_TEMPO:
+-        tempo_set();
+-        echo_time();
+-        for (k = 0; k < EN_NVOX; k++)            /* SYNC Tempo's rates */
+-            for (i = 0; i < EN_NSLOT; i++)
+-                vox_rate(k, i);
+-        break;
++    case P_TEMPO: tempo_changed(); break;
+     case P_ROOT:
+         if (nsteps) {
+             pad_retarget();
+@@ -2295,6 +2361,9 @@ void en_init(void)
+     rng = 0x9E3779B9u;                           /* the same garden from every init (PLAY stirs it: en_seed), so a */
+     mod_rng = 0x2545F491u;                       /* test can hear one setting against another on the same notes */
+     en_playing = en_frozen = 0;                  /* (resting: PLAY starts it from the top) */
++    en_ext = 0;                                  /* (no external clock until its pulses come) */
++    ext_bpm = 0.0f;
++    ext_n = 0;
+     pad_gate = 0.0f;
+     arc = arc_tgt = 0.0f;
+     arc_left = 0;
+@@ -2341,11 +2410,11 @@ void en_init(void)
+     for (i = 0; i < EN_NPAD; i++) {
+         pad[i].note = pad[i].target;
+         pad[i].voices = pad_gen;
+-        fm6_note_init(&pad_fm[i], mod_patch(i, pad_patch, pad_vp[i]), (int32_t)pad[i].note, 100, 1);
++        fm_note_on(&pad_fm[i], mod_patch(i, pad_patch, pad_vp[i]), (int32_t)pad[i].note, 100, 1);
+         fm6_lfo_reset(&pad_lfo[i], pad_vp[i]);
+     }
+     bass.note = bass.target;
+-    fm6_note_init(&bass_fm, mod_patch(NGEN - 1, bass_patch, bass_vp), (int32_t)bass.note, 100, 1);
++    fm_note_on(&bass_fm, mod_patch(NGEN - 1, bass_patch, bass_vp), (int32_t)bass.note, 100, 1);
+     fm6_lfo_reset(&bass_lfo, bass_vp);
+     bass_rs = 0;
+     bass_xs = 0;
+@@ -2434,6 +2503,21 @@ static void drain(void)
+             if (a < EN_NVOX)
+                 patch_apply(a, b);
+             break;
++        case C_PLOAD:                            /* the mailbox's newest patch */
++            if (a < EN_NVOX) {
++                uint8_t t[FP_SIZE];
++                uint32_t s1 = pbox[a].seq, k;
++                BARRIER();
++                for (k = 0; k < FP_SIZE; k++)
++                    t[k] = pbox[a].p[k];
++                BARRIER();
++                if (!(s1 & 1u) && pbox[a].seq == s1) {
++                    for (k = 0; k < FP_SIZE; k++)
++                        vstage[a][k] = t[k] > en_patch_max((int)k) ? en_patch_max((int)k) : t[k];
++                    patch_apply(a, b);
++                }
++            }
++            break;
+         case C_POOL: pool_set((uint32_t)b & 0xFFFu); break;
+         case C_PLAY:
+             if (a && !en_playing)
+@@ -2457,9 +2541,12 @@ static void drain(void)
+             en_ext = 1;
+             ext_age = 0;
+             if (a == EN_CLK_TICK) {
++                ext_tick();
+                 if (en_playing)
+                     clock_pulse();
+             } else if (a == EN_CLK_START) {
++                ext_n = 0;
++                ext_t0 = smp_clock;
+                 play_start(1);
+             } else if (a == EN_CLK_CONTINUE) {
+                 if (!en_playing)
+@@ -2594,7 +2681,7 @@ static void fm_block(void)
+             }
+             if (PLAYS_PATCH(VOX_BELLS))         /* the patch's envelopes: held GATE of a bar */
+                 v->held = (int32_t)(step_len * 16.0f * GATE(VOX_BELLS));
+-            fm6_note_init(&bell_fm[i], p, v->note, (int32_t)(v->vel * 127.0f), 1);
++            fm_note_on(&bell_fm[i], p, v->note, (int32_t)(v->vel * 127.0f), 1);
+             fm6_lfo_reset(&bell_lfo[i], p);
+             fm6_lfo_key(&bell_lfo[i]);
+             v->rung = 1;
+@@ -2643,7 +2730,7 @@ static void fm_block(void)
+     if (bass_rs > 0 && --bass_rs == 0)          /* a new patch, the knob at rest: out, struck, in */
+         bass_xs = 1;
+     if (bass_xs && (bass_xf <= 0.0f || bass.amp < 1e-4f)) {
+-        fm6_note_init(&bass_fm, mod_patch(NGEN - 1, bass_patch, bass_vp), (int32_t)bass.note, 100, 1);
++        fm_note_on(&bass_fm, mod_patch(NGEN - 1, bass_patch, bass_vp), (int32_t)bass.note, 100, 1);
+         fm6_lfo_reset(&bass_lfo, bass_vp);
+         bass_xs = 0;
+         bass_held = (int32_t)(drift_left * GATE(VOX_BASS));
+@@ -2655,7 +2742,7 @@ static void fm_block(void)
+                 bass_held = 0;
+             } else {
+                 gen_note(NGEN - 1);
+-                fm6_note_init(&bass_fm, mod_patch(NGEN - 1, bass_patch, bass_vp), (int32_t)bass.target, 100,
++                fm_note_on(&bass_fm, mod_patch(NGEN - 1, bass_patch, bass_vp), (int32_t)bass.target, 100,
+                               bass.amp < 1e-4f);
+                 fm6_lfo_reset(&bass_lfo, bass_vp);
+                 bass_held = (int32_t)(drift_total * GATE(VOX_BASS));
+@@ -2857,8 +2944,14 @@ void en_render(int32_t *out, uint32_t n, uint32_t gain_q12)
+ {
+     const float gain = (float)gain_q12 * (1.0f / 4096.0f) * 2.0f;
+     drain();
+-    if (en_ext && ++ext_age > 100u)
++    if (en_ext && ++ext_age > 100u) {           /* the clock gone: the Tempo knob's again */
+         en_ext = 0;
++        if (ext_bpm > 0.0f) {
++            ext_bpm = 0.0f;
++            tempo_changed();
++        }
++    }
++    smp_clock += n;
+     while (n) {
+         uint32_t k = n > BLK ? BLK : n;
+         int timed = en_playing && !en_ext;
+diff --git a/app/dsp/amb.h b/app/dsp/amb.h
+index 0634851..85bf104 100644
+--- a/app/dsp/amb.h
++++ b/app/dsp/amb.h
+@@ -106,6 +106,9 @@ void en_bake(uint8_t *p, int ratio, int fb, int atk, int dec, int sus, int rel);
+  * at once on the notes sounding) */
+ void en_patch_byte(int voice, int off, int v);
+ void en_patch_done(int voice, int fresh);
++/* the same, the whole patch at once: copied into the voice's mailbox and one command posted (the engine takes the
++ * mailbox's newest: a quick run of patches is never more than a command each, never a byte dropped) */
++void en_patch_load(int voice, const uint8_t *p, int fresh);
+ typedef struct {
+     const char *name;
+     int16_t lo, hi, def;
+@@ -140,6 +143,7 @@ extern volatile uint8_t en_chord_root;         /* the chord's root, MIDI pitch c
+ extern volatile uint8_t en_chord_n;            /* its distinct tones: 3 or 4 */
+ extern volatile float en_drift;                /* 0..1: how far to the next chord */
+ extern volatile float en_pad_level, en_bass_level;
++extern volatile float en_tempo;                   /* the tempo playing: Tempo's, or an external clock's as measured */
+ extern volatile uint8_t en_loop_pos[EN_NLOOP];
+ extern volatile int8_t en_loop_note[EN_NLOOP][EN_LOOP_MAX];   /* -1 rest, else the slot's offset */
+ extern volatile float en_loop_glow[EN_NLOOP];  /* 0..1: a bell just rang from this loop */
+diff --git a/app/project.c b/app/project.c
+index 1dd16ec..b4da7ea 100644
+--- a/app/project.c
++++ b/app/project.c
+@@ -100,7 +100,7 @@ static int project_valid(void)                  /* an older format: the recipes
+ }
+ 
+ static int mig7_on;                             /* format 7's project: its patches kept as they are */
+-static int patches_valid(void)
++static int patches_valid(void)                  /* (a byte past its range: held to it, the rest kept) */
+ {
+     int i, v, k;
+     if (pstore.magic != PROJ_MAGIC || (pstore.format != PROJ_FORMAT && !(mig7_on && pstore.format == 7u)))
+@@ -109,7 +109,7 @@ static int patches_valid(void)
+         for (v = 0; v < EN_NVOX; v++)
+             for (k = 0; k < EN_PATCH; k++)
+                 if (pstore.pat[i][v][k] > en_patch_max(k))
+-                    return 0;
++                    pstore.pat[i][v][k] = en_patch_max(k);
+     return 1;
+ }
+ 
+@@ -280,13 +280,7 @@ void project_piece_reset(void)
+ }
+ 
+ /* ------------------------------------------------------- the voices' patches --- */
+-void project_patch_send(int voice, int fresh)
+-{
+-    int k;
+-    for (k = 0; k < EN_PATCH; k++)
+-        en_patch_byte(voice, k, vpatch[voice][k]);
+-    en_patch_done(voice, fresh);
+-}
++void project_patch_send(int voice, int fresh) { en_patch_load(voice, vpatch[voice], fresh); }
+ 
+ void project_source(int voice, int src)
+ {
+@@ -319,8 +313,7 @@ void project_patch_set(int voice, int off, int v)
+         return;
+     }
+     vpatch[voice][off] = (uint8_t)v;
+-    en_patch_byte(voice, off, v);
+-    en_patch_done(voice, 0);
++    project_patch_send(voice, 0);
+ }
+ 
+ void project_apply(void)
+diff --git a/app/ui.c b/app/ui.c
+index 0beebae..03ccf1c 100644
+--- a/app/ui.c
++++ b/app/ui.c
+@@ -404,10 +404,22 @@ static void patch_text(int off, int val, char *b)
+     }
+     cat_i(b, val, 0);
+ }
+-static void src_text(int k, int v, char *b)     /* a source: its name ("Rhodes", a bank voice's), "*" edited */
++static void src_text(int k, int v, char *b)     /* a source: its name ("Rhodes", a bank voice's), "*" edited. The
++                                                 * voice's own, of a bank: its name as the piece keeps it (the bank
++                                                 * since sent again may hold another there) */
+ {
+     int n = 0;
+-    if (v < EN_NFACT || !bank_name(v, b))
++    b[0] = 0;
++    if (v >= EN_NFACT && v == proj.par[k]) {
++        const uint8_t *nm = vpatch[src_vox(k)] + EP_NAME;
++        int i;
++        for (i = 0; i < 10; i++)
++            if ((b[i] = (char)(nm[i] < 32u || nm[i] > 126u ? ' ' : nm[i])) != ' ')
++                n = i + 1;
++        b[n] = 0;
++        n = 0;
++    }
++    if (!b[0] && (v < EN_NFACT || !bank_name(v, b)))
+         en_param_text(k, v, b);
+     while (b[n])
+         n++;
+@@ -595,6 +607,18 @@ static void set_view(int v)
+ 
+ static void caps(char *d, const char *s, int n);
+ 
++static void vox_title(void)                     /* which voice, and which of its pages, large on the screen (a
++                                                 * screen reader hears the page itself) */
++{
++    char t[12], s[12];
++    int x = view_vox(ui.view);
++    if (x < 0)
++        return;
++    caps(t, MAIN_NAME[VOX_VIEW[x]], sizeof t);
++    caps(s, ui.view < V_MAIN ? "Layer" : SUB_NAME[view_sub(ui.view)], sizeof s);
++    say_as(t, s, 0);
++}
++
+ static void button(int b)
+ {
+     int v;
+@@ -605,13 +629,8 @@ static void button(int b)
+                 set_view(V_MAIN + x * NSUB + GROUP0[g] + ui.gsub[x][g]);
+             else
+                 set_view(v);
+-            if (x >= 0) {                        /* which voice, and which of its groups, large on the screen */
+-                static const char *const GNAME[NGROUP] = {"PATCH", "OPERATOR", "MOD"};
+-                char t[12];
+-                g = view_group(ui.view);
+-                caps(t, MAIN_NAME[v], sizeof t);
+-                say_as(t, g < 0 ? "LAYER" : GNAME[g], 0);   /* (a screen reader hears the page itself) */
+-            }
++            if (x >= 0)
++                vox_title();
+             return;
+         }
+     switch (b) {
+@@ -805,6 +824,7 @@ static void input(void)
+                 set_view(VOX_VIEW[x]);
+             else if (s < NSUB)
+                 set_view(V_MAIN + x * NSUB + s);
++            vox_title();
+         }
+         ui.turn_t = plat_ms();
+     }
+diff --git a/docs/MANUAL.md b/docs/MANUAL.md
+index 072f27c..72f14be 100644
+--- a/docs/MANUAL.md
++++ b/docs/MANUAL.md
+@@ -289,7 +289,7 @@ dot of its page shows where you are. Each piece keeps all of it.
+ | Patch | Patch | Algorithm (1–32) | Feedback (0–7) | Index (±24 dB on the modulators) |
+ | Play | Envelope (AMB-1's own, Patch) | Gate (5–100 %) | | |
+ | LFO | Speed | Delay | Pitch mod | Amp mod |
+-| LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24) |
++| LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24 semitones: the patch's, as a DX7 plays it) |
+ | Pitch EG | Stage (1–4) | Rate | Level (±50) | Osc sync |
+ 
+ - **Patch:** the voice's own six first (the pad: Rhodes, Voices, Glass, Strings, Warm, Halo; the bells: Bell, shaped by
+@@ -356,7 +356,8 @@ MIDI comes in over USB and the TRS jack, and goes out over USB.
+ 
+ - **In, channel 1:** a note adds or removes its note from the scale, like a key.
+ - **In, clock:** the beat follows MIDI clock, and start / stop start and stop the garden. The
+-  screen shows EXT for the tempo.
++  screen shows EXT for the tempo. What else hangs on the tempo follows the clock's too, measured a beat at a time:
++  the echo's time, the modulators at SYNC Tempo, the bells' beat and Gate, the swing.
+ - **Out** (on by default): the pad on channel 1, the bells on 2, the bass on 3 and the pulse on 10,
+   and clock with start / stop when AMB-1 runs on its own tempo. Turning MIDI out off sends all
+   notes off.
+diff --git a/tests/host/amb_test.c b/tests/host/amb_test.c
+index 156d43a..3919651 100644
+--- a/tests/host/amb_test.c
++++ b/tests/host/amb_test.c
+@@ -589,7 +589,7 @@ int main(void)
+         en_factory(VOX_PAD, 0, 50, p);
+         pack(p, m);
+         m[14] = 120;                             /* OP6's level, past 99 */
+-        CHECK(!en_unpack(m, q), "a level of 120 taken for a voice");
++        CHECK(en_unpack(m, q) && q[EP_OL] == 99, "a level of 120 not held to 99");
+     }
+ 
+     /* a bank's voice sent to a voice (bytes and done, as the FM page's Patch does): heard, bounded; then its operators
+@@ -698,6 +698,103 @@ int main(void)
+         en_play(1);
+     }
+ 
++    /* 1.3.95. TRANSPOSE: the patch's (24 C3) moves its pitch, an octave up at 36 (the bass alone: twice the zero
++     * crossings); a quick run of patches through the mailbox ends on its last, as one load of it does; a bank's value
++     * past its range held to it (a voice, not refused); an external clock's tempo is the one that plays */
++    {
++        float lv2[2];
++        uint8_t p[EN_PATCH + 1], q[EN_PATCH + 1], m[128];
++        long zc[2];
++        int t, k, b2, j;
++        for (t = 0; t < 2; t++) {
++            float prev = 0.0f;
++            en_init();
++            en_set(P_PAD, 0);
++            en_set(P_BELLS, 0);
++            en_set(P_PULSE, 0);
++            en_set(P_ECHO, 0);
++            en_set(P_REVERB, 0);
++            en_factory(VOX_BASS, 0, 50, p);
++            p[EP_TRNSP] = (uint8_t)(t ? 36 : 24);
++            en_set(P_VX(VOX_BASS, VX_OWN), 1);
++            en_patch_load(VOX_BASS, p, 1);
++            en_play(1);
++            run(4.0f);
++            zc[t] = 0;
++            for (b2 = 0; b2 < 4 * 44100 / 256; b2++) {
++                en_render(buf, 256, 2048);
++                for (j = 0; j < 256; j++) {
++                    float x = (float)buf[2 * j];
++                    zc[t] += (x > 0.0f) != (prev > 0.0f);
++                    prev = x;
++                }
++            }
++        }
++        CHECK(zc[1] > 1.8f * zc[0] && zc[1] < 2.2f * zc[0], "TRANSPOSE +12: zero crossings %ld vs %ld", zc[1], zc[0]);
++
++        for (t = 0; t < 2; t++) {                /* one load of Pick, or 900 of others ending on it: the bass alone,
++                                                  * heard alike (its zero crossings, its level; the space's tails of
++                                                  * before are not cleared by an init, so not sample for sample) */
++            float prev = 0.0f;
++            en_init();
++            en_set(P_PAD, 0);
++            en_set(P_BELLS, 0);
++            en_set(P_PULSE, 0);
++            en_set(P_ECHO, 0);
++            en_set(P_REVERB, 0);
++            en_set(P_VX(VOX_BASS, VX_OWN), 1);
++            en_factory(VOX_BASS, 2, 50, q);
++            if (t)
++                for (k = 0; k < 900; k++) {   /* (in one drain, the queue short of full) */
++                    en_factory(VOX_BASS, k % 6, 50, p);
++                    en_patch_load(VOX_BASS, p, 1);
++                }
++            en_patch_load(VOX_BASS, q, 1);
++            en_play(1);
++            run(3.0f);
++            zc[t] = 0;
++            lv2[t] = 0.0f;
++            for (b2 = 0; b2 < 2 * 44100 / 256; b2++) {
++                en_render(buf, 256, 2048);
++                for (j = 0; j < 256; j++) {
++                    float x = (float)buf[2 * j];
++                    zc[t] += (x > 0.0f) != (prev > 0.0f);
++                    lv2[t] += x * x * 1e-12f;
++                    prev = x;
++                }
++            }
++        }
++        CHECK(zc[0] > 100 && labs(zc[1] - zc[0]) <= zc[0] / 50 && fabsf(lv2[1] - lv2[0]) <= 0.03f * lv2[0],
++              "900 patches through the mailbox: not as one load (crossings %ld vs %ld, level %f vs %f)", zc[1], zc[0],
++              (double)lv2[1], (double)lv2[0]);
++
++        en_factory(VOX_PAD, 0, 50, p);
++        pack(p, m);
++        m[14] = 127;                             /* OP6's output level, as an old bank has it */
++        m[118] = 1;                              /* a control character in its name */
++        CHECK(en_unpack(m, q) && q[EP_OL] == 99 && q[EP_NAME] == ' ', "a value past its range: %d", q[EP_OL]);
++        for (k = 0; k < 128; k++)
++            m[k] = 0;
++        CHECK(!en_unpack(m, q), "a voice of zeros taken");
++
++        en_init();
++        en_set(P_TEMPO, 120);
++        en_play(1);
++        run(0.5f);
++        en_clock(EN_CLK_START);
++        for (b2 = 0; b2 < 6 * 24; b2++) {        /* six beats at 60, a pulse every 1837.5 samples */
++            int n = 1837 + (b2 & 1), r;
++            en_clock(EN_CLK_TICK);
++            for (r = 0; r < n; r += 256)
++                en_render(buf, (uint32_t)(n - r < 256 ? n - r : 256), 2048);
++        }
++        CHECK(en_tempo > 58.5f && en_tempo < 61.5f, "an external clock at 60: the tempo %f", (double)en_tempo);
++        run(2.0f);                               /* the clock gone: the knob's */
++        CHECK(en_tempo == 120.0f, "the clock gone: the tempo %f", (double)en_tempo);
++        en_init();
++        en_play(1);
++    }
++
+     /* stop: the tails die away */
+     for (i = 0; i < P_NPARAMS; i++)
+         en_set(i, en_param_info(i)->def);
+-- 
+2.53.0
+

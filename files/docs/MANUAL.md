@@ -289,7 +289,7 @@ dot of its page shows where you are. Each piece keeps all of it.
 | Patch | Patch | Algorithm (1–32) | Feedback (0–7) | Index (±24 dB on the modulators) |
 | Play | Envelope (AMB-1's own, Patch) | Gate (5–100 %) | | |
 | LFO | Speed | Delay | Pitch mod | Amp mod |
-| LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24) |
+| LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24 semitones: the patch's, as a DX7 plays it) |
 | Pitch EG | Stage (1–4) | Rate | Level (±50) | Osc sync |
 
 - **Patch:** the voice's own six first (the pad: Rhodes, Voices, Glass, Strings, Warm, Halo; the bells: Bell, shaped by
@@ -356,7 +356,8 @@ MIDI comes in over USB and the TRS jack, and goes out over USB.
 
 - **In, channel 1:** a note adds or removes its note from the scale, like a key.
 - **In, clock:** the beat follows MIDI clock, and start / stop start and stop the garden. The
-  screen shows EXT for the tempo.
+  screen shows EXT for the tempo. What else hangs on the tempo follows the clock's too, measured a beat at a time:
+  the echo's time, the modulators at SYNC Tempo, the bells' beat and Gate, the swing.
 - **Out** (on by default): the pad on channel 1, the bells on 2, the bass on 3 and the pulse on 10,
   and clock with start / stop when AMB-1 runs on its own tempo. Turning MIDI out off sends all
   notes off.

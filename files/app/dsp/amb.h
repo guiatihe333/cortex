@@ -106,6 +106,9 @@ void en_bake(uint8_t *p, int ratio, int fb, int atk, int dec, int sus, int rel);
  * at once on the notes sounding) */
 void en_patch_byte(int voice, int off, int v);
 void en_patch_done(int voice, int fresh);
+/* the same, the whole patch at once: copied into the voice's mailbox and one command posted (the engine takes the
+ * mailbox's newest: a quick run of patches is never more than a command each, never a byte dropped) */
+void en_patch_load(int voice, const uint8_t *p, int fresh);
 typedef struct {
     const char *name;
     int16_t lo, hi, def;
@@ -140,6 +143,7 @@ extern volatile uint8_t en_chord_root;         /* the chord's root, MIDI pitch c
 extern volatile uint8_t en_chord_n;            /* its distinct tones: 3 or 4 */
 extern volatile float en_drift;                /* 0..1: how far to the next chord */
 extern volatile float en_pad_level, en_bass_level;
+extern volatile float en_tempo;                   /* the tempo playing: Tempo's, or an external clock's as measured */
 extern volatile uint8_t en_loop_pos[EN_NLOOP];
 extern volatile int8_t en_loop_note[EN_NLOOP][EN_LOOP_MAX];   /* -1 rest, else the slot's offset */
 extern volatile float en_loop_glow[EN_NLOOP];  /* 0..1: a bell just rang from this loop */

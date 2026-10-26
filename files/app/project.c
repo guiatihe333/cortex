@@ -100,7 +100,7 @@ static int project_valid(void)                  /* an older format: the recipes 
 }
 
 static int mig7_on;                             /* format 7's project: its patches kept as they are */
-static int patches_valid(void)
+static int patches_valid(void)                  /* (a byte past its range: held to it, the rest kept) */
 {
     int i, v, k;
     if (pstore.magic != PROJ_MAGIC || (pstore.format != PROJ_FORMAT && !(mig7_on && pstore.format == 7u)))
@@ -109,7 +109,7 @@ static int patches_valid(void)
         for (v = 0; v < EN_NVOX; v++)
             for (k = 0; k < EN_PATCH; k++)
                 if (pstore.pat[i][v][k] > en_patch_max(k))
-                    return 0;
+                    pstore.pat[i][v][k] = en_patch_max(k);
     return 1;
 }
 
@@ -280,13 +280,7 @@ void project_piece_reset(void)
 }
 
 /* ------------------------------------------------------- the voices' patches --- */
-void project_patch_send(int voice, int fresh)
-{
-    int k;
-    for (k = 0; k < EN_PATCH; k++)
-        en_patch_byte(voice, k, vpatch[voice][k]);
-    en_patch_done(voice, fresh);
-}
+void project_patch_send(int voice, int fresh) { en_patch_load(voice, vpatch[voice], fresh); }
 
 void project_source(int voice, int src)
 {
@@ -319,8 +313,7 @@ void project_patch_set(int voice, int off, int v)
         return;
     }
     vpatch[voice][off] = (uint8_t)v;
-    en_patch_byte(voice, off, v);
-    en_patch_done(voice, 0);
+    project_patch_send(voice, 0);
 }
 
 void project_apply(void)
