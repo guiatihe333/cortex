@@ -8,8 +8,9 @@ and a scale, take notes out, put them back, and let it grow.
 
 **This tree's voices are FM6**: the pad, the bells and the bass are 6-operator FM, the engine of
 [JIANT FM](https://github.com/juanjiant-bit/JIANT) (msfa, Dexed's core, in integer C: `app/dsp/fm6_core.c`), with
-patches of their own, six a voice (`pad_bank`, `bell_bank`, `bass_bank` in `app/dsp/amb.c`), and each voice its own FM
-edits and generative modulation. Everything that plays them is AMB-1's as it
+patches of their own, six a voice (`pad_bank`, `bell_bank`, `bass_bank` in `app/dsp/amb.c`), and the DX7 banks you
+send it (`tools/amb_syx.py`); each voice's patch edited on the device operator by operator, five generative
+modulators a voice, MIDI CC and NRPN in and out. Everything that plays them is AMB-1's as it
 was: the breaths, the loops, the glide, the pulse, the echoes and the plate.
 
 ![AMB-1's screen: the garden](docs/img/screen-garden.png) ![Voices](docs/img/screen-voices.png) ![Frozen](docs/img/screen-frozen.png)
@@ -30,7 +31,7 @@ installer can reach.
 | Keys | The scale: each key adds its note or takes it out |
 | PLAY · REC · EDIT | Grow / rest · freeze · the next chord |
 | HOME · ENV · ARP · LFO · SEQ · FX · GLO | The pages: Garden, Pad, Bells, Bass, Pulse, Space, Setup; KNOB 1–4 set their values, a layer's level on KNOB 1 |
-| ENV · ARP · LFO again | that voice's own pages: FM (patch, ratio, index, feedback), Env (attack, decay, sustain, release), Mod (depth, rate, shape, target), Mod 2 (spread, fade, sync, smooth) |
+| ENV · ARP · LFO again | that voice's own pages: VOICE (the patch, algorithm, feedback, index, the LFO, the pitch envelope), OPERATOR (each operator as a DX7 edits it), MOD (five generative modulators, any target down to one operator) |
 | SELECT | The previous or next page; with HOME held, the tempo |
 | ALGORITHM · PRESETS | The mode · the piece (eight of them) |
 | OCT− / OCT+ | The bells' octave |

@@ -425,7 +425,7 @@ static int fm6_core_render(int32_t *out, fm6_op_t *op, uint32_t alg, int32_t *fb
 }
 
 /* ------------------------------------------------------------ the note --- */
-typedef struct {                 /* a sounding note (msfa's note): 244 bytes */
+typedef struct {                 /* a sounding note (msfa's note): 248 bytes */
     fm6_env_t env[6];
     fm6_op_t op[6];
     int32_t base[6];             /* the operator's pitch: ratio: log2 offset from the note's (Q24); fixed: log2 Hz */
@@ -433,6 +433,7 @@ typedef struct {                 /* a sounding note (msfa's note): 244 bytes */
     fm6_penv_t penv;
     uint8_t fixed;               /* bit k: operator k has a fixed frequency */
     uint8_t live, down, trim;    /* trim (eng_fm6.c, JIANT 0.6.8): the output attenuation its last block had */
+    uint8_t key, vel;            /* (AMB-1 FM6) its note and velocity, for fm6_note_refresh */
     int32_t dc;                  /* (eng_fm6.c) the output's DC blocker */
 } fm6_note_t;
 
@@ -501,6 +502,8 @@ static void fm6_note_init(fm6_note_t *n, const uint8_t *p, int32_t note, int32_t
         n->dc = 0;
     }
     n->fixed = 0;
+    n->key = (uint8_t)note;
+    n->vel = (uint8_t)(vel < 0 ? 0 : vel > 127 ? 127 : vel);
     for (k = 0; k < 6u; k++) {
         const uint8_t *op = p + k * FP_OP;
         int32_t ol = fm6_scaleout(op[FP_OL]) + fm6_scale_level(note, op);
@@ -512,6 +515,27 @@ static void fm6_note_init(fm6_note_t *n, const uint8_t *p, int32_t note, int32_t
     }
     fm6_penv_init(&n->penv, p);
     n->live = n->down = 1;
+}
+
+/* (AMB-1 FM6) a sounding note takes its patch's edits now: each operator's pitch and output level (its scaling and
+ * velocity), its envelope's stage aimed again from where it is (no restart, no step); the rest is read each block */
+static void fm6_note_refresh(fm6_note_t *n, const uint8_t *p)
+{
+    uint32_t k;
+    n->fixed = 0;
+    for (k = 0; k < 6u; k++) {
+        const uint8_t *op = p + k * FP_OP;
+        fm6_env_t *e = &n->env[k];
+        int32_t ol = fm6_scaleout(op[FP_OL]) + fm6_scale_level(n->key, op);
+        ol = (ol > 127 ? 127 : ol) << 5;
+        ol += fm6_scale_vel(n->vel, op[FP_KVS]);
+        e->outlevel = (int16_t)(ol < 0 ? 0 : ol);
+        e->rscale = (uint8_t)fm6_scale_rate(n->key, op[FP_RS]);
+        if (e->ix < 4u && !e->statc)
+            fm6_env_advance(e, op, e->ix);
+        n->base[k] = fm6_osc_base(op, n->key, 0);
+        n->fixed |= (uint8_t)((op[FP_MODE] & 1u) << k);
+    }
 }
 
 static void fm6_note_key(fm6_note_t *n, const uint8_t *p, int down)
@@ -532,10 +556,11 @@ static int32_t fm6_note_logfreq(int32_t pitch16, int32_t fine)
 
 /* one block (msfa note compute): the LFO's value and delay (Q24), the note's log2 frequency, the patch's
  * algorithm and feedback (0 .. 9 * 256: 1/256 steps), dt[k]: a pitch offset per operator (Q24),
- * modlvl: a level offset of the operators that are not carriers (Q24 log2). Writes out (Q24); 0 = silent
- * (out untouched) */
+ * modlvl: a level offset of the operators that are not carriers (Q24 log2), oplvl[k]: (AMB-1 FM6) one more per
+ * operator, carriers too. Writes out (Q24); 0 = silent (out untouched) */
 static int fm6_note_compute(fm6_note_t *n, const uint8_t *p, int32_t *out, int32_t lfo_val, int32_t lfo_delay,
-                             int32_t logfreq, uint32_t alg, int32_t fb, const int32_t *dt, int32_t modlvl)
+                             int32_t logfreq, uint32_t alg, int32_t fb, const int32_t *dt, int32_t modlvl,
+                             const int32_t *oplvl)
 {
     uint32_t pmd = (uint32_t)((p[FP_LPMD] % 100u) * 165u >> 6) * (uint32_t)lfo_delay;   /* Q32 */
     int32_t senslfo = FM6_PMS[p[FP_LPMS] & 7u] * (lfo_val - (1 << 23));
@@ -558,6 +583,7 @@ static int fm6_note_compute(fm6_note_t *n, const uint8_t *p, int32_t *out, int32
         }
         if (!((car >> k) & 1u))
             level += modlvl;
+        level += oplvl[k];
         n->op[k].level_in = level < 0 ? 0 : level > (17 << 24) ? 17 << 24 : level;
     }
     if (fb > 0) {                                  /* 2^(fb - 9), Q12: 8 << whole steps, linear between */

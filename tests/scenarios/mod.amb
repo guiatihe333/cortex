@@ -1,6 +1,7 @@
-# each voice's own pages: its page button pressed again steps through FM, Env, Mod and Mod 2 and back (from the
-# pad, the bells and the bass, never from the other pages); SELECT reaches them after Setup; their knobs, each voice's
-# own (parN: amb.h, P_VOX 30, a block of 15 a voice), kept with the piece
+# each voice's own pages, in three groups: its page button pressed again goes to VOICE, again to OPERATOR, again to
+# MOD, and back; SELECT steps through a group's pages. parN: amb.h (P_VOX 30, a voice's block of 42: OWN, INDEX, five
+# modulators of 8); patV_OFF: voice V's patch byte (amb.h EP_*). Views: the pad's own 7..19, the bells' 20.., the
+# bass's 33..
 wait 300
 tap ENV
 wait 100
@@ -8,50 +9,64 @@ expect view 1
 tap ENV
 wait 100
 expect view 7
-shot pad_fm.png
+shot pad_voice.png
+# the patch: the next of the pad's own (Voices), as loaded
+expect par22 0
+turn K1 1 10
+expect par22 1
+expect par30 0
+# the algorithm: 5 -> 7 (an edit: the patch the voice's own, OWN)
+turn K2 2 10
+expect pat0_134 6
+expect par30 1
+# OPERATOR: OP3's level, 80 -> 70 (OP3's bytes from 63: its level at 79)
 tap ENV
 wait 100
-expect view 8
+expect view 11
+shot pad_op.png
+turn K1 2 10
+spin K4 -10
+expect pat0_79 70
+# OP Env: its stage 2's rate, 30 -> 35 (at 64)
+turn SELECT 1 100
+expect view 12
+turn K2 1 10
+spin K3 5
+expect pat0_64 35
+shot pad_openv.png
+# MOD: the first modulator's depth, Garden's 20 -> 23 (the bells' and the bass's untouched); the second's target
 tap ENV
 wait 100
-expect view 9
+expect view 17
 shot mod.png
-# the pad's Depth: Garden's recipe 20, the bells' and the bass's untouched
-turn K1 3 10
-expect par37 23
-expect par52 20
-expect par67 20
-# its Shape: Garden's a sine; Square
-turn K3 4 10
-expect par39 4
-tap ENV
-wait 100
-expect view 10
-shot mod2.png
-# Sync: Tempo
-turn K3 2 10
-expect par43 2
+turn K3 3 10
+expect par32 23
+expect par74 20
+expect par116 20
+turn K1 1 10
+turn K2 9 100
+expect par43 9
+turn SELECT 1 100
+expect view 18
+# back to the pad's page
 tap ENV
 wait 100
 expect view 1
-# the bells: their FM page, the patch (Vibes)
+# the bells: VOICE, their patch (Vibes); the bass: VOICE, Index +2 dB
 tap ARP
 wait 100
-expect view 2
 tap ARP
 wait 100
-expect view 11
+expect view 20
 turn K1 1 10
 expect par28 1
-# the bass: its FM page, Index +2 dB
 tap LFO
 wait 100
-expect view 3
 tap LFO
 wait 100
-expect view 15
-turn K3 2 10
-expect par61 2
+expect view 33
+turn K4 2 10
+expect par115 2
 # another voice's button from a voice's page: that voice's own first page
 tap ARP
 wait 100
@@ -66,19 +81,61 @@ wait 100
 tap HOME
 wait 100
 expect view 0
+# SELECT walks the layers' pages only
 tap GLO
 wait 100
 turn SELECT 1 100
-expect view 7
-# the pad's Feedback, on its FM page
-turn K4 2 10
-expect par32 2
+expect view 6
 wav mod.wav
 wait 20000
 wavstop
 expect peak_db_max -0.5
-# kept with the piece
+# kept with the piece: the settings and the patch
 turn PRESET 1
 turn PRESET -1
 expect par28 1
-expect par37 23
+expect par32 23
+expect pat0_79 70
+expect par30 1
+tap SAVE
+reboot
+wait 300
+expect pat0_79 70
+expect pat0_134 6
+expect par30 1
+expect par32 23
+# a bank over SysEx (bank 3); the bells' Patch past their own six: its first voice (TEST 01), as loaded
+bankfake 2
+wait 100
+tap ARP
+wait 100
+tap ARP
+wait 100
+expect view 20
+turn K1 5 10
+expect par28 70
+expect par72 0
+expect pat1_145 84
+shot bank_voice.png
+# a DX7 single voice (Dexed's send) into the voice on the screen, the bells: edited (OWN), named DX7 VOICE
+dx7voice
+wait 100
+expect par72 1
+expect pat1_145 68
+# MIDI CC in: the bass's first modulator's depth (channel 3, CC 21), Index (CC 20); the pad's OP1 level by NRPN
+midi B2 15 7F
+midi B2 14 7F
+wait 50
+expect par116 100
+expect par115 24
+midi B0 63 00
+midi B0 62 79
+midi B0 06 32
+wait 50
+expect pat0_121 50
+# MIDI CC out: a knob turned (the bells' INDEX, CC 20 on channel 2)
+expect view 20
+out
+turn K4 24 100
+expect par73 24
+expect_out USB B1 14 7F

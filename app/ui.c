@@ -6,47 +6,69 @@
  *   keys           the scale: each key adds or removes its note from the pool (the root stays)
  *   PLAY           the garden grows / rests        ARP   the next chord, now
  *   REC            FREEZE: the chord holds, the reverb rings on    OCT- / OCT+   the bells' octave
- *   ENV            the pad's colour: Rhodes / Voices (lit: Voices), kept with the piece
  *   SELECT tempo   ALGORITHM mode (loads a pool)   PRESETS the piece (Root is on the Setup page)
  *   HOME SEQ FX SEL GLO   the pages: LAYERS, MOTION, SPACE, TONE, SETUP (EDIT steps through them)
- *   ENV ARP LFO again     that voice's FM (patch, ratio, index, feedback), again its envelopes (attack, decay,
- *                  sustain, release), MOD (depth, rate, shape, target), MOD 2 (spread, fade, sync, smooth), then
- *                  back; SELECT reaches them after SETUP
- *   KNOB 1-4       the page's four values
+ *   ENV ARP LFO again     that voice's own pages, three groups: VOICE (its patch, the LFO, the pitch envelope),
+ *                  OPERATOR (each of its six operators, as a DX7 edits them) and MOD (its five modulators); the
+ *                  button goes on to the next group, SELECT steps through the group's pages (and the voice's)
+ *   KNOB 1-4       the page's four values (on the operator pages KNOB 1 picks the operator, on MOD the modulator)
  *   SAVE           saves (it also saves by itself a few seconds after a change, while resting);
- *                  held 1.5 s: the piece back to its recipe */
+ *                  held 1.5 s: the piece back to its recipe
+ * MIDI in: channel 1 notes, the scale; clock; CC and NRPN set what the knobs set (midi_cc); MIDI out: what the knobs
+ * set, as CC and NRPN (with MIDI out on) */
 #include "fastmath.h"
 
 /* the pages, one a layer (a button each); SELECT steps through them in this order. Each voice (the pad, the bells,
- * the bass) has four more, with no button of their own: its page's button pressed again steps through them (FM, Env,
- * Mod, Mod 2) and back to the layer's page; the voice's button stays lit on them */
-enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_MAIN,
-       V_PADFM = V_MAIN, V_PADENV, V_PADMOD, V_PADMOD2, V_BELLFM, V_BELLENV, V_BELLMOD, V_BELLMOD2,
-       V_BASSFM, V_BASSENV, V_BASSMOD, V_BASSMOD2, NVIEWS };
-#define NSUB 4                                   /* a voice's pages past its layer's */
-static const char *const VIEW_NAME[NVIEWS] = {"Garden", "Pad", "Bells", "Bass", "Pulse", "Space", "Setup",
-                                              "Pad FM", "Pad Env", "Pad Mod", "Pad Mod 2",
-                                              "Bells FM", "Bells Env", "Bells Mod", "Bells Mod 2",
-                                              "Bass FM", "Bass Env", "Bass Mod", "Bass Mod 2"};
+ * the bass) has NSUB more, in three groups (SUB_*), with no button of their own: its page's button pressed again goes
+ * to the next group (the page it was left on) and from the last back to the layer's page; SELECT steps through the
+ * voice's own pages; the voice's button stays lit on them */
+enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_MAIN };
+enum { S_VOICE, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
+#define NVIEWS (V_MAIN + EN_NVOX * NSUB)
+#define NGROUP 3
+static const uint8_t GROUP0[NGROUP + 1] = {S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
+static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Pad", "Bells", "Bass", "Pulse", "Space", "Setup"};
+static const char *const SUB_NAME[NSUB] = {"Voice", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
+                                           "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
 static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO};
 static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
 static int view_vox(int v)                     /* the voice a page is of (its layer's or its own); -1 none */
 {
     return v >= V_MAIN ? (v - V_MAIN) / NSUB : v >= V_PAD && v <= V_BASS ? v - V_PAD : -1;
 }
+static int view_sub(int v) { return v >= V_MAIN ? (v - V_MAIN) % NSUB : -1; }   /* its page of the voice's own */
 static int view_main(int v) { return v >= V_MAIN ? VOX_VIEW[view_vox(v)] : v; }   /* its dot */
-/* the four knobs of each page: a parameter, or one of these; and what the knob is called there */
-enum { K_LEDS = 100, K_CPU, K_NONE };
-_Static_assert(P_NPARAMS < K_LEDS, "the knobs' own after the parameters");
-#define VOX_KNOBS(v)                                                                                               \
-    {EN_VOX_PATCH_##v, P_VX(v, VX_RATIO), P_VX(v, VX_INDEX), P_VX(v, VX_FB)},                                     \
-    {P_VX(v, VX_ATK), P_VX(v, VX_DEC), P_VX(v, VX_SUS), P_VX(v, VX_REL)},                                          \
-    {P_VX(v, VX_MDEPTH), P_VX(v, VX_MRATE), P_VX(v, VX_MSHAPE), P_VX(v, VX_MDEST)},                                \
-    {P_VX(v, VX_MSPREAD), P_VX(v, VX_MFADE), P_VX(v, VX_MSYNC), P_VX(v, VX_MSMOOTH)}
-#define EN_VOX_PATCH_0 P_PADTONE
-#define EN_VOX_PATCH_1 P_BELLPATCH
-#define EN_VOX_PATCH_2 P_BASSPATCH
-static const uint8_t VIEW_KNOB[NVIEWS][4] = {
+static int view_group(int v)                   /* the group a voice's page is in; -1 the layer's page */
+{
+    int s = view_sub(v), g;
+    for (g = 0; g < NGROUP; g++)
+        if (s >= GROUP0[g] && s < GROUP0[g + 1])
+            return g;
+    return -1;
+}
+static void view_name(int v, char *b)          /* "Garden", "Bells OP Env" */
+{
+    const char *s = MAIN_NAME[view_main(v)];
+    int k = 0;
+    while (*s)
+        b[k++] = *s++;
+    if (v >= V_MAIN) {
+        b[k++] = ' ';
+        for (s = SUB_NAME[view_sub(v)]; *s;)
+            b[k++] = *s++;
+    }
+    b[k] = 0;
+}
+
+/* the four knobs of each page: a parameter (< P_NPARAMS), or one of these: the panel's own, the voice's patch source,
+ * the operator, envelope stage and modulator picked, a byte of the voice's patch (KP_V + its offset) or of the
+ * operator picked (KP_O + its field), the stage picked's rate or level, the modulator picked's setting (KM + MS_*) */
+enum { K_LEDS = 1000, K_CPU, K_NONE, K_SRC, K_OP, K_STAGE, K_PSTAGE, K_SLOT, KP_OR, KP_OL, KP_PR, KP_PL,
+       KP_V = 1100, KP_O = 1300, KM = 1400 };
+#define KO(f) (KP_O + EP_##f)
+#define KV(f) (KP_V + EP_##f)
+#define KMS(k) (KM + MS_##k)
+static const uint16_t MAIN_KNOB[V_MAIN][4] = {
     {P_TEMPO, P_EVOLVE, P_MOTION, P_DRIFT},
     {P_PAD, P_SWELL, P_BRIGHT, P_PADTONE},
     {P_BELLS, P_DENSITY, P_BTONE, P_BOCT},
@@ -54,12 +76,23 @@ static const uint8_t VIEW_KNOB[NVIEWS][4] = {
     {P_PULSE, P_HITS, P_SWING, P_HATS},
     {P_ECHO, P_ETIME, P_REVERB, P_SIZE},
     {P_ROOT, P_TUNE, P_MIDI, K_LEDS},
-    VOX_KNOBS(0), VOX_KNOBS(1), VOX_KNOBS(2),
 };
-#define VOX_LABELS                                                                                                 \
-    {"Patch", "Ratio", "Index", "Feedback"}, {"Attack", "Decay", "Sustain", "Release"},                           \
-    {"Depth", "Rate", "Shape", "Target"}, {"Spread", "Fade", "Sync", "Smooth"}
-static const char *const KNOB_LABEL[NVIEWS][4] = {
+static const uint16_t SUB_KNOB[NSUB][4] = {
+    {K_SRC, KV(ALG), KV(FB), K_NONE},          /* (INDEX: P_VX, put in below) */
+    {KV(LFS), KV(LFD), KV(LPMD), KV(LAMD)},
+    {KV(LFW), KV(LPMS), KV(LKS), KV(TRNSP)},
+    {K_PSTAGE, KP_PR, KP_PL, KV(OKS)},
+    {K_OP, KO(FC), KO(FF), KO(OL)},
+    {K_OP, K_STAGE, KP_OR, KP_OL},
+    {K_OP, KO(MODE), KO(DET), KO(KVS)},
+    {K_OP, KO(BP), KO(LD), KO(RD)},
+    {K_OP, KO(LC), KO(RC), KO(RS)},
+    {K_OP, KO(AMS), K_NONE, K_NONE},
+    {K_SLOT, KMS(DEST), KMS(DEPTH), KMS(RATE)},
+    {K_SLOT, KMS(SHAPE), KMS(SYNC), KMS(SMOOTH)},
+    {K_SLOT, KMS(SPREAD), KMS(FADE), K_NONE},
+};
+static const char *const MAIN_LABEL[V_MAIN][4] = {
     {"Tempo", "Evolve", "Motion", "Drift"},
     {"Level", "Swell", "Bright", "Colour"},
     {"Level", "Density", "Tone", "Octave"},
@@ -67,10 +100,35 @@ static const char *const KNOB_LABEL[NVIEWS][4] = {
     {"Level", "Hits", "Swing", "Hats"},
     {"Echo", "Echo time", "Reverb", "Size"},
     {"Root", "Tune", "MIDI out", "Lights"},
-    VOX_LABELS, VOX_LABELS, VOX_LABELS,
 };
-#undef VOX_KNOBS
-#undef VOX_LABELS
+static const char *const SUB_LABEL[NSUB][4] = {
+    {"Patch", "Algorithm", "Feedback", "Index"},
+    {"Speed", "Delay", "Pitch mod", "Amp mod"},
+    {"Wave", "Pitch sens", "Key sync", "Transpose"},
+    {"Stage", "Rate", "Level", "Osc sync"},
+    {"Operator", "Ratio", "Fine", "Level"},
+    {"Operator", "Stage", "Rate", "Level"},
+    {"Operator", "Mode", "Detune", "Velocity"},
+    {"Operator", "Break", "L depth", "R depth"},
+    {"Operator", "L curve", "R curve", "Rate scale"},
+    {"Operator", "Amp sens", "", ""},
+    {"Mod", "Target", "Depth", "Rate"},
+    {"Mod", "Shape", "Sync", "Smooth"},
+    {"Mod", "Spread", "Fade", ""},
+};
+static int view_knob(int v, int i)             /* page v's knob i */
+{
+    int k;
+    if (v < V_MAIN)
+        return MAIN_KNOB[v][i];
+    k = SUB_KNOB[view_sub(v)][i];
+    if (view_sub(v) == S_VOICE && i == 3)
+        return P_VX(view_vox(v), VX_INDEX);
+    if (k == K_SRC)
+        return EN_VOX_PATCH[view_vox(v)];       /* (the source is a parameter, turned its own way: knob_turn) */
+    return k;
+}
+static const char *knob_label(int v, int i) { return v < V_MAIN ? MAIN_LABEL[v][i] : SUB_LABEL[view_sub(v)][i]; }
 
 /* the screen's colours: the cover of Ambient 1: Music for Airports (1978), as the web app and the site.
  * The map's paper, its ink; the land's greens for the pad (the chord) and the scale, its rivers for the
@@ -109,6 +167,11 @@ static struct {
     uint32_t touch_until;
     uint32_t frame;
     uint32_t sig[3];                   /* what each band shows: redrawn when it changes */
+    uint8_t op[EN_NVOX], stage[EN_NVOX], pstage[EN_NVOX], slot[EN_NVOX];   /* each voice's operator (1..6),
+                                        * envelope stage, pitch envelope stage and modulator (0..) picked */
+    uint8_t gsub[EN_NVOX][NGROUP];     /* each voice's group: the page it was left on */
+    uint8_t cc_in;                     /* a knob's value came in as MIDI: not sent out again */
+    uint8_t nrpn[16][2];               /* each channel's NRPN, as CC 99 / 98 set it */
 } ui;
 
 /* the screen reader (announce.c; speak() below): a message went to it this frame, so speak() leaves what it
@@ -189,66 +252,248 @@ static const char *mode_name(void)
 }
 
 /* ------------------------------------------------------------ values --- */
-static int knob_get(int k)
+static int kvox(void)                          /* the voice the page shown is of (the pad on the others) */
+{
+    int v = view_vox(ui.view);
+    return v < 0 ? VOX_PAD : v;
+}
+int ui_voice(void) { return kvox(); }
+static int is_src(int k) { return k == P_PADTONE || k == P_BELLPATCH || k == P_BASSPATCH; }
+static int src_vox(int k) { return k == P_PADTONE ? VOX_PAD : k == P_BELLPATCH ? VOX_BELLS : VOX_BASS; }
+static int knob_off(int k)                     /* a patch knob's byte (of the voice shown); -1 not one */
+{
+    const int v = kvox(), o = EP_OPN(ui.op[v] ? ui.op[v] : 1);
+    if (k >= KP_V && k < KP_V + EN_PATCH)
+        return k - KP_V;
+    if (k >= KP_O && k < KP_O + EP_OP)
+        return o + k - KP_O;
+    if (k == KP_OR || k == KP_OL)
+        return o + (k == KP_OR ? EP_R1 : EP_L1) + ui.stage[v];
+    if (k == KP_PR || k == KP_PL)
+        return (k == KP_PR ? EP_PR1 : EP_PL1) + ui.pstage[v];
+    return -1;
+}
+static int knob_par(int k)                     /* a knob's parameter (a modulator's: the one picked); -1 none */
 {
     if (k < P_NPARAMS)
-        return proj.par[k];
+        return k;
+    if (k >= KM && k < KM + MS_N)
+        return P_MS(kvox(), ui.slot[kvox()], k - KM);
+    return -1;
+}
+static int knob_get(int k)
+{
+    const int v = kvox(), p = knob_par(k), off = knob_off(k);
+    if (p >= 0)
+        return proj.par[p];
+    if (off >= 0)
+        return vpatch[v][off];
     if (k == K_LEDS)
         return proj.leds;
     if (k == K_CPU)
         return (int)plat_cpu_pct();
+    if (k == K_OP)
+        return ui.op[v] ? ui.op[v] : 1;
+    if (k == K_STAGE || k == K_PSTAGE || k == K_SLOT)
+        return 1 + (k == K_STAGE ? ui.stage[v] : k == K_PSTAGE ? ui.pstage[v] : ui.slot[v]);
     return 0;
 }
 static void knob_range(int k, int *lo, int *hi)
 {
-    if (k < P_NPARAMS) {
-        *lo = en_param_info(k)->lo;
-        *hi = en_param_info(k)->hi;
+    const int p = knob_par(k), off = knob_off(k);
+    *lo = 0;
+    if (p >= 0) {
+        *lo = en_param_info(p)->lo;
+        *hi = en_param_info(p)->hi;
+    } else if (off >= 0) {
+        *hi = en_patch_max(off);
+    } else if (k == K_OP || k == K_STAGE || k == K_PSTAGE || k == K_SLOT) {
+        *lo = 1;
+        *hi = k == K_OP ? 6 : k == K_SLOT ? EN_NSLOT : 4;
     } else {
-        *lo = 0;
         *hi = k == K_LEDS ? 2 : k == K_CPU ? 100 : 0;
     }
 }
-static const char *knob_name(int k)
+
+static char *cat_s(char *b, const char *s)
 {
-    if (k < P_NPARAMS)
-        return en_param_info(k)->name;
-    return k == K_LEDS ? "Lights" : k == K_CPU ? "CPU" : "";
+    while (*s)
+        *b++ = *s++;
+    *b = 0;
+    return b;
+}
+static char *cat_i(char *b, int v, int sign)    /* a number (sign: "+" before a positive one) */
+{
+    if (v < 0) {
+        *b++ = '-';
+        v = -v;
+    } else if (sign && v > 0) {
+        *b++ = '+';
+    }
+    itoa_u((uint32_t)v, b);
+    while (*b)
+        b++;
+    return b;
+}
+/* a patch byte's value as the screen shows it: the operator's frequency (x1.50, or in fixed mode 440Hz), detune
+ * -7..+7, the curves, the break point as a note, the algorithm 1..32, the LFO's waves, transpose and the pitch
+ * envelope's levels from their middle */
+static void patch_text(int off, int val, char *b)
+{
+    static const char *const CURVE[4] = {"-Lin", "-Exp", "+Exp", "+Lin"};
+    static const char *const WAVE[6] = {"Triangle", "Saw down", "Saw up", "Square", "Sine", "S&H"};
+    static const char *const ONOFF[2] = {"Off", "On"};
+    const uint8_t *pv = vpatch[kvox()];
+    if (off < 6 * EP_OP) {
+        const int f = off % EP_OP;
+        const uint8_t *o = pv + off - f;
+        if (f == EP_FC || f == EP_FF) {          /* the frequency, its coarse and fine together */
+            int fc = f == EP_FC ? val : o[EP_FC], ff = f == EP_FF ? val : o[EP_FF];
+            if (!o[EP_MODE]) {
+                int r = (fc ? fc * 100 : 50) * (100 + ff) / 100;   /* the ratio, in hundredths */
+                b = cat_s(b, "x");
+                b = cat_i(b, r / 100, 0);
+                *b++ = '.';
+                *b++ = (char)('0' + r % 100 / 10);
+                *b++ = (char)('0' + r % 10);
+                *b = 0;
+            } else {                             /* fixed: 10^(coarse mod 4 + fine / 100) Hz */
+                int hz = (int)(fm_exp2f(3.3219281f * ((float)(fc & 3) + (float)ff * 0.01f)) + 0.5f);
+                b = cat_i(b, hz, 0);
+                cat_s(b, "Hz");
+            }
+            return;
+        }
+        if (f == EP_MODE) {
+            cat_s(b, val ? "Fixed" : "Ratio");
+            return;
+        }
+        if (f == EP_DET) {
+            cat_i(b, val - 7, 1);
+            return;
+        }
+        if (f == EP_LC || f == EP_RC) {
+            cat_s(b, CURVE[val & 3]);
+            return;
+        }
+        if (f == EP_BP) {                        /* 0 is A-1, 39 C3 */
+            int n = val + 9;
+            b = cat_s(b, EN_NOTE_NAME[n % 12]);
+            cat_i(b, n / 12 - 1, 0);
+            return;
+        }
+    } else if (off == EP_ALG) {
+        cat_i(b, val + 1, 0);
+        return;
+    } else if (off == EP_LFW) {
+        cat_s(b, WAVE[val < 6 ? val : 0]);
+        return;
+    } else if (off == EP_LKS || off == EP_OKS) {
+        cat_s(b, ONOFF[val ? 1 : 0]);
+        return;
+    } else if (off == EP_TRNSP) {
+        cat_i(b, val - 24, 1);
+        return;
+    } else if (off >= EP_PL1 && off < EP_PL1 + 4) {
+        cat_i(b, val - 50, 1);
+        return;
+    }
+    cat_i(b, val, 0);
+}
+static void src_text(int k, int v, char *b)     /* a source: its name ("Rhodes", a bank voice's), "*" edited */
+{
+    int n = 0;
+    if (v < EN_NFACT || !bank_name(v, b))
+        en_param_text(k, v, b);
+    while (b[n])
+        n++;
+    if (proj.par[P_VX(src_vox(k), VX_OWN)] && v == proj.par[k]) {
+        if (n > 8)
+            n = 8;
+        b[n++] = '*';
+        b[n] = 0;
+    }
 }
 static void knob_text(int k, char *b)
 {
-    int v = knob_get(k);
-    if (k < P_NPARAMS) {
-        en_param_text(k, v, b);
+    const int v = knob_get(k), p = knob_par(k), off = knob_off(k);
+    if (p >= 0 && is_src(p)) {
+        src_text(p, v, b);
+    } else if (p >= 0) {
+        en_param_text(p, v, b);
+    } else if (off >= 0) {
+        patch_text(off, v, b);
     } else if (k == K_LEDS) {                    /* On: the keys, and the unlit buttons glow; Keys: no glow */
-        const char *n = v == 2 ? "Keys" : v ? "On" : "Off";
-        while ((*b++ = *n++))
-            ;
+        cat_s(b, v == 2 ? "Keys" : v ? "On" : "Off");
     } else if (k == K_CPU) {
-        itoa_u((uint32_t)v, b);
-        while (*b)
-            b++;
-        *b++ = '%';
-        *b = 0;
+        b = cat_i(b, v, 0);
+        cat_s(b, "%");
+    } else if (k == K_OP) {
+        b = cat_s(b, "OP");
+        cat_i(b, v, 0);
+    } else if (k == K_STAGE || k == K_PSTAGE || k == K_SLOT) {
+        cat_i(b, v, 0);
     } else {
         b[0] = 0;
     }
 }
 
+/* MIDI CC (in and out): a voice's own on its channel (the pad 1, the bells 2, the bass 3, as its notes go out), the
+ * rest on channel 16. On a voice's channel: CC 20 its INDEX, CC 21..60 its five modulators (MS_* each), and its patch
+ * as NRPN (CC 99 0 or 1, CC 98 the byte's offset 0..127 (+128), CC 6 the value). On channel 16: CC 20..49 parameters
+ * 0..29 (the layers, the space, the tone, setup; a patch source as its number). A value is scaled to its range,
+ * 0..127 */
+#define CC0 20
+static void cc_out(int ch, int cc, int v) { en_midi_out(0xB0u | (uint32_t)ch, (uint32_t)cc, (uint32_t)v); }
+static int cc_scale(int v, int lo, int hi) { return hi > lo ? ((v - lo) * 127 + (hi - lo) / 2) / (hi - lo) : 0; }
+static void par_out(int p)                      /* a parameter the knobs set, out as its CC */
+{
+    const en_param_t *pi = en_param_info(p);
+    int v = proj.par[p];
+    if (ui.cc_in || !proj.par[P_MIDI])
+        return;
+    if (p < P_VOX) {
+        if (p != P_MIDI && p - P_PAD < 30)
+            cc_out(15, CC0 + p, is_src(p) ? (v > 127 ? 127 : v) : cc_scale(v, pi->lo, pi->hi));
+    } else if ((p - P_VOX) % VX_N != VX_OWN) {
+        cc_out((p - P_VOX) / VX_N, CC0 + (p - P_VOX) % VX_N - VX_INDEX, cc_scale(v, pi->lo, pi->hi));
+    }
+}
+static void patch_out(int voice, int off, int v)   /* a patch byte, out as NRPN */
+{
+    if (ui.cc_in || !proj.par[P_MIDI])
+        return;
+    cc_out(voice, 99, off >> 7);
+    cc_out(voice, 98, off & 127);
+    cc_out(voice, 6, v);
+}
+
 static void knob_set(int k, int v)
 {
     int lo, hi;
+    const int p = knob_par(k), off = knob_off(k);
     if (k == K_CPU || k == K_NONE)
         return;
     knob_range(k, &lo, &hi);
     v = v < lo ? lo : v > hi ? hi : v;
     if (v == knob_get(k))
         return;
-    if (k < P_NPARAMS) {
-        proj.par[k] = (int16_t)v;
-        en_set(k, v);
+    if (p >= 0 && is_src(p)) {                   /* a source: its patch, as loaded */
+        project_source(src_vox(p), v);
+        par_out(p);
+    } else if (p >= 0) {
+        proj.par[p] = (int16_t)v;
+        en_set(p, v);
+        par_out(p);
+    } else if (off >= 0) {
+        project_patch_set(kvox(), off, v);
+        patch_out(kvox(), off, v);
     } else if (k == K_LEDS) {
         proj.leds = (uint8_t)v;
+    } else if (k == K_OP || k == K_STAGE || k == K_PSTAGE || k == K_SLOT) {   /* the page's pick: not the sound */
+        uint8_t *s = k == K_OP ? ui.op : k == K_STAGE ? ui.stage : k == K_PSTAGE ? ui.pstage : ui.slot;
+        s[kvox()] = (uint8_t)(k == K_OP ? v : v - 1);
+        return;
     }
     mark_dirty();
 }
@@ -279,6 +524,13 @@ static void turn(int role, int k, int32_t e)
     int lo, hi;
     if (!e || k == K_NONE || k == K_CPU)
         return;
+    if (knob_par(k) >= 0 && is_src(knob_par(k))) {   /* a source: a detent a voice, the empty slots passed by */
+        int s = knob_get(k), n = e < 0 ? -e : e;
+        while (n--)
+            s = bank_next(s, e > 0 ? 1 : -1);
+        knob_set(k, s);
+        return;
+    }
     knob_range(k, &lo, &hi);
     knob_set(k, knob_get(k) + accel(role, e, hi - lo));
 }
@@ -327,18 +579,21 @@ static void set_piece(int i)                    /* the piece playing kept as it 
 /* ------------------------------------------------------------ buttons --- */
 static void set_view(int v)
 {
+    int g = view_group(v);
     ui.view = (uint8_t)v;
     ui.touched = -1;
+    if (g >= 0)                                  /* the group remembers its page */
+        ui.gsub[view_vox(v)][g] = (uint8_t)(view_sub(v) - GROUP0[g]);
 }
 
 static void button(int b)
 {
     int v;
-    for (v = 0; v < V_MAIN; v++)                 /* a page's button: its page; a voice's again: its next page */
+    for (v = 0; v < V_MAIN; v++)                 /* a page's button: its page; a voice's again: its next group */
         if (VIEW_BTN[v] == b) {
-            int x = view_vox(v), sub = ui.view >= V_MAIN ? (ui.view - V_MAIN) % NSUB + 1 : 0;
-            if (x >= 0 && view_vox(ui.view) == x)
-                set_view(sub == NSUB ? v : V_MAIN + x * NSUB + sub);
+            int x = view_vox(v), g = view_group(ui.view) + 1;
+            if (x >= 0 && view_vox(ui.view) == x && g < NGROUP)
+                set_view(V_MAIN + x * NSUB + GROUP0[g] + ui.gsub[x][g]);
             else
                 set_view(v);
             return;
@@ -386,6 +641,42 @@ static void button(int b)
 
 /* MIDI in (USB and the TRS jack): channel 1 notes add or remove their note from the scale; clock and
  * start / stop drive the grid */
+/* a CC in (cc_out's map): a parameter set, or a patch byte by NRPN, as the knob would (not sent out again) */
+static void midi_cc(int ch, int cc, int v)
+{
+    int p = -1;
+    ui.cc_in = 1;
+    if (ch < EN_NVOX && (cc == 99 || cc == 98)) {
+        ui.nrpn[ch][cc == 99 ? 0 : 1] = (uint8_t)v;
+    } else if (ch < EN_NVOX && cc == 6) {        /* NRPN data: a patch byte of the channel's voice */
+        int off = ui.nrpn[ch][0] << 7 | ui.nrpn[ch][1];
+        if (off < EN_PATCH) {
+            project_patch_set(ch, off, v);
+            mark_dirty();
+        }
+    } else if (ch < EN_NVOX && cc >= CC0 && cc < CC0 + VX_N - VX_INDEX) {
+        p = P_VX(ch, VX_INDEX + cc - CC0);
+    } else if (ch == 15 && cc >= CC0 && cc < CC0 + 30) {
+        p = cc - CC0;
+    }
+    if (p >= 0 && p != P_MIDI) {
+        const en_param_t *pi = en_param_info(p);
+        int x = is_src(p) ? v : pi->lo + (v * (pi->hi - pi->lo) + 63) / 127;
+        if (is_src(p)) {
+            uint8_t q[EN_PATCH + 1];
+            if (x < EN_NSRC && bank_voice(src_vox(p), x, q) && x != proj.par[p]) {
+                project_source(src_vox(p), x);
+                mark_dirty();
+            }
+        } else if (x != proj.par[p]) {
+            proj.par[p] = (int16_t)x;
+            en_set(p, x);
+            mark_dirty();
+        }
+    }
+    ui.cc_in = 0;
+}
+
 static void midi_in(void)
 {
     uint32_t pkt;
@@ -395,7 +686,29 @@ static void midi_in(void)
             en_clock(st == 0xF8u ? EN_CLK_TICK : st == 0xFAu ? EN_CLK_START : st == 0xFBu ? EN_CLK_CONTINUE : EN_CLK_STOP);
         else if (st == 0x90u && v)
             toggle_note((int)(n % 12u));
+        else if ((st & 0xF0u) == 0xB0u)
+            midi_cc((int)(st & 15u), (int)n, (int)(v & 0x7Fu));
     }
+}
+
+void ui_patch_in(int voice)                     /* a DX7 voice came in over USB: it plays on this voice */
+{
+    char t[12];
+    int k;
+    for (k = 0; k < 10; k++)
+        t[k] = (char)vpatch[voice][EP_NAME + k];
+    t[10] = 0;
+    say(voice == VOX_PAD ? "PAD: VOICE IN" : voice == VOX_BELLS ? "BELLS: VOICE IN" : "BASS: VOICE IN", t);
+    mark_dirty();
+}
+void ui_bank_in(int bank, int voices)          /* a bank came in */
+{
+    char a[12], b[16];
+    itoa_u((uint32_t)bank + 1u, a + 5);
+    a[0] = 'B', a[1] = 'A', a[2] = 'N', a[3] = 'K', a[4] = ' ';
+    itoa_u((uint32_t)voices, b);
+    cat_s(b + (voices > 9 ? 2 : 1), " VOICES");
+    say(a, b);
 }
 
 /* HELP CARDS (X0X's): hold one button alone for HELP_HOLD and a card says what it does. A key, a
@@ -464,10 +777,16 @@ static void input(void)
                 itoa_u((uint32_t)proj.par[P_TEMPO], t);
                 say("TEMPO", t);
             }
-        } else {
+        } else if (ui.view < V_MAIN) {            /* the layers' pages, one after another */
             int v = (int)ui.view + (e > 0 ? 1 : -1);
-            if (v >= 0 && v < NVIEWS)
+            if (v >= 0 && v < V_MAIN)
                 set_view(v);
+        } else {                                 /* a voice's own, one after another; before the first its layer's */
+            int x = view_vox(ui.view), s = view_sub(ui.view) + (e > 0 ? 1 : -1);
+            if (s < 0)
+                set_view(VOX_VIEW[x]);
+            else if (s < NSUB)
+                set_view(V_MAIN + x * NSUB + s);
         }
         ui.turn_t = plat_ms();
     }
@@ -491,7 +810,7 @@ static void input(void)
     }
     for (i = 0; i < 4; i++)
         if ((e = plat_enc(EN_K1 + (int)i)) != 0) {
-            turn(EN_K1 + (int)i, VIEW_KNOB[ui.view][i], e);
+            turn(EN_K1 + (int)i, view_knob(ui.view, (int)i), e);
             ui.touched = (int8_t)i;
             ui.touch_until = plat_ms() + 1200u;
             ui.act_t = ui.turn_t = plat_ms();
@@ -847,9 +1166,9 @@ static int help_lines(int b, const char *l[HELP_LINES])
 #define L(t) (l[n++] = (t))
     switch (b) {
     case B_HOME: L("THE GARDEN"); L("TEMPO, EVOLVE, MOTION, DRIFT"); L("+ SELECT: TEMPO"); break;
-    case B_ENV: L("THE PAD"); L("LEVEL, SWELL, BRIGHT,"); L(" COLOUR"); L("AGAIN: FM, ENV, MOD, MOD 2"); break;
-    case B_ARP: L("THE BELLS"); L("LEVEL, DENSITY, TONE,"); L(" OCTAVE"); L("AGAIN: FM, ENV, MOD, MOD 2"); break;
-    case B_LFO: L("THE BASS"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: FM, ENV, MOD, MOD 2"); break;
+    case B_ENV: L("THE PAD"); L("LEVEL, SWELL, BRIGHT,"); L(" COLOUR"); L("AGAIN: VOICE, OPERATOR, MOD"); break;
+    case B_ARP: L("THE BELLS"); L("LEVEL, DENSITY, TONE,"); L(" OCTAVE"); L("AGAIN: VOICE, OPERATOR, MOD"); break;
+    case B_LFO: L("THE BASS"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: VOICE, OPERATOR, MOD"); break;
     case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); break;
     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
@@ -932,17 +1251,18 @@ static void draw_knobs(void)
     uint32_t h = hash(2166136261u, ui.view | (uint32_t)ui.touched << 8), i;
     int now_touch = plat_ms() < ui.touch_until;
     for (i = 0; i < 4; i++)
-        h = hash(h, (uint32_t)knob_get(VIEW_KNOB[ui.view][i]));
+        h = hash(h, (uint32_t)knob_get(view_knob(ui.view, (int)i)));
     h = hash(h, (uint32_t)now_touch);
     if (h == ui.sig[2])
         return;
     ui.sig[2] = h;
     cv_begin(240, KNB_H, K_BG);
     {   /* the rule; at its right end, where you are: the page, then the dots (a voice's own pages on its dot) */
-        char t[16];
+        char t[20], nm[20];
         int k;
         int32_t xd = 237 - V_MAIN * 6, xt;
-        caps(t, VIEW_NAME[ui.view], sizeof t);
+        view_name(ui.view, nm);
+        caps(t, nm, sizeof t);
         xt = xd - 5 - text_w(&FONT_XS, t);
         cv_rect(4, 5, xt - 9, 1, K_LINE);
         cv_text(xt, -1, &FONT_XS, t, K_ACC);
@@ -950,7 +1270,7 @@ static void draw_knobs(void)
             cv_round(xd + k * 6, 3, 4, 4, 2, k == view_main(ui.view) ? K_ACC : K_LINE);
     }
     for (i = 0; i < 4; i++) {
-        int k = VIEW_KNOB[ui.view][i], lo, hi, v, hot = now_touch && ui.touched == (int)i;
+        int k = view_knob(ui.view, (int)i), lo, hi, v, hot = now_touch && ui.touched == (int)i;
         int32_t x = (int32_t)i * 60, cx = x + 30;
         char t[16];
         uint16_t bg = hot ? K_PANEL : K_BG, fill = hot ? K_ACC : K_PAD;
@@ -962,7 +1282,7 @@ static void draw_knobs(void)
             cv_round(x + 3, 11, 54, 57, 6, K_PANEL);
         knob_range(k, &lo, &hi);
         v = knob_get(k);
-        caps(t, KNOB_LABEL[ui.view][i], sizeof t);
+        caps(t, knob_label(ui.view, (int)i), sizeof t);
         text_c(cx, 12, &FONT_XS, t, hot ? K_TEXT : K_DIM);
         if (k != K_CPU && hi - lo < 6) {         /* a switch: its positions as pips */
             int n = hi - lo + 1, j, pw = n > 4 ? 6 : 9, gap = 3, w0 = n * (pw + gap) - gap;
@@ -1076,7 +1396,7 @@ static void sp_value(int k)
         sp_cat(s == 1u ? " second" : " seconds");
         return;
     }
-    if (k >= P_VOX) {                            /* a voice's: "2.7s" 2.7 seconds, "40ms" 40 milliseconds, "+6dB" */
+    if (k != P_DRIFT) {                          /* "2.7s" 2.7 seconds, "40ms" 40 milliseconds, "+6dB", "440Hz" */
         uint32_t i = 0;
         while (t[i])
             i++;
@@ -1103,9 +1423,9 @@ static void sp_value(int k)
 }
 static void sp_knob(int view, int i)           /* "Swell 60": the name the page gives it, then its value */
 {
-    sp_cat(KNOB_LABEL[view][i]);
+    sp_cat(knob_label(view, i));
     sp_cat(" ");
-    sp_value(VIEW_KNOB[view][i]);
+    sp_value(view_knob(view, i));
 }
 
 static void sp_chord_q(int root, const char *q)   /* "E minor 7" */
@@ -1135,7 +1455,11 @@ static void sp_page(int all)
     int i;
     sp_n = 0;
     sp_buf[0] = 0;
-    sp_cat(VIEW_NAME[ui.view]);
+    {
+        char nm[20];
+        view_name(ui.view, nm);
+        sp_cat(nm);
+    }
     sp_cat(" page");
     for (i = 0; i < 4; i++) {
         sp_cat(i ? ", " : ": ");
@@ -1253,7 +1577,7 @@ static void sp_snap(void)
 {
     int i;
     for (i = 0; i < 4; i++)
-        sp.val[i] = (int16_t)knob_get(VIEW_KNOB[ui.view][i]);
+        sp.val[i] = (int16_t)knob_get(view_knob(ui.view, i));
     sp.view = ui.view;
     sp.help = ui.help;
     sp.ext = en_ext;
@@ -1319,7 +1643,7 @@ static void speak(void)
         return;
     }
     for (i = 0; i < 4; i++) {                         /* a knob turning */
-        int v = knob_get(VIEW_KNOB[ui.view][i]);
+        int v = knob_get(view_knob(ui.view, i));
         if (v != sp.val[i]) {
             sp.val[i] = (int16_t)v;
             if (changed < 0)
@@ -1362,18 +1686,34 @@ static void speak_dump(void)
         sp_page(0);
         sp_print("SCREEN", sp_buf);
         for (i = 0; i < 4; i++) {
-            int k = VIEW_KNOB[v][i];
+            static uint8_t keep_pat[EN_NVOX][EN_PATCH];
+            const int k = view_knob(v, i), p = knob_par(k), off = knob_off(k), vx = kvox();
+            uint8_t keep_pick[4];
+            memcpy(keep_pat, vpatch, sizeof vpatch);
+            keep_pick[0] = ui.op[vx], keep_pick[1] = ui.stage[vx], keep_pick[2] = ui.pstage[vx];
+            keep_pick[3] = ui.slot[vx];
             knob_range(k, &lo, &hi);
-            for (x = lo; x <= hi; x++) {
-                if (k < P_NPARAMS)
-                    proj.par[k] = (int16_t)x;
-                else
+            if (p >= 0 && is_src(p))             /* (the own six: a bank's are the user's) */
+                hi = EN_NFACT - 1;
+            for (x = lo; x <= hi && k != K_NONE && k != K_CPU; x++) {
+                if (p >= 0)
+                    proj.par[p] = (int16_t)x;
+                else if (off >= 0)
+                    vpatch[vx][off] = (uint8_t)x;
+                else if (k == K_LEDS)
                     proj.leds = (uint8_t)x;
+                else if (k == K_OP)
+                    ui.op[vx] = (uint8_t)x;
+                else if (k == K_STAGE || k == K_PSTAGE || k == K_SLOT)
+                    (k == K_STAGE ? ui.stage : k == K_PSTAGE ? ui.pstage : ui.slot)[vx] = (uint8_t)(x - 1);
                 sp_n = 0;
                 sp_knob(v, i);
                 sp_print("KNOB", sp_buf);
             }
             proj = keep;
+            memcpy(vpatch, keep_pat, sizeof vpatch);
+            ui.op[vx] = keep_pick[0], ui.stage[vx] = keep_pick[1], ui.pstage[vx] = keep_pick[2];
+            ui.slot[vx] = keep_pick[3];
         }
     }
     for (x = 0; x < 8; x++) {                         /* WHERE: growing, resting, unsaved, a clock, frozen, custom */

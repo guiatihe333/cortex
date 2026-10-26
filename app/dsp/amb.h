@@ -52,27 +52,53 @@ enum {
     P_ECHO, P_ETIME, P_REVERB, P_SIZE,                /* space */
     P_BRIGHT, P_SWELL, P_BTONE, P_MOTION,             /* tone */
     P_TUNE, P_MIDI, P_TEMPO, P_ROOT, P_MODE, P_BOCT,  /* setup, panel encoders, bell octave */
-    P_PADTONE,                                        /* the pad's patch (its colour): Rhodes, Voices, ... EN_PADPATCHES */
+    P_PADTONE,                                        /* the pad's patch (its source, EN_NSRC): Rhodes, Voices, ... */
     P_BASSOCT, P_GLIDE, P_FIFTH,                      /* bass: its octave, its glide, how often it leans on the fifth */
     P_SWING, P_HATS,                                  /* pulse: swing, the hats' colour */
-    P_BELLPATCH, P_BASSPATCH,                         /* the bells' and the bass's patches */
+    P_BELLPATCH, P_BASSPATCH,                         /* the bells' and the bass's patches (sources) */
     P_VOX,                                            /* then each voice's own: EN_NVOX blocks of VX_N (P_VX) */
-    P_NPARAMS = P_VOX + 3 * 15
+    P_NPARAMS = P_VOX + 3 * 42
 };
-/* the three FM6 voices, each with its own FM edits and its own modulation */
+/* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
+ * index and five generative modulators */
 enum { VOX_PAD, VOX_BELLS, VOX_BASS, EN_NVOX };
-/* a voice's block: FM (ratio, index, feedback: heard at once), its envelopes (attack, decay, sustain, release: from
- * the next note), MOD (depth, rate, shape, target) and MOD 2 (spread, fade, sync, smooth) */
-enum { VX_RATIO, VX_INDEX, VX_FB, VX_ATK, VX_DEC, VX_SUS, VX_REL, VX_MDEPTH, VX_MRATE, VX_MSHAPE, VX_MDEST, VX_MSPREAD,
-       VX_MFADE, VX_MSYNC, VX_MSMOOTH, VX_N };
+/* a patch's source: the voice's own six (EN_NFACT, made here) or a voice of the banks loaded from .syx files (EN_NBANK
+ * banks of 32 in the flash: source EN_NFACT + bank * 32 + voice) */
+#define EN_NFACT 6
+#define EN_NBANK 16
+#define EN_NSRC (EN_NFACT + EN_NBANK * 32)
+#define EN_PADPATCHES EN_NFACT
+#define EN_BELLPATCHES EN_NFACT
+#define EN_BASSPATCHES EN_NFACT
+/* a voice's block: OWN (the patch edited since its source was loaded: kept as it is), INDEX (dB on the modulators,
+ * heard at once), then EN_NSLOT modulators of MS_N: MOD (depth, rate, shape, target) and MOD 2 (spread, fade, sync,
+ * smooth) */
+#define EN_NSLOT 5
+enum { MS_DEPTH, MS_RATE, MS_SHAPE, MS_DEST, MS_SPREAD, MS_FADE, MS_SYNC, MS_SMOOTH, MS_N };
+enum { VX_OWN, VX_INDEX, VX_SLOT, VX_N = VX_SLOT + EN_NSLOT * MS_N };
 #define P_VX(v, k) (P_VOX + (v) * VX_N + (k))
+#define P_MS(v, s, k) P_VX(v, VX_SLOT + (s) * MS_N + (k))
 _Static_assert(P_NPARAMS == P_VOX + EN_NVOX * VX_N, "a block a voice");
 extern const uint8_t EN_VOX_PATCH[EN_NVOX];       /* each voice's patch parameter */
-#define EN_PADPATCHES 6
-#define EN_BELLPATCHES 6
-#define EN_BASSPATCHES 6
-/* the old global MOD (format 5 and the recipes: depth, rate, chaos, target) as every voice's own */
+/* the old global MOD (format 5 and the recipes: depth, rate, chaos, target) as every voice's first modulator */
 void en_mod_legacy(int16_t *par, int depth, int rate, int chaos, int dest);
+
+/* the patches: 155 bytes, a DX7 voice as its VCED edit buffer has it (fm6_core.c FP_*: six operators of 21, OP6
+ * first; then the pitch envelope, algorithm 0..31, feedback, the LFO, transpose, the name) */
+#define EN_PATCH 155
+enum { EP_R1 = 0, EP_L1 = 4, EP_BP = 8, EP_LD, EP_RD, EP_LC, EP_RC, EP_RS, EP_AMS, EP_KVS, EP_OL, EP_MODE, EP_FC,
+       EP_FF, EP_DET, EP_OP = 21, EP_PR1 = 126, EP_PL1 = 130, EP_ALG = 134, EP_FB, EP_OKS, EP_LFS, EP_LFD, EP_LPMD,
+       EP_LAMD, EP_LKS, EP_LFW, EP_LPMS, EP_TRNSP, EP_NAME };
+#define EP_OPN(n) ((6 - (n)) * EP_OP)                /* operator n's (1..6) first byte */
+uint8_t en_patch_max(int off);                    /* a byte's highest value (its lowest is 0) */
+void en_factory(int voice, int sel, int tone, uint8_t *p);   /* the voice's own patch sel (bells: at Bell tone) */
+int en_unpack(const uint8_t *vmem, uint8_t *p);  /* a DX7 bank's packed voice (128 bytes) into a patch; 0: not one */
+void en_bake(uint8_t *p, int ratio, int fb, int atk, int dec, int sus, int rel);   /* format 6's FM edits, into p */
+/* the voice's patch, for the render: its bytes (each posted, applied together by en_patch_done); done: a new patch
+ * (the pad crosses over to it, the bass is struck anew, the bells take it at their next strike), or 0 an edit (heard
+ * at once on the notes sounding) */
+void en_patch_byte(int voice, int off, int v);
+void en_patch_done(int voice, int fresh);
 typedef struct {
     const char *name;
     int16_t lo, hi, def;
@@ -119,8 +145,9 @@ extern volatile uint8_t en_pulse_rest;         /* the pulse is sitting a few bar
 extern volatile uint8_t en_pad_note[EN_NPAD];  /* the note each voice sings now (MIDI) */
 extern volatile float en_pad_amp[EN_NPAD];     /* and how loud */
 
-/* MOD: the voices' generative modulation, each of the three voices (pad, bells, bass) set on its own. Each sounding
- * voice (the four pad voices, the six bells, the bass) has a generator of its own, at its own pace around RATE
+/* MOD: the voices' generative modulation, five modulators for each of the three voices (pad, bells, bass), each set on
+ * its own and summed. In each modulator every sounding voice (the four pad voices, the six bells, the bass) has a
+ * generator of its own, at its own pace around RATE
  * (60 s .. 0.12 s a cycle, or with SYNC Tempo a note value, 8 bars .. 1/16). SHAPE what it makes (EN_MODSHAPE_NAME):
  * the periodic waves, sample and hold, a random walk (glides between random values), the logistic map at the edge
  * of chaos (jumps), or an envelope that falls from each note's start. DEPTH how far it goes (the arc deepens and calms
@@ -132,7 +159,10 @@ enum { SHAPE_SINE, SHAPE_TRI, SHAPE_UP, SHAPE_DOWN, SHAPE_SQUARE, SHAPE_SH, SHAP
 extern const char *const EN_MODSHAPE_NAME[EN_NMODSHAPE];
 enum { SYNC_FREE, SYNC_NOTE, SYNC_TEMPO, EN_NMODSYNC };
 enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD_SPACE, MOD_ALL, MOD_LEVEL,
-       EN_NMODDEST };
+       MOD_LFOPM, MOD_OP };
+/* then each operator's own, MOD_OP + (n - 1) * OPT_N + kind for operator n (1..6): */
+enum { OPT_LEVEL, OPT_RATIO, OPT_FINE, OPT_ATK, OPT_DEC, OPT_SUS, OPT_REL, OPT_N };
+#define EN_NMODDEST (MOD_OP + 6 * OPT_N)
 /*   TIMBRE    the modulators' output level (+-12 dB): the FM index, brighter and darker
  *   RATIO     the modulators' frequency ratio, in harmonic steps up (x1, x2, x3, x4, x5), gliding 15 ms
  *   METAL     the modulators' ratio pulled apart (+-80 cents, one up, the next down): inharmonic sidebands
@@ -142,10 +172,16 @@ enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD
  *   PITCH     the voice's pitch (+-30 cents, slewed 15 ms): tape wow, a choir's drift, at the top a vibrato
  *   SPACE     the voice's place in the stereo field (slewed 30 ms, ramped across a block)
  *   ALL       timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio: its steps)
- *   LEVEL     the voice's loudness, down to -10 dB (one-sided: a tremolo, a swell, never louder than the voice) */
-extern const char *const EN_MODDEST_NAME[EN_NMODDEST];
-#define EN_NMOD (EN_NPAD + 6 + 1)               /* the generators: pad voices, bells, bass */
-extern volatile float en_mod[EN_NMOD];         /* each generator's value now, -1 .. 1 (times the depth) */
+ *   LEVEL     the voice's loudness, down to -10 dB (one-sided: a tremolo, a swell, never louder than the voice)
+ *   LFO PM    the patch's own LFO's pitch depth (one-sided, up to 30 cents more: vibrato)
+ *   an operator's:
+ *     LEVEL   its output level, +-12 dB (a carrier: down only, to -12 dB, never louder than the patch)
+ *     RATIO   its frequency ratio in harmonic steps up (x1 .. x5), gliding 15 ms
+ *     FINE    its pitch, +-50 cents, slewed 15 ms
+ *     ATTACK, DECAY, SUSTAIN, RELEASE   its envelope as each note starts: rates +-30 (+ slower), sustain +-30 */
+void en_moddest_text(int d, char *buf);        /* a target's name, as the screen shows it (10 bytes) */
+#define EN_NMOD (EN_NPAD + 6 + 1)               /* the generators of a modulator: pad voices, bells, bass */
+extern volatile float en_mod[EN_NSLOT][EN_NMOD];   /* each generator's value now, -1 .. 1 (times the depth) */
 
 /* the pure parts, for the tests and the screen */
 uint32_t en_euclid(int k, int n, int rot);     /* Bjorklund's pattern, as a bitmask (bit 0 = step 0) */

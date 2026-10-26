@@ -94,7 +94,7 @@ The drawing at the top shows them all; here they are in more detail.
 | REC | **Freeze**: the chord holds and the reverb rings on forever, while the bells and pulse go on dry above it. Press again to thaw. Lit while frozen. |
 | EDIT | The next chord, at the start of the next bar (at once while resting). |
 | HOME | The Garden page: the whole garden. |
-| ENV · ARP · LFO · SEQ | The layers' pages: Pad, Bells, Bass, Pulse. ENV, ARP or LFO again: that voice's FM, Env, Mod and Mod 2 pages. |
+| ENV · ARP · LFO · SEQ | The layers' pages: Pad, Bells, Bass, Pulse. ENV, ARP or LFO again: that voice's own, VOICE, OPERATOR and MOD. |
 | FX · GLO | The Space and Setup pages. The lit button shows the page. |
 | SELECT | The previous or next page. Hold HOME and turn it for the tempo, from any page. |
 | ALGORITHM | Mode: Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, pentatonic major and minor. Loads the mode's scale; editing it with the keys makes it Custom. |
@@ -195,8 +195,8 @@ the same for all.
 
 One page a layer, each on its own button, with four values on KNOB 1–4. A layer's level is
 always KNOB 1. SELECT steps through them in this order. Each voice (the pad, the bells, the bass) has four
-pages more, its own: press ENV, ARP or LFO again on its page for FM, again for Env, Mod and Mod 2, and once
-more to come back. SELECT reaches them after Setup.
+pages more, its own, in three groups: press ENV, ARP or LFO again on its page for VOICE, again for OPERATOR, again for
+MOD, and once more to come back; SELECT steps through a group's pages.
 
 ### HOME: Garden
 
@@ -276,62 +276,70 @@ The top right of this page shows how much of the FM-1's time the sound takes (CP
 
 ### ENV, ARP or LFO again: the voice's own pages
 
-Each voice has four pages of its own, the same for the pad, the bells and the bass, and each piece keeps
-them. The voice's button stays lit on them; the dot under its page shows where you are.
+Each voice (the pad, the bells, the bass) has its own patch, a DX7 voice of six operators, edited as a DX7 edits it,
+and five generative modulators. Their pages come in three groups: press the voice's button again for **VOICE**, again
+for **OPERATOR**, again for **MOD**, and once more to come back to the voice's page. SELECT steps through the pages of
+the group (and the voice's); each group comes back on the page it was left on. The voice's button stays lit, and the
+dot of its page shows where you are. Each piece keeps all of it.
 
-**FM.** The voice's sound.
+**VOICE**
 
-- **Patch:** which FM6 patch it plays. The pad: Rhodes, Voices, Glass, Strings, Warm, Halo. The bells: Bell
-  (shaped by Tone), Vibes, Marimba, Tubular, Kalimba, Celesta. The bass: Sine, Round, Pick, Sub, Reed,
-  Fretless. Each as loud as the voice's first. The pad's voices cross over to a new patch as they do for a new
-  key; the bells take it at their next strike; the bass is struck anew once the knob rests.
-- **Ratio:** the modulators' frequency times ×1 (the patch's own), ×2, ×3, ×4, ×5, ×7, or the inharmonic
-  ×1.41, ×2.76, ×3.5 (a bell's partials).
-- **Index:** the modulators' level, ±24 dB: the FM index, darker or brighter.
-- **Feedback:** more or less feedback on the operator that has it, ±7 steps.
+| Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
+| --- | --- | --- | --- | --- |
+| Voice | Patch | Algorithm (1–32) | Feedback (0–7) | Index (±24 dB on the modulators) |
+| LFO | Speed | Delay | Pitch mod | Amp mod |
+| LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24) |
+| Pitch EG | Stage (1–4) | Rate | Level (±50) | Osc sync |
 
-Ratio, Index and Feedback are heard at once.
+- **Patch:** the voice's own six first (the pad: Rhodes, Voices, Glass, Strings, Warm, Halo; the bells: Bell, shaped by
+  Tone, Vibes, Marimba, Tubular, Kalimba, Celesta; the bass: Sine, Round, Pick, Sub, Reed, Fretless), then the voices
+  of the DX7 banks you sent (see [MIDI](#s8)), by name; empty slots are passed by. Turning it loads the patch as it
+  is; any edit after that makes it the piece's own, shown with a `*` ("E.PIANO 1*").
+- The pad's voices cross over to a new patch as they do for a new key; the bells take it at their next strike; the
+  bass is struck anew once the knob rests. An edit is heard at once on the notes sounding.
 
-**Env.** Every operator's envelope, from the next note (the bass: struck anew once the knob rests).
+**OPERATOR** (KNOB 1 picks the operator, OP1–OP6, on every page of the group)
 
-- **Attack:** + slower, − quicker.
-- **Decay:** + longer, − shorter.
-- **Sustain:** + higher, − lower. A bell held up at a sustain is let go after a beat.
-- **Release:** + longer, − shorter.
+| Page | KNOB 2 | KNOB 3 | KNOB 4 |
+| --- | --- | --- | --- |
+| OP | Ratio (coarse: ×0.50 .. ×31; fixed mode: Hz) | Fine | Level |
+| OP Env | Stage (1–4) | Rate | Level |
+| OP 2 | Mode (Ratio, Fixed) | Detune (±7) | Velocity |
+| OP 3 | Break (a note) | L depth | R depth |
+| OP 4 | L curve | R curve | Rate scale |
+| OP 5 | Amp sens | | |
 
-**Mod.** The voice's generative modulation. Every sounding voice (the four pad voices, the six bells, the
-bass) has a generator of its own, each at its own pace around Rate; the arc deepens it when the garden is full
-and calms it when sparse.
+Ratio and Fine show the operator's frequency together ("x1.50"). In fixed mode it is in Hz.
 
-- **Depth:** how far it goes. 0: the voice as it is.
-- **Rate:** how long a cycle takes, from 60 seconds to an eighth of a second, a vibrato's speed (each voice a
-  little faster or slower). With Sync at Tempo: a note value, 8 bars to a sixteenth.
-- **Shape:** what it makes. Sine, Triangle, Saw up, Saw down, Square: a wave a cycle. S&H: a random value a
-  cycle, held. Walk: gliding between random values. Chaos: the logistic map at the edge of chaos, jumping.
-  Env: from each note's start, falling from the top to nothing over a cycle (a pluck of brightness, a pitch
-  drop).
-- **Target:** what it moves, the FM voice's own parameters first:
-  - **Timbre:** the modulators' level, ±12 dB: the FM index, brighter and darker.
-  - **Ratio:** the modulators' frequency ratio in harmonic steps, ×1 to ×5, gliding: the voice jumps
-    between related colours and stays in tune (never below ×1, which would drop it an octave).
-  - **Metal:** the modulators pulled out of tune with each other, ±80 cents: inharmonic, bell-like.
-  - **Feedback:** more feedback on the modulator that has it, smoothly: from pure to noisy and saw-like.
-  - **Decay:** each new note's envelopes: how soon its brightness fades and how long it rings. It
-    works on struck notes, the bells; the pad and the bass are held and barely decay.
-  - **Pitch:** the voice's pitch, ±30 cents: tape wow, a choir's drift, at the fastest a vibrato.
-  - **Space:** the voice's place in the stereo field.
-  - **All:** timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio, not level).
-  - **Level:** the voice's loudness, down to −10 dB: a tremolo, a swell. Never louder than the voice.
+**MOD** (KNOB 1 picks the modulator, 1–5, on every page of the group)
 
-**Mod 2.** How the generators move together and in time.
+| Page | KNOB 2 | KNOB 3 | KNOB 4 |
+| --- | --- | --- | --- |
+| Mod | Target | Depth | Rate |
+| Mod 2 | Shape | Sync | Smooth |
+| Mod 3 | Spread | Fade | |
 
+Every sounding voice (the four pad voices, the six bells, the bass) has a generator of its own in each modulator,
+each at its own pace around Rate; the five are summed; the arc deepens them when the garden is full and calms them
+when sparse.
+
+- **Depth:** how far it goes. 0: the modulator off.
+- **Rate:** how long a cycle takes, from 60 seconds to an eighth of a second (each voice a little faster or slower).
+  With Sync at Tempo: a note value, 8 bars to a sixteenth.
+- **Shape:** Sine, Triangle, Saw up, Saw down, Square: a wave a cycle. S&H: a random value a cycle, held. Walk:
+  gliding between random values. Chaos: the logistic map at the edge of chaos, jumping. Env: from each note's start,
+  falling from the top to nothing over a cycle (a pluck of brightness, a pitch drop).
+- **Target:** what it moves. The voice's: **Timbre** (the modulators' level, ±12 dB), **Ratio** (the modulators'
+  ratio in harmonic steps, ×1 to ×5), **Metal** (the modulators out of tune with each other, ±80 cents),
+  **Feedback** (more of it), **Decay** (each new note's envelopes), **Pitch** (±30 cents), **Space** (the stereo
+  field), **All** (timbre, metal, feedback, decay, pitch and space, a little less of each), **Level** (down to
+  −10 dB: a tremolo), **LFO PM** (the patch's LFO's vibrato, deeper). And any operator's own, **OP1**..**OP6**:
+  **Level** (±12 dB; a carrier only down), **Ratio** (harmonic steps up), **Fine** (±50 cents), **Atk**, **Dec**,
+  **Sus**, **Rel** (its envelope as each note starts).
 - **Spread:** 100: each voice its own way. 0: the layer's voices move as one.
 - **Fade:** the modulation coming in after each note, from at once (Off) to 8 seconds.
 - **Sync:** Free. Note: each note starts the shape again. Tempo: Rate is a note value at the tempo.
 - **Smooth:** a glide on the shape, 2 ms (a square's edge never clicks) to half a second.
-
-Ratio, Metal and Feedback as targets work where there is modulation to change: the bells and the pad. The
-bass's first patch is nearly a pure sine on purpose and stays put; its other patches move.
 
 ---
 
@@ -359,6 +367,36 @@ NVDA, JAWS, TalkBack). Press W to hear the whole screen again: the page, the pie
 the scale. The FM-1 says nothing until the page connects, so a DAW on the same cable never sees it.
 
 ---
+
+### CC and NRPN, in and out
+
+What the knobs set comes and goes as MIDI CC (out with MIDI out on; what comes in is not sent back):
+
+| Channel | CC | What |
+| --- | --- | --- |
+| 16 | 20–49 | the parameters 0–29 (amb.h P_*: the layers, the space, the tone, setup; a patch source as its number) |
+| 1 (pad), 2 (bells), 3 (bass) | 20 | the voice's Index |
+| 1, 2, 3 | 21–60 | its five modulators, eight each: Depth, Rate, Shape, Target, Spread, Fade, Sync, Smooth |
+| 1, 2, 3 | NRPN: 99 = 0/1, 98 = 0..127, 6 = value | its patch, byte by byte (the DX7's VCED order, 0..154) |
+
+A value is scaled to its range (0..127 to Depth's 0..100, Index's −24..+24). The patch's bytes go as they are.
+
+### DX7 voices and banks from a computer
+
+`tools/amb_syx.py` sends them over USB (Python with mido and python-rtmidi; close other programs using the FM-1's
+MIDI port first):
+
+```sh
+python3 tools/amb_syx.py ROM1A.syx --bank 1      # a 32-voice bank into bank 1 (of 16)
+python3 tools/amb_syx.py EPIANO.syx              # a single voice into the voice whose pages are shown
+python3 tools/amb_syx.py --info                  # how many voices each bank holds
+python3 tools/amb_syx.py --erase 1
+```
+
+A bank can be a DX7 bulk dump (4104 bytes), 4096 bytes of packed voices, or up to 32 single voices in one file. The
+screen says BANK n and how many voices came. A single voice from a DX7 editor (Dexed's Send) goes straight into the
+voice whose pages are shown too. The banks stay in the FM-1's memory (16 of 32 voices, apart from the pieces); a piece
+keeps a copy of each voice it plays, so sending another bank later never changes it.
 
 ## 9. Saving
 
@@ -457,19 +495,18 @@ The defaults are Garden's; each piece has its own.
 | Setup | Tune | −50 – +50 cents | 0 |
 | Setup | MIDI out | Off, On | On |
 | Setup | Lights | Off, On, Keys | On |
-| Each voice's FM | Patch | the voice's six | Rhodes, Bell, Sine |
-| Each voice's FM | Ratio | ×1, ×2, ×3, ×4, ×5, ×7, ×1.41, ×2.76, ×3.5 | ×1 |
-| Each voice's FM | Index | −24 – +24 dB | 0 dB |
-| Each voice's FM | Feedback | −7 – +7 | 0 |
-| Each voice's Env | Attack, Decay, Sustain, Release | −50 – +50 | 0 |
-| Each voice's Mod | Depth | 0–100 | 20 |
-| Each voice's Mod | Rate | 0–100 (60 s – 0.12 s a cycle; Tempo: 8 bars – 1/16) | 27 (11 s) |
-| Each voice's Mod | Shape | Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos, Env | Sine |
-| Each voice's Mod | Target | Timbre, Ratio, Metal, Feedback, Decay, Pitch, Space, All, Level | Timbre |
-| Each voice's Mod 2 | Spread | 0–100 | 100 |
-| Each voice's Mod 2 | Fade | Off – 8 s | Off |
-| Each voice's Mod 2 | Sync | Free, Note, Tempo | Free |
-| Each voice's Mod 2 | Smooth | 2 ms – 500 ms | 2 ms |
+| Each voice's VOICE | Patch | the voice's own six, then the banks' voices | Rhodes, Bell, Sine |
+| Each voice's VOICE | Algorithm, Feedback, LFO, Pitch EG, Transpose | as a DX7 | as the patch |
+| Each voice's VOICE | Index | −24 – +24 dB | 0 dB |
+| Each voice's OPERATOR | Ratio, Fine, Level, Envelope, Mode, Detune, Velocity, Break, Depths, Curves, Rate scale, Amp sens | as a DX7 | as the patch |
+| Each voice's MOD (×5) | Depth | 0–100 | 20 (the first), 0 |
+| Each voice's MOD (×5) | Rate | 0–100 (60 s – 0.12 s a cycle; Tempo: 8 bars – 1/16) | 27 (11 s) |
+| Each voice's MOD (×5) | Shape | Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos, Env | Sine |
+| Each voice's MOD (×5) | Target | the voice's ten, then each operator's seven | Timbre |
+| Each voice's MOD (×5) | Spread | 0–100 | 100 |
+| Each voice's MOD (×5) | Fade | Off – 8 s | Off |
+| Each voice's MOD (×5) | Sync | Free, Note, Tempo | Free |
+| Each voice's MOD (×5) | Smooth | 2 ms – 500 ms | 2 ms |
 | ALGORITHM | Mode | 8 modes, or Custom | Dorian |
 
 ---
