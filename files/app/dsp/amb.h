@@ -55,6 +55,7 @@ enum {
     P_PADTONE,                                        /* the pad's colour, set by the piece: Rhodes, Voices */
     P_BASSOCT, P_GLIDE, P_FIFTH,                      /* bass: its octave, its glide, how often it leans on the fifth */
     P_SWING, P_HATS,                                  /* pulse: swing, the hats' colour */
+    P_MDEPTH, P_MRATE, P_MCHAOS, P_MDEST,             /* the voices' modulation: depth, rate, chaos, target */
     P_NPARAMS
 };
 typedef struct {
@@ -102,6 +103,20 @@ extern volatile float en_arc;                  /* the arc, -1 sparse .. +1 full 
 extern volatile uint8_t en_pulse_rest;         /* the pulse is sitting a few bars out */
 extern volatile uint8_t en_pad_note[EN_NPAD];  /* the note each voice sings now (MIDI) */
 extern volatile float en_pad_amp[EN_NPAD];     /* and how loud */
+
+/* MOD: the voices' generative modulation. Each voice (the four pad voices, the six bells, the bass) has a generator
+ * of its own, at its own pace around RATE (60 s .. 0.5 s a cycle), so the voices never move together. CHAOS blends
+ * what it makes: 0 a slow wave, 50 a random walk (glides between random values), 100 the logistic map at the edge
+ * of chaos (jumps). DEPTH how far it goes (the arc deepens and calms it); TARGET what it moves: */
+enum { MOD_TIMBRE, MOD_METAL, MOD_PITCH, MOD_SPACE, MOD_ALL, EN_NMODDEST };
+/*   TIMBRE  the FM6 modulators' level (+-12 dB): brighter, darker
+ *   METAL   the modulators' pitch apart (+-60 cents): inharmonic, bell-like sidebands
+ *   PITCH   the voice's pitch (+-30 cents): tape wow, a choir's drift
+ *   SPACE   the voice's place in the stereo field
+ *   ALL     every one of them, a little less of each */
+extern const char *const EN_MODDEST_NAME[EN_NMODDEST];
+#define EN_NMOD (EN_NPAD + 6 + 1)               /* the generators: pad voices, bells, bass */
+extern volatile float en_mod[EN_NMOD];         /* each generator's value now, -1 .. 1 (times the depth) */
 
 /* the pure parts, for the tests and the screen */
 uint32_t en_euclid(int k, int n, int rot);     /* Bjorklund's pattern, as a bitmask (bit 0 = step 0) */

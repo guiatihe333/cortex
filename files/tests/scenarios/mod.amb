@@ -1,0 +1,44 @@
+# MOD, the voices' generative modulation: a voice's page button pressed again opens it (from the pad, the bells and
+# the bass, never from the other pages); SELECT reaches it after Setup; its knobs, kept with the piece
+wait 300
+tap ENV
+wait 100
+expect view 1
+tap ENV
+wait 100
+expect view 7
+shot mod.png
+turn K1 3 10
+expect par28 23
+tap ARP
+wait 100
+expect view 2
+tap ARP
+wait 100
+expect view 7
+tap LFO
+wait 100
+expect view 3
+tap LFO
+wait 100
+expect view 7
+tap SEQ
+wait 100
+tap SEQ
+wait 100
+expect view 4
+tap HOME
+wait 100
+tap HOME
+wait 100
+expect view 0
+tap GLO
+wait 100
+turn SELECT 1 100
+expect view 7
+turn K4 4 10
+expect par31 4
+wav mod.wav
+wait 20000
+wavstop
+expect peak_db_max -0.5

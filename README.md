@@ -21,6 +21,29 @@ eco de fita, Echoplex e o plate de Dattorro. Os controles também: **Bright** e 
 moduladores FM6 (o pad fica mais brilhante quando cresce), **Bell tone** reconstrói os patches dos sinos, **Pad tone**
 alterna entre Rhodes e Voices, **Tune** chega ao FM6.
 
+## Motor de modulação generativa (página MOD)
+
+Uma seção nova nos parâmetros das vozes. **Como chegar:** aperte de novo o botão da página de uma voz (ENV no Pad,
+ARP nos Bells, LFO no Bass) ou gire o SELECT depois de Setup. Na página MOD, os três botões das vozes ficam acesos.
+
+| Knob | Parâmetro | O que faz |
+| --- | --- | --- |
+| 1 | **Depth** (0–100) | Profundidade da modulação. Em 0 as vozes soam exatamente como sem o motor. |
+| 2 | **Rate** (0–100) | Duração de um ciclo, de 60 s a 0,5 s. Cada voz anda um pouco mais rápido ou mais devagar. |
+| 3 | **Chaos** (0–100) | Forma do movimento: 0 é uma onda lenta; 50 é um passeio aleatório, deslizando entre valores sorteados; 100 é o mapa logístico na borda do caos, com saltos suavizados em ~5 ms. |
+| 4 | **Target** | O que se move. **Timbre:** nível dos moduladores FM, ±12 dB. **Metal:** moduladores desafinados entre si, ±60 cents, dando bandas laterais inarmônicas. **Pitch:** afinação da voz, ±30 cents (wow de fita). **Space:** posição no estéreo. **All:** um pouco de cada. |
+
+Como funciona:
+- **Um gerador independente por voz**: 4 do pad, 6 dos sinos e 1 do baixo. Os ritmos são espalhados pela razão
+  áurea, para que as vozes nunca se movam juntas.
+- **Ligado ao arco do AMB-1**: a modulação se aprofunda quando o jardim está cheio e se acalma quando está esparso.
+- **Gerador aleatório próprio**: notas, loops e acordes continuam exatamente como antes.
+- **Receitas das peças**: cada peça ganhou a sua. Garden usa Timbre suave, Night Bus e Glass usam Metal, Afternoon e
+  Shoreline usam Space, Departures usa Pitch e Tides usa All.
+- **Projetos salvos**: o formato do projeto foi para o 5. Projetos salvos nos formatos 4 (AMB-1 atual) e 3 (0.9) são
+  migrados, e os parâmetros novos vêm da receita da peça.
+- **Também incluídos**: o leitor de tela fala a página nova, o app web ganhou o grupo "Mod" e o manual foi atualizado.
+
 Arquivos (em `files/`, os mesmos que o patch cria ou altera):
 
 - `app/dsp/fm6_core.c`: o núcleo FM6 do JIANT (Apache-2.0). Única alteração: as multiplicações de 64 bits saíram das
@@ -33,6 +56,12 @@ Arquivos (em `files/`, os mesmos que o patch cria ou altera):
 - `app/dsp/amb.c`: as vozes em FM6. Elas são renderizadas em blocos de 32 amostras (o bloco do FM6), e uma nota
   começa no bloco seguinte, no máximo 0,7 ms depois. Patches escritos do zero em `fm_patches()` e `bell_patches()`.
 - `app/dsp/amb.h`, `README.md`, `LICENSING.md`, `LICENSES/Apache-2.0-msfa.txt`: documentação e licenças.
+- Página MOD: o motor fica em `amb.c` (`mod_step`, `mod_of`). Também mudaram `amb.h` (parâmetros `P_MDEPTH` a
+  `P_MDEST`), `ui.c` (página e leitor de tela), `project.c` e `app.h` (formato 5 com migração), `web/app/index.html`,
+  `docs/MANUAL.md`, `tests/host/amb_test.c` (checagens do motor) e `tests/scenarios/mod.amb` (navegação).
+
+`amb1-fm6.patch` traz tudo de uma vez. Em `patches/` estão os dois passos separados (vozes FM6 e depois MOD), para
+`git am`.
 
 **Licença:** o resultado continua **MPL-2.0** como o AMB-1. Do JIANT entrou só o `fm6_core.c`, que é Apache-2.0
 (compatível). Nada do código GPL do JIANT ou do Felucca entrou: nem o `eng_fm6.c`, nem os patches de fábrica, nem o
@@ -57,7 +86,8 @@ da M-VAVE.
 ## O que ainda NÃO foi verificado
 
 - O código compila sem avisos (gcc e clang, com as flags estritas do teste de host do AMB-1: `-Wall -Wextra
-  -Wdouble-promotion -Werror`).
+  -Wdouble-promotion -Werror`). A interface (`ui.c`, `project.c`) também passou pelo build do simulador de host, com
+  cabeçalhos de fonte provisórios só para a checagem.
 - **Os testes não foram executados** (`tests/run_tests.sh`, o teste do instrumento, o simulador). O ambiente onde a
   modificação foi feita não tinha permissão para executar código vindo de repositórios externos.
 - **Não houve build para o aparelho**: faltam o toolchain JieLi e o SDK AC79. Por isso as checagens de imagem, RAM e
