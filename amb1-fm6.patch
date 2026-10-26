@@ -1,0 +1,1909 @@
+From eb65bfd572f6cb6b04949e95dcf47b4087ab3552 Mon Sep 17 00:00:00 2001
+From: AMB-1 FM6 <noreply@anthropic.com>
+Date: Mon, 26 Oct 2026 04:28:26 +0000
+Subject: [PATCH] Voices on JIANT FM's FM6 engine: pad, bells and bass as
+ 6-operator FM (msfa)
+
+---
+ LICENSES/Apache-2.0-msfa.txt | 192 ++++++++++++
+ LICENSING.md                 |   3 +-
+ README.md                    |   5 +
+ app/dsp/amb.c                | 499 ++++++++++++++++++------------
+ app/dsp/amb.h                |  10 +-
+ app/dsp/fm6_core.c           | 583 +++++++++++++++++++++++++++++++++++
+ app/dsp/fm6_tables.h         | 267 ++++++++++++++++
+ tools/gen_fm6_tables.py      |  70 +++++
+ 8 files changed, 1420 insertions(+), 209 deletions(-)
+ create mode 100644 LICENSES/Apache-2.0-msfa.txt
+ create mode 100644 app/dsp/fm6_core.c
+ create mode 100644 app/dsp/fm6_tables.h
+ create mode 100644 tools/gen_fm6_tables.py
+
+diff --git a/LICENSES/Apache-2.0-msfa.txt b/LICENSES/Apache-2.0-msfa.txt
+new file mode 100644
+index 0000000..75b5bab
+--- /dev/null
++++ b/LICENSES/Apache-2.0-msfa.txt
+@@ -0,0 +1,192 @@
++msfa (the synthesis core of Dexed), ported to C as firmware/src/fm6_core.c
++
++Copyright 2012 Google Inc.
++Copyright 2016-2025 Pascal Gauthier
++Source: https://github.com/asb2m10/dexed (Source/msfa)
++C port for Felucca (integer only), 2026: Leo Kuroshita (@kurogedelic), Hügelton Instruments
++Changes: no float (the start-up tables precomputed by tools/gen_tables.py), Felucca's sine table, 32-sample
++blocks; no portamento, controllers, MPE or microtuning (see the head of src/fm6_core.c).
++
++msfa is licensed under the Apache License, Version 2.0 (below); src/fm6_core.c keeps that licence.
++Dexed as a whole is GPL-3.0; Felucca (GPL-3.0-only) takes only msfa from it. Apache-2.0 code may be
++combined into a GPL-3.0 work; the firmware built with it is GPL-3.0-only as a whole.
++
++------------------------------------------------------------------------------
++
++
++                                 Apache License
++                           Version 2.0, January 2004
++                        http://www.apache.org/licenses/
++
++   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
++
++   1. Definitions.
++
++      "License" shall mean the terms and conditions for use, reproduction,
++      and distribution as defined by Sections 1 through 9 of this document.
++
++      "Licensor" shall mean the copyright owner or entity authorized by
++      the copyright owner that is granting the License.
++
++      "Legal Entity" shall mean the union of the acting entity and all
++      other entities that control, are controlled by, or are under common
++      control with that entity. For the purposes of this definition,
++      "control" means (i) the power, direct or indirect, to cause the
++      direction or management of such entity, whether by contract or
++      otherwise, or (ii) ownership of fifty percent (50%) or more of the
++      outstanding shares, or (iii) beneficial ownership of such entity.
++
++      "You" (or "Your") shall mean an individual or Legal Entity
++      exercising permissions granted by this License.
++
++      "Source" form shall mean the preferred form for making modifications,
++      including but not limited to software source code, documentation
++      source, and configuration files.
++
++      "Object" form shall mean any form resulting from mechanical
++      transformation or translation of a Source form, including but
++      not limited to compiled object code, generated documentation,
++      and conversions to other media types.
++
++      "Work" shall mean the work of authorship, whether in Source or
++      Object form, made available under the License, as indicated by a
++      copyright notice that is included in or attached to the work
++      (an example is provided in the Appendix below).
++
++      "Derivative Works" shall mean any work, whether in Source or Object
++      form, that is based on (or derived from) the Work and for which the
++      editorial revisions, annotations, elaborations, or other modifications
++      represent, as a whole, an original work of authorship. For the purposes
++      of this License, Derivative Works shall not include works that remain
++      separable from, or merely link (or bind by name) to the interfaces of,
++      the Work and Derivative Works thereof.
++
++      "Contribution" shall mean any work of authorship, including
++      the original version of the Work and any modifications or additions
++      to that Work or Derivative Works thereof, that is intentionally
++      submitted to Licensor for inclusion in the Work by the copyright owner
++      or by an individual or Legal Entity authorized to submit on behalf of
++      the copyright owner. For the purposes of this definition, "submitted"
++      means any form of electronic, verbal, or written communication sent
++      to the Licensor or its representatives, including but not limited to
++      communication on electronic mailing lists, source code control systems,
++      and issue tracking systems that are managed by, or on behalf of, the
++      Licensor for the purpose of discussing and improving the Work, but
++      excluding communication that is conspicuously marked or otherwise
++      designated in writing by the copyright owner as "Not a Contribution."
++
++      "Contributor" shall mean Licensor and any individual or Legal Entity
++      on behalf of whom a Contribution has been received by Licensor and
++      subsequently incorporated within the Work.
++
++   2. Grant of Copyright License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      copyright license to reproduce, prepare Derivative Works of,
++      publicly display, publicly perform, sublicense, and distribute the
++      Work and such Derivative Works in Source or Object form.
++
++   3. Grant of Patent License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      (except as stated in this section) patent license to make, have made,
++      use, offer to sell, sell, import, and otherwise transfer the Work,
++      where such license applies only to those patent claims licensable
++      by such Contributor that are necessarily infringed by their
++      Contribution(s) alone or by combination of their Contribution(s)
++      with the Work to which such Contribution(s) was submitted. If You
++      institute patent litigation against any entity (including a
++      cross-claim or counterclaim in a lawsuit) alleging that the Work
++      or a Contribution incorporated within the Work constitutes direct
++      or contributory patent infringement, then any patent licenses
++      granted to You under this License for that Work shall terminate
++      as of the date such litigation is filed.
++
++   4. Redistribution. You may reproduce and distribute copies of the
++      Work or Derivative Works thereof in any medium, with or without
++      modifications, and in Source or Object form, provided that You
++      meet the following conditions:
++
++      (a) You must give any other recipients of the Work or
++          Derivative Works a copy of this License; and
++
++      (b) You must cause any modified files to carry prominent notices
++          stating that You changed the files; and
++
++      (c) You must retain, in the Source form of any Derivative Works
++          that You distribute, all copyright, patent, trademark, and
++          attribution notices from the Source form of the Work,
++          excluding those notices that do not pertain to any part of
++          the Derivative Works; and
++
++      (d) If the Work includes a "NOTICE" text file as part of its
++          distribution, then any Derivative Works that You distribute must
++          include a readable copy of the attribution notices contained
++          within such NOTICE file, excluding those notices that do not
++          pertain to any part of the Derivative Works, in at least one
++          of the following places: within a NOTICE text file distributed
++          as part of the Derivative Works; within the Source form or
++          documentation, if provided along with the Derivative Works; or,
++          within a display generated by the Derivative Works, if and
++          wherever such third-party notices normally appear. The contents
++          of the NOTICE file are for informational purposes only and
++          do not modify the License. You may add Your own attribution
++          notices within Derivative Works that You distribute, alongside
++          or as an addendum to the NOTICE text from the Work, provided
++          that such additional attribution notices cannot be construed
++          as modifying the License.
++
++      You may add Your own copyright statement to Your modifications and
++      may provide additional or different license terms and conditions
++      for use, reproduction, or distribution of Your modifications, or
++      for any such Derivative Works as a whole, provided Your use,
++      reproduction, and distribution of the Work otherwise complies with
++      the conditions stated in this License.
++
++   5. Submission of Contributions. Unless You explicitly state otherwise,
++      any Contribution intentionally submitted for inclusion in the Work
++      by You to the Licensor shall be under the terms and conditions of
++      this License, without any additional terms or conditions.
++      Notwithstanding the above, nothing herein shall supersede or modify
++      the terms of any separate license agreement you may have executed
++      with Licensor regarding such Contributions.
++
++   6. Trademarks. This License does not grant permission to use the trade
++      names, trademarks, service marks, or product names of the Licensor,
++      except as required for reasonable and customary use in describing the
++      origin of the Work and reproducing the content of the NOTICE file.
++
++   7. Disclaimer of Warranty. Unless required by applicable law or
++      agreed to in writing, Licensor provides the Work (and each
++      Contributor provides its Contributions) on an "AS IS" BASIS,
++      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++      implied, including, without limitation, any warranties or conditions
++      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
++      PARTICULAR PURPOSE. You are solely responsible for determining the
++      appropriateness of using or redistributing the Work and assume any
++      risks associated with Your exercise of permissions under this License.
++
++   8. Limitation of Liability. In no event and under no legal theory,
++      whether in tort (including negligence), contract, or otherwise,
++      unless required by applicable law (such as deliberate and grossly
++      negligent acts) or agreed to in writing, shall any Contributor be
++      liable to You for damages, including any direct, indirect, special,
++      incidental, or consequential damages of any character arising as a
++      result of this License or out of the use or inability to use the
++      Work (including but not limited to damages for loss of goodwill,
++      work stoppage, computer failure or malfunction, or any and all
++      other commercial damages or losses), even if such Contributor
++      has been advised of the possibility of such damages.
++
++   9. Accepting Warranty or Additional Liability. While redistributing
++      the Work or Derivative Works thereof, You may choose to offer,
++      and charge a fee for, acceptance of support, warranty, indemnity,
++      or other liability obligations and/or rights consistent with this
++      License. However, in accepting such obligations, You may act only
++      on Your own behalf and on Your sole responsibility, not on behalf
++      of any other Contributor, and only if You agree to indemnify,
++      defend, and hold each Contributor harmless for any liability
++      incurred by, or claims asserted against, such Contributor by reason
++      of your accepting any such warranty or additional liability.
++
++   END OF TERMS AND CONDITIONS
+diff --git a/LICENSING.md b/LICENSING.md
+index 663afa3..7157b4a 100644
+--- a/LICENSING.md
++++ b/LICENSING.md
+@@ -14,7 +14,7 @@ earlier stay under the GPL.
+ | What | Origin | Licence |
+ | --- | --- | --- |
+ | The platform: `base/` (boot, USB and USB audio, the TRS jack, storage, the update path, screen, panel, the screen reader, the host simulator and the browser emulator, build and install tools) | [fm1-base](https://github.com/charlesvestal/fm1-base) and [felucca-bsp](https://github.com/hugelton/felucca-bsp), from [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita (@kurogedelic), Hügelton Instruments, under MPL-2.0 with his permission ([felucca-bsp#4](https://github.com/hugelton/felucca-bsp/issues/4)) | MPL-2.0 |
+-| `app/` (`app.c`, `app.h`, `ui.c`, `project.c`, `host.c`, `dsp/amb.c` with its Dattorro plate from FoMni-1), `web/app/`, `tests/`, `tools/` | AMB-1, Charles Vestal | MPL-2.0 |
++| `app/` (`app.c`, `app.h`, `ui.c`, `project.c`, `host.c`, `dsp/amb.c` with its Dattorro plate from FoMni-1, `dsp/fm6_tables.h` made by `tools/gen_fm6_tables.py`), `web/app/`, `tests/`, `tools/` | AMB-1, Charles Vestal | MPL-2.0 |
+ | The idea of a browser emulator for FM-1 firmware (fm1-base's emulator) | [Groove OS](https://www.groove-os.com/) by Peter Gombos, whose site runs its firmware in the browser; no code from it | credit only |
+ 
+ ## Third-party material
+@@ -23,6 +23,7 @@ earlier stay under the GPL.
+ | --- | --- | --- |
+ | Fonts: Barlow Semi Condensed (The Barlow Project Authors), Terminus (Dimitar Toshkov Zhekov) | SIL OFL 1.1 | `base/assets/fonts/` |
+ | JieLi AC79 SDK: `uboot.boot`, `cfg_tool.bin`, `eq_cfg_hw.bin` are read from your SDK checkout at build time and placed in the package; no SDK files are in this tree | Apache-2.0 | <https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK> |
++| The FM6 engine of the voices (pad, bells, bass): msfa by Google Inc. and Pascal Gauthier, from [Dexed](https://github.com/asb2m10/dexed), as ported to integer C by Leo Kuroshita (Hügelton Instruments) and carried in [JIANT FM](https://github.com/juanjiant-bit/JIANT) by Juan Ignacio Antonucci (`firmware/src/fm6_core.c` at 8580aea), changed here to keep 64-bit multiplies out of line (its header says how). Only this file is taken: none of JIANT's or Felucca's GPL code (the FM6 engine around it, its factory patches, its table generator) is in this tree; AMB-1's patches and `tools/gen_fm6_tables.py` are written anew | Apache-2.0 | `app/dsp/fm6_core.c`, `LICENSES/Apache-2.0-msfa.txt` |
+ 
+ ## Trademarks
+ 
+diff --git a/README.md b/README.md
+index c019e00..1887fef 100644
+--- a/README.md
++++ b/README.md
+@@ -6,6 +6,11 @@ bells on tape loops of unequal length, a gliding bass and quiet Euclidean percus
+ a tape echo, a long tape loop and a plate reverb. You don't perform it, you tend it: pick a piece
+ and a scale, take notes out, put them back, and let it grow.
+ 
++**This tree's voices are FM6**: the pad (Rhodes and Voices), the bells and the bass are 6-operator FM, the engine of
++[JIANT FM](https://github.com/juanjiant-bit/JIANT) (msfa, Dexed's core, in integer C: `app/dsp/fm6_core.c`), with
++patches of their own (`fm_patches`, `bell_patches` in `app/dsp/amb.c`). Everything that plays them is AMB-1's as it
++was: the breaths, the loops, the glide, the pulse, the echoes and the plate.
++
+ ![AMB-1's screen: the garden](docs/img/screen-garden.png) ![Voices](docs/img/screen-voices.png) ![Frozen](docs/img/screen-frozen.png)
+ 
+ - **Try it in your browser** (no FM-1 needed): <https://charlesvestal.github.io/fm1-amb/emu/>
+diff --git a/app/dsp/amb.c b/app/dsp/amb.c
+index d457e0d..7781718 100644
+--- a/app/dsp/amb.c
++++ b/app/dsp/amb.c
+@@ -1,8 +1,14 @@
+ /* SPDX-License-Identifier: MPL-2.0
+  * Copyright (C) 2026 Charles Vestal */
+-/* The instrument (amb.h). One compilation unit, -O2. */
++/* The instrument (amb.h). One compilation unit, -O2. The voices (pad, bells, bass) are FM6: JIANT FM's
++ * 6-operator FM engine, msfa (Dexed's core) in integer C, fm6_core.c (Apache-2.0); the pulse is AMB-1's own. */
+ #include "amb.h"
+ #include "fastmath.h"
++#include "fm6_tables.h"
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wunused-function"
++#include "fm6_core.c"
++#pragma GCC diagnostic pop
+ 
+ #if defined EN_HOST || defined PLAT_HOST
+ #define EN_POOL
+@@ -379,16 +385,14 @@ static float motion;                            /* 0..1: Motion */
+ /* ---------------------------------------------------------------- pad --- */
+ /* Breathing voices, as the sung tape loops of Music for Airports' "2/1": each voice swells in, hangs
+  * and fades on its own cycle (unequal lengths, set by Swell), taking its note of the chord as it
+- * starts, so the chord forms and dissolves rather than sitting there. The timbre: two saws a few
+- * cents apart through two formant band-passes, a vowel that Bright moves from "oo" through "ah" to
+- * "eh", with a little of the first formant's low-pass for body. */
++ * starts, so the chord forms and dissolves rather than sitting there. The timbre is an FM6 patch held
++ * down (the Rhodes or the Voices, fm_patches()); the breath is its amplitude, and Bright, the breath
++ * and the arc its modulators' level: it blooms brighter as it swells. */
+ typedef struct {
+-    float ph[2], inc[2];
+     float note, target;                         /* MIDI: the note of this breath, the next one's */
+     float t, rate, peak, amp;                   /* t 0..1 through the breath, per 32 samples */
+-    float ic[4];                                /* the two filters' states */
+-    float c1[4], c2[4];                         /* their coefficients: a1, a2, a3, k */
+-    float vib, pan;
++    float tgt, bloom;                           /* this block's amplitude target, its modulators' level (dB) */
++    float pan;
+     float hf;                                   /* a handoff's fade: 1 normal */
+     uint8_t midi_note, hand;                    /* hand: 1 fading out of the old key, 2 into the new */
+     uint8_t voices;                             /* this breath's colour: 0 Rhodes, 1 Voices */
+@@ -398,9 +402,48 @@ static float pad_gate, pad_gain, pad_vol, bright, swell;
+ static const float PAD_PAN[EN_NPAD] = {-0.55f, -0.18f, 0.18f, 0.55f};
+ static const float BREATH[EN_NPAD] = {1.0f, 1.21f, 1.43f, 1.67f};    /* unequal cycles, as 2/1's 12..20 s loops */
+ static const float START_T[EN_NPAD] = {0.0f, 0.9f, 0.82f, 0.95f};    /* the first breaths overlap */
+-static const float VOWEL[4][2] = {{320.0f, 800.0f}, {480.0f, 900.0f}, {730.0f, 1090.0f}, {530.0f, 1840.0f}};
+ static float arcm;                              /* the slow arc, -1 sparse .. +1 full, times Motion */
+ 
++/* ------------------------------------------------------------- FM6 voices --- */
++/* Every voice is an fm6_note_t of a 155-byte patch (fm6_core.c FP_*), rendered a block of FM6_N (32) samples at
++ * a time into fm_buf, which the layers read sample by sample (fm_pull): a note starts at the next block, at most
++ * 0.7 ms late. The patches are AMB-1's own, made here (fm_patches): the pad's two colours, a bell for each loop,
++ * the bass. One carrier at full is 2^25 out of fm6_core: FM_SCALE makes it 1.0, AMB-1's level for a voice. */
++#define FM_SCALE (1.0f / 33554432.0f)
++#define FM_DB (16777216.0f / 6.0206f)          /* a level offset of the modulators, Q24 log2 a dB */
++enum { FB_PADL, FB_PADR, FB_BELLL, FB_BELLR, FB_BELLE, FB_BASS, FB_N };
++static float fm_buf[FB_N][FM6_N];
++static uint32_t fm_pos = FM6_N;
++static uint8_t pad_patch[2][FP_SIZE + 1];
++static fm6_note_t pad_fm[EN_NPAD];
++static fm6_lfo_t pad_lfo[2];
++static const int32_t FM_DT0[6];                /* no per-operator detune: the patches have their own */
++
++static int32_t fm_logfreq(float note)          /* log2 Hz, Q24, of a MIDI pitch (a fraction too) and Tune */
++{
++    int32_t k = (int32_t)note;
++    float fr = note - (float)k + (float)par[P_TUNE] * 0.01f;
++    return FM6_LOGF0 + k * 1398101 + (int32_t)(fr * 1398101.33f);   /* (1 << 24) / 12 a semitone */
++}
++
++/* a voice's next block into x (float, its DC blocked as JIANT's FM6 does: FM puts sidebands at 0 Hz); 0: every
++ * carrier silent (x untouched) */
++static int fm_voice(fm6_note_t *n, const uint8_t *p, float note, int32_t lfo_v, int32_t lfo_d, float bloom_db,
++                    float *x)
++{
++    int32_t bus[FM6_N];
++    uint32_t i;
++    if (!fm6_note_compute(n, p, bus, lfo_v, lfo_d, fm_logfreq(note), p[FP_ALG] & 31u, p[FP_FB] & 7u, FM_DT0,
++                          (int32_t)(bloom_db * FM_DB)))
++        return 0;
++    for (i = 0; i < FM6_N; i++) {
++        int32_t s = bus[i] - n->dc;
++        n->dc += s >> 10;
++        x[i] = (float)s * FM_SCALE;
++    }
++    return 1;
++}
++
+ static float breath(float t)                    /* rise, hang, fall, a short rest */
+ {
+     if (t < 0.4f)
+@@ -412,15 +455,6 @@ static float breath(float t)                    /* rise, hang, fall, a short res
+     return 0.0f;
+ }
+ 
+-static void svf_coefs(float *c, float f, float k)
+-{
+-    float g = fm_tanf(FM_PI * fm_clampf(f, 40.0f, 16000.0f) * (1.0f / EN_SR));
+-    c[0] = 1.0f / (1.0f + g * (g + k));
+-    c[1] = g * c[0];
+-    c[2] = g * c[1];
+-    c[3] = k;
+-}
+-
+ static void midi(uint32_t st, uint32_t d1, uint32_t d2);
+ static void pad_breathe(pad_t *v, int i)        /* a new breath: its length, its strength, its note */
+ {
+@@ -432,6 +466,8 @@ static void pad_breathe(pad_t *v, int i)        /* a new breath: its length, its
+     v->note = v->target;
+     v->voices = (uint8_t)(par[P_PADTONE] != 0);
+     v->midi_note = (uint8_t)v->target;
++    /* the note struck anew (between breaths, or as a handoff fades in: from silence then, phases from 0) */
++    fm6_note_init(&pad_fm[i], pad_patch[v->voices], (int32_t)v->note, 100, v->amp < 0.01f);
+     if (en_playing)
+         midi(0x90, v->midi_note, (uint32_t)(50.0f + 40.0f * v->peak));
+ }
+@@ -469,10 +505,9 @@ static void pad_leave(void)
+     }
+ }
+ 
+-static void pad_coefs(pad_t *v, int i)          /* every 32 samples: the breath, pitch, the vowel */
++static void pad_coefs(pad_t *v, int i)          /* every FM6 block (32 samples): the breath, the bloom */
+ {
+-    float f, vw, f1, f2;
+-    int a;
++    float br;
+     if (v->hand == 1) {                         /* out of the old key */
+         v->hf -= HAND_STEP;
+         if (v->hf <= 0.0f) {
+@@ -493,55 +528,42 @@ static void pad_coefs(pad_t *v, int i)          /* every 32 samples: the breath,
+         v->t -= 1.0f;
+         pad_breathe(v, i);
+     }
+-    v->vib += (4.6f + 0.4f * (float)i) * 32.0f / EN_SR;
+-    if (v->vib >= 1.0f)
+-        v->vib -= 1.0f;
+-    f = mtof(v->note + 0.08f * motion * mod[i].v);                          /* a slow drift, as tape */
+-    v->inc[0] = f * 0.99856f * (1.0f / EN_SR);  /* -2.5 and +2.5 cents */
+-    v->inc[1] = f * 1.00144f * (1.0f / EN_SR);
+-    vw = fm_clampf((float)bright * 0.01f + 0.25f * arcm + 0.2f * motion * mod[(i + 2) % NMOD_PAD].v, 0.0f, 1.0f) * 2.999f;
+-    a = (int)vw;
+-    vw -= (float)a;
+-    f1 = VOWEL[a][0] + (VOWEL[a + 1][0] - VOWEL[a][0]) * vw;
+-    f2 = VOWEL[a][1] + (VOWEL[a + 1][1] - VOWEL[a][1]) * vw;
+-    svf_coefs(v->c1, f1 * (1.0f + 0.03f * (float)i), 0.45f);
+-    svf_coefs(v->c2, f2 * (1.0f - 0.02f * (float)i), 0.3f);
+-}
+-
+-static inline float blep_saw(float t, float dt)
+-{
+-    float y = 2.0f * t - 1.0f;
+-    if (t < dt) {
+-        float x = t / dt;
+-        y -= x + x - x * x - 1.0f;
+-    } else if (t > 1.0f - dt) {
+-        float x = (t - 1.0f) / dt;
+-        y -= x * x + x + x + 1.0f;
+-    }
+-    return y;
++    br = breath(v->t);
++    v->tgt = br * v->peak * pad_gain * v->hf;
++    /* the bloom: the modulators about -15 .. +12 dB from the patch, with Bright, the breath, the arc and a slow drift
++     * (as the vowel the Voices had moved) */
++    v->bloom = -10.0f + 9.0f * bright * 0.01f + 6.0f * br + 3.0f * arcm + 2.0f * motion * mod[(i + 2) % NMOD_PAD].v;
+ }
+ 
+ /* ------------------------------------------------------------------ bass --- */
++/* a sine and its sub-octave, an FM6 patch held down (the second harmonic a little, a breath of modulation); the
++ * gate its amplitude, the glide its pitch */
+ static struct {
+-    float ph, inc, note, target, amp;
++    float note, target, amp;
+     uint8_t midi_note, rest;                    /* rest: sitting this chord out */
+ } bass;
+ static float bass_vol, glide_k = 1.0f / (0.25f * EN_SR);      /* glide_k: 1 / the glide's time in samples */
++static uint8_t bass_patch[FP_SIZE + 1];
++static fm6_note_t bass_fm;
+ 
+ /* ----------------------------------------------------------------- bells --- */
++/* FM6 bells, a patch for each loop (its shade); Bell tone sets the modulators' ratio and depth and the strike */
+ #define NBELL 6
+ typedef struct {
+-    float cph, mph, cinc, minc, amp, adec, idx, idec, att, gl, gr;
+-    int32_t wait;
+-    uint8_t on, note, loop;
++    float vel, gl, gr;
++    int32_t wait;                               /* samples until it rings (a human hand) */
++    uint8_t on, note, loop, rung;               /* rung: its note has started */
+ } bell_t;
+ static bell_t bell[NBELL];
++static fm6_note_t bell_fm[NBELL];
++static uint8_t bell_patch[EN_NLOOP][FP_SIZE + 1];
+ static float bell_vol, btone;
+ static int8_t loop_note[EN_NLOOP][EN_LOOP_MAX];
+ static uint8_t loop_vel[EN_NLOOP][EN_LOOP_MAX], loop_pos[EN_NLOOP];
+ static const uint8_t LOOP_BASE[EN_NLOOP] = {72, 67, 79, 62};     /* each loop's register */
+ static const float LOOP_PAN[EN_NLOOP] = {-0.6f, 0.35f, 0.7f, -0.25f};
+-static const float RATIO[5] = {1.0f, 2.0f, 3.0f, 3.5f, 4.77f};
++/* the bells' modulator ratios (1, 2, 3, 3.5, 4.77), as FM6 coarse and fine: coarse * (1 + fine / 100) */
++static const uint8_t RATIO_FC[5] = {1, 2, 3, 3, 4}, RATIO_FF[5] = {0, 0, 0, 17, 19};
+ 
+ /* ----------------------------------------------------------------- pulse --- */
+ typedef struct {
+@@ -731,17 +753,124 @@ static void loop_pass(int l)                    /* the end of a pass: grow, prun
+     loop_publish(l);
+ }
+ 
++/* ------------------------------------------------------------ the patches --- */
++/* operator op (1..6) of patch p: rates, levels, output level, coarse and fine ratio, detune (7: none), velocity
++ * sensitivity, rate scaling. Breakpoint C3, no level scaling, no amplitude modulation, ratio mode */
++static void fm_op(uint8_t *p, int op, int r1, int r2, int r3, int r4, int l1, int l2, int l3, int l4, int ol, int fc,
++                  int ff, int det, int kvs, int rs)
++{
++    uint8_t *o = p + (6 - op) * FP_OP;
++    int k;
++    for (k = 0; k < FP_OP; k++)
++        o[k] = 0;
++    o[FP_R1] = (uint8_t)r1, o[FP_R1 + 1] = (uint8_t)r2, o[FP_R1 + 2] = (uint8_t)r3, o[FP_R1 + 3] = (uint8_t)r4;
++    o[FP_L1] = (uint8_t)l1, o[FP_L1 + 1] = (uint8_t)l2, o[FP_L1 + 2] = (uint8_t)l3, o[FP_L1 + 3] = (uint8_t)l4;
++    o[FP_BP] = 39;
++    o[FP_KVS] = (uint8_t)kvs;
++    o[FP_RS] = (uint8_t)rs;
++    o[FP_OL] = (uint8_t)(ol < 0 ? 0 : ol > 99 ? 99 : ol);
++    o[FP_FC] = (uint8_t)fc;
++    o[FP_FF] = (uint8_t)ff;
++    o[FP_DET] = (uint8_t)det;
++}
++
++/* the voice's part: algorithm (1..32), feedback, LFO (speed, delay, pitch depth, wave, pitch sensitivity); no
++ * pitch envelope, no transpose, a name */
++static void fm_voice_par(uint8_t *p, int alg, int fb, int lfs, int lfd, int lpmd, int lfw, int lpms, const char *name)
++{
++    int k;
++    for (k = 0; k < 4; k++) {
++        p[FP_PR1 + k] = 99;
++        p[FP_PL1 + k] = 50;
++    }
++    p[FP_ALG] = (uint8_t)(alg - 1);
++    p[FP_FB] = (uint8_t)fb;
++    p[FP_OKS] = 1;
++    p[FP_LFS] = (uint8_t)lfs;
++    p[FP_LFD] = (uint8_t)lfd;
++    p[FP_LPMD] = (uint8_t)lpmd;
++    p[FP_LAMD] = 0;
++    p[FP_LKS] = 0;
++    p[FP_LFW] = (uint8_t)lfw;
++    p[FP_LPMS] = (uint8_t)lpms;
++    p[FP_TRNSP] = 24;
++    for (k = 0; k < 10; k++)
++        p[FP_NAME + k] = (uint8_t)(*name ? *name++ : ' ');
++    p[FP_SIZE] = 0;
++}
++
++/* the pad's two colours and the bass: algorithm 5 (three pairs, the sixth operator with feedback), held down */
++static void fm_patches(void)
++{
++    uint8_t *p = pad_patch[0];                   /* the Rhodes: a modulator at the carrier's pitch, its octave a little */
++    fm_op(p, 1, 80, 40, 30, 60, 99, 96, 94, 0, 99, 1, 0, 7, 0, 1);
++    fm_op(p, 2, 85, 35, 25, 60, 99, 90, 85, 0, 68, 1, 0, 7, 2, 1);
++    fm_op(p, 3, 80, 45, 30, 60, 99, 94, 90, 0, 74, 2, 0, 7, 0, 1);
++    fm_op(p, 4, 85, 40, 30, 60, 99, 85, 80, 0, 40, 1, 0, 7, 2, 1);
++    fm_op(p, 5, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
++    fm_op(p, 6, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
++    fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB RHODES");
++    fm6_lfo_reset(&pad_lfo[0], p);
++    p = pad_patch[1];                            /* the Voices: two carriers ~2.4 cents apart, one fed back (a soft
++                                                  * saw), the third harmonic's region a little (the vowel), vibrato */
++    fm_op(p, 1, 60, 30, 25, 50, 99, 97, 95, 0, 94, 1, 0, 5, 0, 1);
++    fm_op(p, 2, 60, 30, 25, 50, 99, 92, 90, 0, 70, 1, 0, 7, 2, 1);
++    fm_op(p, 3, 55, 30, 25, 50, 99, 95, 92, 0, 80, 3, 0, 7, 0, 1);
++    fm_op(p, 4, 55, 30, 25, 50, 99, 90, 85, 0, 58, 1, 0, 7, 2, 1);
++    fm_op(p, 5, 60, 30, 25, 50, 99, 97, 95, 0, 94, 1, 0, 9, 0, 1);
++    fm_op(p, 6, 60, 30, 25, 50, 99, 92, 90, 0, 68, 1, 0, 9, 1, 1);
++    fm_voice_par(p, 5, 6, 33, 50, 5, 4, 3, "AMB VOICES");
++    fm6_lfo_reset(&pad_lfo[1], p);
++    p = bass_patch;                              /* the sine, its sub-octave (-4.4 dB), the second harmonic (-16 dB) */
++    fm_op(p, 1, 70, 99, 99, 50, 99, 99, 99, 0, 99, 1, 0, 7, 0, 0);
++    fm_op(p, 2, 70, 99, 99, 50, 99, 99, 99, 0, 45, 1, 0, 7, 0, 0);
++    fm_op(p, 3, 70, 99, 99, 50, 99, 99, 99, 0, 93, 0, 0, 7, 0, 0);
++    fm_op(p, 4, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
++    fm_op(p, 5, 70, 99, 99, 50, 99, 99, 99, 0, 78, 2, 0, 7, 0, 0);
++    fm_op(p, 6, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
++    fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB BASS");
++}
++
+ /* each loop its own bell: index, decay and ratio a little apart, so the four can be told apart */
+-static const float LOOP_IDX[EN_NLOOP] = {1.0f, 0.55f, 1.5f, 0.8f}, LOOP_DEC[EN_NLOOP] = {1.0f, 1.35f, 0.75f, 1.6f};
++static const float LOOP_IDX[EN_NLOOP] = {1.0f, 0.55f, 1.5f, 0.8f};
+ static const int8_t LOOP_RAT[EN_NLOOP] = {0, 0, 1, -1};
++static const int8_t LOOP_R2[EN_NLOOP] = {31, 28, 34, 27};      /* the decay (t60 ~4.2 s at C4 x 1, 1.35, 0.75, 1.6) */
++
++/* the four bells, from Bell tone: 0 a round, nearly pure tone; 100 a long metallic clang. Algorithm 5: the bell
++ * (2 -> 1), a faint inharmonic partial (2.76, 3), the third pair silent. The modulator's level is the index
++ * (0.15 + 6.5 tone^2 radians, as AMB-1's 2-operator bell: full output is 4 pi, an output level step 0.75 dB), its
++ * decay as the index's (0.35 .. 2.95 s), the strike from soft (~50 ms) to hard (~4 ms) by half way; the low bells
++ * ring longer (rate scaling), velocity brightens them (the modulators' sensitivity). R3 99: at silence the note
++ * ends at once (a slower R3 holds a stage that does not move, msfa's ACCURATE_ENVELOPE, for seconds) */
++static void bell_patches(void)
++{
++    int l;
++    for (l = 0; l < EN_NLOOP; l++) {
++        uint8_t *p = bell_patch[l];
++        float idx = (0.15f + 6.5f * btone * btone) * LOOP_IDX[l];
++        int ri = par[P_BTONE] * 5 / 101 + LOOP_RAT[l], mol, r1, mr2;
++        ri = ri < 0 ? 0 : ri > 4 ? 4 : ri;
++        mol = 99 - (int)(20.0f * 0.30103f * fm_log2f(4.0f * FM_PI / idx) / 0.75f + 0.5f);
++        r1 = 53 + (int)(36.0f * fm_minf(btone * 2.0f, 1.0f));
++        mr2 = 53 - (int)(19.0f * btone);
++        fm_op(p, 1, r1, LOOP_R2[l], 99, 30, 99, 0, 0, 0, 99, 1, 0, 7, 0, 2);
++        fm_op(p, 2, 99, mr2, 99, 30, 99, 0, 0, 0, mol, RATIO_FC[ri], RATIO_FF[ri], 7, 3, 2);
++        fm_op(p, 3, r1, LOOP_R2[l] + 8, 99, 30, 99, 0, 0, 0, 62, 2, 38, 7, 0, 2);
++        fm_op(p, 4, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
++        fm_op(p, 5, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
++        fm_op(p, 6, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
++        fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB BELL");
++    }
++}
+ 
+ static void bell_voice(int l, int n, float vel, int32_t wait)
+ {
+-    int i, best = 0, ri;
+-    float lo = 9.0f, t60, p;
++    int i, best = 0;
++    float lo = 9.0f, p;
+     bell_t *v;
+-    for (i = 0; i < NBELL; i++) {               /* a free voice, or the quietest */
+-        float a = bell[i].on ? bell[i].amp : -1.0f;
++    for (i = 0; i < NBELL; i++) {               /* a free voice, or the quietest (its carrier's gain) */
++        float a = bell[i].on ? (bell[i].rung ? (float)bell_fm[i].op[5].gain_out * FM_SCALE * bell[i].vel : 2.0f)
++                             : -1.0f;
+         if (a < lo) {
+             lo = a;
+             best = i;
+@@ -751,20 +880,10 @@ static void bell_voice(int l, int n, float vel, int32_t wait)
+     if (v->on)
+         midi(0x81, v->note, 0);
+     v->on = 1;
++    v->rung = 0;
+     v->note = (uint8_t)n;
+     v->loop = (uint8_t)l;
+-    v->cph = v->mph = 0.0f;
+-    v->cinc = mtof((float)n) * (1.0f / EN_SR);
+-    ri = par[P_BTONE] * 5 / 101 + LOOP_RAT[l];
+-    v->minc = v->cinc * RATIO[ri < 0 ? 0 : ri > 4 ? 4 : ri];
+-    v->amp = vel;
+-    t60 = 4.2f - (float)(n - 60) * 0.06f;       /* the low bells ring longer */
+-    t60 = fm_clampf(t60, 1.6f, 5.0f) * LOOP_DEC[l];
+-    v->adec = fm_expf(-6.9f / (t60 * EN_SR));
+-    /* Bell tone: 0 a round, nearly pure tone; 100 a long metallic clang (index in radians, as turns) */
+-    v->idx = (0.15f + 6.5f * btone * btone) * LOOP_IDX[l] * (0.6f + 0.4f * vel) * (1.0f / FM_TWO_PI);
+-    v->idec = fm_expf(-6.9f / ((0.35f + 2.6f * btone) * EN_SR));
+-    v->att = 0.0f;
++    v->vel = vel;
+     p = (LOOP_PAN[l] + 1.0f) * (FM_PI / 4.0f);
+     v->gl = fm_cosf(p);
+     v->gr = fm_sinf(p);
+@@ -1196,7 +1315,10 @@ static void apply(int p, int v)
+     case P_BRIGHT: bright = (float)v; break;
+     case P_SWELL: swell = (float)v; break;
+     case P_EVOLVE: evolve = (float)v * 0.01f; break;
+-    case P_BTONE: btone = (float)v * 0.01f; break;
++    case P_BTONE:
++        btone = (float)v * 0.01f;
++        bell_patches();
++        break;
+     case P_PADTONE: pad_handoff(); break;        /* the voices cross over as they did for a new key */
+     case P_MOTION: motion = (float)v * 0.01f; break;
+     case P_BOCT:                                 /* let it be heard now: a bell from the first loop */
+@@ -1270,7 +1392,7 @@ static void notes_off(void)
+ 
+ static void quiet(void)
+ {
+-    int i;
++    int i, k;
+     for (i = 0; i < NBELL; i++)
+         bell[i].on = 0;
+     for (i = 0; i < EN_NDRUM; i++)
+@@ -1278,6 +1400,9 @@ static void quiet(void)
+     for (i = 0; i < EN_NPAD; i++)
+         pad[i].amp = 0.0f;
+     bass.amp = 0.0f;
++    for (i = 0; i < FB_N; i++)                  /* the FM block already made: quiet too */
++        for (k = 0; k < FM6_N; k++)
++            fm_buf[i][k] = 0.0f;
+     notes_off();
+ }
+ 
+@@ -1286,6 +1411,8 @@ void en_init(void)
+     int i;
+     for (i = 0; i <= SN; i++)
+         sint[i] = fm_sinf((float)i * (FM_TWO_PI / (float)SN));
++    fm_patches();
++    fm_pos = FM6_N;
+     plate_init();
+     for (i = 0; i < TAPE_N; i++)
+         tape[i] = 0;
+@@ -1304,9 +1431,7 @@ void en_init(void)
+         pad[i].note = pad[i].target = (float)(50 + 7 * i);
+         pad[i].pan = PAD_PAN[i];
+         pad[i].amp = 0.0f;
+-        pad[i].ph[0] = 0.0f;
+-        pad[i].ph[1] = 0.37f;
+-        pad[i].vib = 0.3f * (float)i;
++        pad[i].tgt = 0.0f;
+         pad[i].midi_note = 0;
+         pad[i].hf = 1.0f;
+         pad[i].hand = 0;
+@@ -1316,9 +1441,12 @@ void en_init(void)
+     for (i = 0; i < P_NPARAMS; i++)
+         apply(i, PARAMS[i].def);
+     pool_set(EN_MODE_POOL[par[P_MODE]]);
+-    for (i = 0; i < EN_NPAD; i++)
++    for (i = 0; i < EN_NPAD; i++) {
+         pad[i].note = pad[i].target;
++        fm6_note_init(&pad_fm[i], pad_patch[0], (int32_t)pad[i].note, 100, 1);
++    }
+     bass.note = bass.target;
++    fm6_note_init(&bass_fm, bass_patch, (int32_t)bass.note, 100, 1);
+     for (i = 0; i < EN_NLOOP; i++) {
+         loop_pos[i] = 0;
+         loop_regrow(i);
+@@ -1463,162 +1591,128 @@ static void pad_bus(uint32_t n)
+         plp[j] = fm_flush(plp[j]);
+ }
+ 
+-static void render_pad(uint32_t n)
++/* the pad's level out of its patch: the Rhodes' carriers sustain ~-2.3 dB, the Voices' two (beating) ~-6.8 dB */
++static const float PAD_OUT[2] = {1.6f, 1.0f};
++
++/* one FM6 block of every voice into fm_buf: the pad's breaths and bloom, the bells as their loops strike them,
++ * the bass gliding */
++static void fm_block(void)
+ {
+-    int i;
+-    float lvl = 0.0f;
+-    uint32_t j0;
+-    for (j0 = 0; j0 < n; j0++)
+-        padl[j0] = padr[j0] = 0.0f;
+-    const float g = pad_vol * 0.5f;
+-    pad_gain += (pad_gate - pad_gain) * fm_minf((float)n / ((pad_gate > 0.0f ? 2.0f : 5.0f) * EN_SR), 1.0f);
++    float x[FM6_N], lvl = 0.0f;
++    int32_t lv[2], ld[2];
++    int i, k;
++    uint32_t j;
++    for (i = 0; i < FB_N; i++)
++        for (j = 0; j < FM6_N; j++)
++            fm_buf[i][j] = 0.0f;
++
++    pad_gain += (pad_gate - pad_gain) * fm_minf((float)FM6_N / ((pad_gate > 0.0f ? 2.0f : 5.0f) * EN_SR), 1.0f);
++    for (k = 0; k < 2; k++) {
++        lv[k] = fm6_lfo_sample(&pad_lfo[k]);
++        ld[k] = fm6_lfo_delay(&pad_lfo[k]);
++    }
+     for (i = 0; i < EN_NPAD; i++) {
+         pad_t *v = &pad[i];
+-        float p0 = v->ph[0], p1 = v->ph[1], amp = v->amp, s0 = v->ic[0], s1 = v->ic[1], s2 = v->ic[2], s3 = v->ic[3],
+-              gl, gr, pn, tgt = 0.0f, idx = 0.0f;
+-        uint32_t j;
++        float amp = v->amp, g, gl, gr, pn;
+         if (amp < 1e-5f && pad_gain < 1e-4f) {
+             v->amp = 0.0f;
++            en_pad_amp[i] = 0.0f;
+             continue;
+         }
++        pad_coefs(v, i);
++        k = v->voices;
++        g = pad_vol * 0.5f * PAD_OUT[k];
+         pn = fm_clampf(v->pan + 0.35f * motion * mod[(i + 3) % NMOD_PAD].v, -1.0f, 1.0f);
+         gl = fm_cosf((pn + 1.0f) * (FM_PI / 4.0f)) * g;
+         gr = fm_sinf((pn + 1.0f) * (FM_PI / 4.0f)) * g;
+-        for (j = 0; j < n; j++) {
+-            float x, v1, v2, v3, b1, l1, b2;
+-            if (!(j & 31u)) {
+-                float br;
+-                pad_coefs(v, i);
+-                br = breath(v->t);
+-                tgt = br * v->peak * pad_gain * v->hf;
+-                /* the Rhodes blooms: more overtones as the breath swells (index in turns) */
+-                idx = (0.04f + 0.1f * bright * 0.01f + 0.1f * br) * (1.0f + 0.4f * arcm);
++        if (fm_voice(&pad_fm[i], pad_patch[k], v->note + 0.08f * motion * mod[i].v, lv[k], ld[k], v->bloom, x)) {
++            for (j = 0; j < FM6_N; j++) {        /* a slow drift of pitch above, as tape */
++                amp += (v->tgt - amp) * 0.01f;
++                fm_buf[FB_PADL][j] += x[j] * amp * gl;
++                fm_buf[FB_PADR][j] += x[j] * amp * gr;
+             }
+-            if (!v->voices) {                    /* FM, the modulator at the carrier's pitch: a Rhodes */
+-                float m = sine(p0) * idx;
+-                x = (sine(p0 + m + 1.0f) + 0.12f * sine(2.0f * p0)) * 1.2f;   /* one carrier: no beating */
+-                p0 += v->inc[0];
+-                if (p0 >= 1.0f)
+-                    p0 -= 1.0f;
+-                amp += (tgt - amp) * 0.01f;
+-                x *= amp;
+-                padl[j] += x * gl;
+-                padr[j] += x * gr;
+-                continue;
+-            }
+-            /* as Discreet Music's Synthi: a mellow triangle (a sine's neighbour), a little saw in it */
+-            x = (p0 < 0.5f ? 4.0f * p0 - 1.0f : 3.0f - 4.0f * p0) * 1.4f + 0.45f * blep_saw(p0, v->inc[0]) + 0.6f * sine(p0);
+-            p0 += v->inc[0];
+-            if (p0 >= 1.0f)
+-                p0 -= 1.0f;
+-            v3 = x - s1;                         /* the first formant: TPT SVF (Zavalishin), bp and lp */
+-            v1 = v->c1[0] * s0 + v->c1[1] * v3;
+-            v2 = s1 + v->c1[1] * s0 + v->c1[2] * v3;
+-            s0 = 2.0f * v1 - s0;
+-            s1 = 2.0f * v2 - s1;
+-            b1 = v1 * v->c1[3];
+-            l1 = v2;
+-            v3 = x - s3;                         /* the second */
+-            v1 = v->c2[0] * s2 + v->c2[1] * v3;
+-            v2 = s3 + v->c2[1] * s2 + v->c2[2] * v3;
+-            s2 = 2.0f * v1 - s2;
+-            s3 = 2.0f * v2 - s3;
+-            b2 = v1 * v->c2[3];
+-            amp += (tgt - amp) * 0.01f;
+-            x = (b1 + 0.5f * b2 + 0.45f * l1) * amp;
+-            padl[j] += x * gl;                   /* to the pad's bus: smoothed and chorused below */
+-            padr[j] += x * gr;
++        } else {
++            for (j = 0; j < FM6_N; j++)
++                amp += (v->tgt - amp) * 0.01f;
+         }
+-        v->ic[0] = fm_flush(s0);
+-        v->ic[1] = fm_flush(s1);
+-        v->ic[2] = fm_flush(s2);
+-        v->ic[3] = fm_flush(s3);
+         v->amp = amp;
+-        v->ph[0] = p0;
+-        v->ph[1] = p1;
+         en_pad_note[i] = (uint8_t)v->note;
+         en_pad_amp[i] = amp;
+         lvl = fm_maxf(lvl, amp);
+     }
+     en_pad_level = lvl;
+-    pad_bus(n);
+-}
+-
+-static void render_bass(uint32_t n)
+-{
+-    uint32_t j;
+-    const float g = bass_vol * 0.42f, tgt = en_playing && !bass.rest ? 1.0f : 0.0f,
+-                rate = tgt > 0.0f ? 1.0f / (2.5f * EN_SR) : 1.0f / (4.0f * EN_SR);
+-    float ph = bass.ph, amp = bass.amp, inc;
+-    if (amp < 1e-5f && !en_playing) {
+-        bass.amp = 0.0f;
+-        en_bass_level = 0.0f;
+-        return;
+-    }
+-    bass.note += (bass.target - bass.note) * fm_minf((float)n * glide_k, 1.0f);   /* Glide */
+-    inc = mtof(bass.note) * (1.0f / EN_SR);
+-    for (j = 0; j < n; j++) {
+-        float x = sine(ph) * 0.75f + sine(ph * 0.5f + 0.25f) * 0.45f + sine(ph * 2.0f) * 0.12f;
+-        ph += inc;
+-        if (ph >= 2.0f)                          /* two turns: the sub-octave's period */
+-            ph -= 2.0f;
+-        amp += (tgt - amp) * rate;
+-        x *= amp * g;
+-        mixl[j] += x;
+-        mixr[j] += x;
+-        rsend[j] += x * 0.08f;
+-    }
+-    bass.ph = ph;
+-    bass.amp = amp;
+-    en_bass_level = amp;
+-}
+ 
+-static void render_bells(uint32_t n)
+-{
+-    int i;
+-    const float g = bell_vol * 0.62f, arate = 0.0004f + 0.0056f * fm_minf(btone * 2.0f, 1.0f);
+     for (i = 0; i < NBELL; i++) {
+         bell_t *v = &bell[i];
+-        float cph = v->cph, mph = v->mph, amp = v->amp, idx = v->idx, att = v->att;
+-        uint32_t j = 0;
++        const uint8_t *p = bell_patch[v->loop];
++        float g = bell_vol * 0.62f * v->vel;
+         if (!v->on)
+             continue;
+-        if (v->wait > 0) {
+-            if ((uint32_t)v->wait >= n) {
+-                v->wait -= (int32_t)n;
++        if (v->wait > 0) {                      /* (to the block: up to 0.7 ms off a hand's 0..60 ms) */
++            v->wait -= FM6_N;
++            if (v->wait > 0)
+                 continue;
+-            }
+-            j = (uint32_t)v->wait;
+             v->wait = 0;
+         }
+-        for (; j < n; j++) {
+-            float m = sine(mph) * idx, x;
+-            float p = cph + m + 4.0f;            /* + 4 turns: positive for the table */
+-            x = sine(p) * amp * att * g;
+-            mixl[j] += x * v->gl;
+-            mixr[j] += x * v->gr;
+-            rsend[j] += x * 0.7f;
+-            esend[j] += x * 0.85f;
+-            cph += v->cinc;
+-            mph += v->minc;
+-            if (cph >= 1.0f)
+-                cph -= 1.0f;
+-            if (mph >= 1.0f)
+-                mph -= 1.0f;
+-            amp *= v->adec;
+-            idx *= v->idec;
+-            att += (1.0f - att) * arate;         /* the strike: ~4 ms, or soft as a slowed piano (~50 ms) */
++        if (!v->rung) {
++            fm6_note_init(&bell_fm[i], p, v->note, (int32_t)(v->vel * 127.0f), 1);
++            v->rung = 1;
+         }
+-        v->cph = cph;
+-        v->mph = mph;
+-        v->amp = amp;
+-        v->idx = idx;
+-        v->att = att;
+-        if (amp < 0.0008f) {
++        if (fm_voice(&bell_fm[i], p, (float)v->note, 1 << 23, 0, 0.0f, x)) {
++            for (j = 0; j < FM6_N; j++) {
++                float s = x[j] * g;
++                fm_buf[FB_BELLL][j] += s * v->gl;
++                fm_buf[FB_BELLR][j] += s * v->gr;
++                fm_buf[FB_BELLE][j] += s;
++            }
++        }
++        if (fm6_note_done(&bell_fm[i], p, p[FP_ALG] & 31u)) {   /* rung out */
+             v->on = 0;
+             midi(0x81, v->note, 0);
+         }
+     }
++
++    if (bass.amp < 1e-5f && !en_playing) {
++        bass.amp = 0.0f;
++    } else {
++        const float g = bass_vol * 0.42f * 0.75f, tgt = en_playing && !bass.rest ? 1.0f : 0.0f,
++                    rate = tgt > 0.0f ? 1.0f / (2.5f * EN_SR) : 1.0f / (4.0f * EN_SR);
++        float amp = bass.amp;
++        bass.note += (bass.target - bass.note) * fm_minf((float)FM6_N * glide_k, 1.0f);   /* Glide */
++        if (fm_voice(&bass_fm, bass_patch, bass.note, 1 << 23, 0, 0.0f, x)) {
++            for (j = 0; j < FM6_N; j++) {
++                amp += (tgt - amp) * rate;
++                fm_buf[FB_BASS][j] = x[j] * amp * g;
++            }
++        } else {
++            for (j = 0; j < FM6_N; j++)
++                amp += (tgt - amp) * rate;
++        }
++        bass.amp = amp;
++    }
++    en_bass_level = bass.amp;
++}
++
++/* this chunk's n samples of the FM6 voices, a block made whenever the last is used up: the pad to its bus, the
++ * bells and the bass to the mix and the sends */
++static void fm_pull(uint32_t n)
++{
++    uint32_t j;
++    for (j = 0; j < n; j++) {
++        float b;
++        if (fm_pos >= FM6_N) {
++            fm_block();
++            fm_pos = 0;
++        }
++        padl[j] = fm_buf[FB_PADL][fm_pos];
++        padr[j] = fm_buf[FB_PADR][fm_pos];
++        b = fm_buf[FB_BASS][fm_pos];
++        mixl[j] += fm_buf[FB_BELLL][fm_pos] + b;
++        mixr[j] += fm_buf[FB_BELLR][fm_pos] + b;
++        rsend[j] += fm_buf[FB_BELLE][fm_pos] * 0.7f + b * 0.08f;
++        esend[j] += fm_buf[FB_BELLE][fm_pos] * 0.85f;
++        fm_pos++;
++    }
+ }
+ 
+ /* a hat: the metal and noise, high-passed (Chamberlin SVF, ~4 to 10 kHz by Hats); no pitch, little echo */
+@@ -1694,9 +1788,8 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
+     const float rg = rev_send * rev_in_gain * (1.0f - 0.25f * arcm), eg = echo_send;
+     for (j = 0; j < n; j++)
+         mixl[j] = mixr[j] = rsend[j] = esend[j] = 0.0f;
+-    render_pad(n);
+-    render_bass(n);
+-    render_bells(n);
++    fm_pull(n);
++    pad_bus(n);
+     render_drums(n);
+     for (j = 0; j < n; j++) {
+         float wl, wr, l, r, el, er, xl, xr;
+diff --git a/app/dsp/amb.h b/app/dsp/amb.h
+index 8efa530..4352176 100644
+--- a/app/dsp/amb.h
++++ b/app/dsp/amb.h
+@@ -5,14 +5,14 @@
+  *
+  *   PAD     four breathing voices: each swells in, hangs and fades on its own cycle (unequal lengths,
+  *           as the loops of Music for Airports), taking its note of the chord as it starts, so the
+- *           chord forms and dissolves. Two colours, by piece: a filtered Rhodes (FM, blooming brighter
+- *           as it swells) or Voices (saws through two formants, as "2/1"); then a soft low-pass and an
+- *           ensemble chorus. The chord moves every DRIFT (20 s .. 5 min): voices on shared
++ *           chord forms and dissolves. Two colours, by piece, both FM6 patches (JIANT FM's 6-operator
++ *           engine, fm6_core.c): a Rhodes (blooming brighter as it swells) or Voices (two carriers apart,
++ *           one fed back, vibrato); then a soft low-pass. The chord moves every DRIFT (20 s .. 5 min): voices on shared
+  *           notes hold, the others breathe in anew.
+- *   BELLS   soft two-operator FM bells played by four tape loops of unequal length (13, 17, 23, 29
++ *   BELLS   soft FM6 bells played by four tape loops of unequal length (13, 17, 23, 29
+  *           quarter notes), each holding a short phrase that shifts against the others, each its own
+  *           shade of bell. EVOLVE changes a note now and then; DENSITY sets how many notes a loop holds.
+- *   BASS    a sine and its sub-octave on the chord's root (now and then its fifth), gliding.
++ *   BASS    an FM6 sine and its sub-octave on the chord's root (now and then its fifth), gliding.
+  *   PULSE   a soft thump, a closed hat and an open hat, each on its own Euclidean pattern (16, 12 and 7
+  *           sixteenths): polyrhythms. HITS sets how many; the patterns turn and change around it.
+  *
+diff --git a/app/dsp/fm6_core.c b/app/dsp/fm6_core.c
+new file mode 100644
+index 0000000..5a1bbff
+--- /dev/null
++++ b/app/dsp/fm6_core.c
+@@ -0,0 +1,583 @@
++/* SPDX-License-Identifier: Apache-2.0
++ * Copyright 2012 Google Inc.
++ * Copyright 2016-2025 Pascal Gauthier.
++ * C port for Felucca (integer only, no float), 2026: Leo Kuroshita (@kurogedelic), Hügelton Instruments
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++/* FM6 core: msfa (the 6-operator FM synthesis core of Dexed, Source/msfa) ported to C.
++ * Kept from msfa: its envelope (env.cc, with ACCURATE_ENVELOPE), pitch envelope (pitchenv.cc), LFO (lfo.cc),
++ * note set-up (the note: level / rate scaling, velocity, operator pitch) and its renderer (fm_core.cc,
++ * fm_op_kernel.cc): one operator at a time over a block, two buses, the 32 algorithm tables, feedback on
++ * the operator that has it. Changed for Felucca:
++ *   - no float or double: the start-up tables (Exp2, Freqlut, Lfo, PitchEnv, the detune curve, FINE) are
++ *     const tables from tools/gen_tables.py (FM6_*); the amplitude-modulation exp() is an Exp2 of the same
++ *     curve; msfa's float pitch bend, MPE and microtuning are gone (Felucca's pitch, bend, glide and tune
++ *     arrive as the note's pitch in 1/16 semitone plus a fine factor: fm6_note_logfreq);
++ *   - the sine is Felucca's 1024-point SINE (Q15), linearly interpolated, scaled by the Q24 gain to msfa's
++ *     Q24 operator output;
++ *   - a block is CTL (32) samples (msfa: 64);
++ *   - no portamento, no operator switches, no controllers (mod wheel, breath, ...): Felucca's matrix does that.
++ * The patch is the 155-byte single-voice layout (FP_* below), operator 0 = the sixth operator, as msfa.
++ *
++ * In AMB-1 (2026), from JIANT FM (github.com/juanjiant-bit/JIANT, firmware/src/fm6_core.c at 8580aea): no 64-bit
++ * multiply inline, for the FM-1's CPU (fm1-base: bsp/docs/CPU.md, a register a bit off when they sit among 16-bit
++ * loads): the operators' sample loops multiply in 32 bits, split exactly (fm6_mulg); the block-rate products go
++ * through fm6_smul / fm6_umul, out of line. The sound is bit for bit the same. */
++
++#define FM6_N CTL
++#define FM6_LG_N 5
++#if (1 << FM6_LG_N) != FM6_N
++#error "FM6_LG_N does not match CTL"
++#endif
++
++/* the 155-byte patch: 6 x 21 operator bytes (the sixth operator first), then the voice */
++enum {
++    FP_R1 = 0, FP_L1 = 4, FP_BP = 8, FP_LD, FP_RD, FP_LC, FP_RC, FP_RS, FP_AMS, FP_KVS, FP_OL, FP_MODE, FP_FC, FP_FF,
++    FP_DET, FP_OP = 21,
++    FP_PR1 = 126, FP_PL1 = 130, FP_ALG = 134, FP_FB, FP_OKS, FP_LFS, FP_LFD, FP_LPMD, FP_LAMD, FP_LKS, FP_LFW,
++    FP_LPMS, FP_TRNSP, FP_NAME, FP_SIZE = 155
++};
++
++/* ---------------------------------------------------------------- math --- */
++/* 64-bit products out of line (bsp/docs/CPU.md): the helper uses the product at once */
++static __attribute__((noinline)) int64_t fm6_smul(int64_t a, int64_t b) { return a * b; }
++static __attribute__((noinline)) uint64_t fm6_umul(uint64_t a, uint64_t b) { return a * b; }
++/* (s * g) >> 15 of a Q15 sine and a gain, in 32 bits: g = gh * 2^16 + gl (gl 0..65535), so
++ * (s * g) >> 15 = 2 * s * gh + ((s * gl) >> 15) exactly; |s * gl| < 2^31 for |s| <= 32767 */
++static inline int32_t fm6_mulg(int32_t s, int32_t g)
++{
++    return s * (g >> 16) * 2 + ((s * (int32_t)((uint32_t)g & 0xFFFFu)) >> 15);
++}
++/* 2^(x / 2^24), Q24 (msfa Exp2::lookup): the Q30 mantissa from FM6_EXP2, shifted by the integer part */
++static inline uint32_t fm6_mant(int32_t x)
++{
++    uint32_t f = (uint32_t)x & 0xFFFFFFu, k = f >> 14, a = FM6_EXP2[k];
++    return (1u << 30) + a + (uint32_t)(fm6_umul(FM6_EXP2[k + 1u] - a, f & 0x3FFFu) >> 14);
++}
++static inline int32_t fm6_exp2(int32_t x)
++{
++    int32_t i = x >> 24;
++    uint32_t m = fm6_mant(x);
++    return i < -24 ? 0 : (int32_t)(m >> (i > 5 ? 1 : 6 - i));      /* (msfa: up to 2^6; here 2^5 at most) */
++}
++/* phase increment (Q24 cycles per sample) of log2 frequency x (Q24) (msfa Freqlut::lookup) */
++static inline int32_t fm6_freq(int32_t x)
++{
++    int32_t i = x >> 24;
++    uint32_t q = (uint32_t)(fm6_umul(fm6_mant(x), FM6_FREQ_R) >> 25);    /* 2^(i + 21) Hz units */
++    if (i < 0)
++        return 0;
++    return (int32_t)(q >> (21 - (i > 21 ? 21 : i)));
++}
++/* sine of a Q24 phase (one cycle = 2^24), Q15, linear between SINE's 1024 points (its 1025th = the 1st) */
++static inline int32_t fm6_sin(int32_t ph)
++{
++    const int16_t *s = &SINE[((uint32_t)ph >> 14) & 1023u];
++    return s[0] + (((s[1] - s[0]) * (int32_t)(ph & 0x3FFF)) >> 14);
++}
++
++/* ------------------------------------------------------------ envelope --- */
++typedef struct {                 /* msfa Env: level in Q24 log2 (2^24 = 6 dB), 16 more bits than the original */
++    int32_t level, target, inc, statc;
++    int16_t outlevel;            /* microsteps (99 * 32 = full) */
++    uint8_t rscale, ix, rising, down;
++} fm6_env_t;
++
++static const uint8_t FM6_LEVELLUT[20] = {0, 5, 9, 13, 17, 20, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 42, 43, 45, 46};
++static int32_t fm6_scaleout(int32_t ol) { return ol >= 20 ? 28 + ol : FM6_LEVELLUT[ol < 0 ? 0 : ol]; }
++
++/* samples at 44.1 kHz a stage holds when its level does not move (msfa ACCURATE_ENVELOPE) */
++static const int32_t FM6_STATICS[77] = {
++    1764000, 1764000, 1411200, 1411200, 1190700, 1014300, 992250, 882000, 705600, 705600, 584325, 507150, 502740,
++    441000, 418950, 352800, 308700, 286650, 253575, 220500, 220500, 176400, 145530, 145530, 125685, 110250, 110250,
++    88200, 88200, 74970, 61740, 61740, 55125, 48510, 44100, 37485, 31311, 30870, 27562, 27562, 22050, 18522, 17640,
++    15435, 14112, 13230, 11025, 9261, 9261, 7717, 6615, 6615, 5512, 5512, 4410, 3969, 3969, 3439, 2866, 2690, 2249,
++    1984, 1896, 1808, 1411, 1367, 1234, 1146, 926, 837, 837, 705, 573, 573, 529, 441, 441};
++
++/* stage ix (0..3; 4 = done) of an envelope whose rates and levels are op[FP_R1..], op[FP_L1..] */
++static void fm6_env_advance(fm6_env_t *e, const uint8_t *op, uint32_t ix)
++{
++    int32_t lv, actual, qrate;
++    e->ix = (uint8_t)ix;
++    if (ix >= 4u)
++        return;
++    lv = op[FP_L1 + ix];
++    actual = fm6_scaleout(lv) >> 1;
++    actual = (actual << 6) + e->outlevel - 4256;
++    actual = actual < 16 ? 16 : actual;
++    e->target = actual << 16;
++    e->rising = e->target > e->level;
++    qrate = ((op[FP_R1 + ix] * 41) >> 6) + e->rscale;
++    qrate = qrate > 63 ? 63 : qrate;
++    if (e->target == e->level || (ix == 0u && lv == 0)) {
++        int32_t sr = op[FP_R1 + ix] + e->rscale;
++        sr = sr > 99 ? 99 : sr;
++        e->statc = sr < 77 ? FM6_STATICS[sr] : 20 * (99 - sr);
++        if (sr < 77 && ix == 0u && lv == 0)
++            e->statc /= 20;                     /* the attack is scaled faster (a stage change, not per sample) */
++    } else {
++        e->statc = 0;
++    }
++    e->inc = (4 + (qrate & 3)) << (2 + FM6_LG_N + (qrate >> 2));
++}
++
++static void fm6_env_init(fm6_env_t *e, const uint8_t *op, int32_t outlevel, int32_t rate_scaling)
++{
++    e->outlevel = (int16_t)outlevel;
++    e->rscale = (uint8_t)rate_scaling;
++    e->level = 0;
++    e->down = 1;
++    fm6_env_advance(e, op, 0);
++}
++
++static int32_t fm6_env_get(fm6_env_t *e, const uint8_t *op)
++{
++    if (e->statc) {
++        e->statc -= FM6_N;
++        if (e->statc <= 0) {
++            e->statc = 0;
++            fm6_env_advance(e, op, e->ix + 1u);
++        }
++    }
++    if (e->ix < 3u || (e->ix < 4u && !e->down)) {
++        if (e->statc) {
++            ;
++        } else if (e->rising) {
++            if (e->level < (1716 << 16))
++                e->level = 1716 << 16;
++            e->level += (((17 << 24) - e->level) >> 24) * e->inc;
++            if (e->level >= e->target) {
++                e->level = e->target;
++                fm6_env_advance(e, op, e->ix + 1u);
++            }
++        } else {
++            e->level -= e->inc;
++            if (e->level <= e->target) {
++                e->level = e->target;
++                fm6_env_advance(e, op, e->ix + 1u);
++            }
++        }
++    }
++    return e->level;
++}
++
++static void fm6_env_key(fm6_env_t *e, const uint8_t *op, int down)
++{
++    if (e->down != (uint8_t)down) {
++        e->down = (uint8_t)down;
++        fm6_env_advance(e, op, down ? 0u : 3u);
++    }
++}
++
++/* ------------------------------------------------------ pitch envelope --- */
++typedef struct {
++    int32_t level, target, inc;
++    uint8_t ix, rising, down, rsv;
++} fm6_penv_t;
++
++static const uint8_t FM6_PENV_RATE[100] = {
++    1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 16, 16, 17, 18, 18,
++    19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 33, 34, 36, 37, 38, 39, 41, 42, 44, 46, 47, 49, 51, 53, 54, 56,
++    58, 60, 62, 64, 66, 68, 70, 72, 74, 76, 79, 82, 85, 88, 91, 94, 98, 102, 106, 110, 115, 120, 125, 130, 135, 141,
++    147, 153, 159, 165, 171, 178, 185, 193, 202, 211, 232, 243, 254, 255};
++static const int8_t FM6_PENV_TAB[100] = {
++    -128, -116, -104, -95, -85, -76, -68, -61, -56, -52, -49, -46, -43, -41, -39, -37, -35, -33, -32, -31, -30, -29,
++    -28, -27, -26, -25, -24, -23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6,
++    -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
++    26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 38, 40, 43, 46, 49, 53, 58, 65, 73, 82, 92, 103, 115, 127};
++
++static void fm6_penv_advance(fm6_penv_t *e, const uint8_t *p, uint32_t ix)
++{
++    e->ix = (uint8_t)ix;
++    if (ix < 4u) {
++        e->target = FM6_PENV_TAB[p[FP_PL1 + ix] % 100u] * (1 << 19);
++        e->rising = e->target > e->level;
++        e->inc = FM6_PENV_RATE[p[FP_PR1 + ix] % 100u] * FM6_PENV_UNIT;
++    }
++}
++static void fm6_penv_init(fm6_penv_t *e, const uint8_t *p)
++{
++    e->level = FM6_PENV_TAB[p[FP_PL1 + 3] % 100u] * (1 << 19);
++    e->down = 1;
++    fm6_penv_advance(e, p, 0);
++}
++static int32_t fm6_penv_get(fm6_penv_t *e, const uint8_t *p)
++{
++    if (e->ix < 3u || (e->ix < 4u && !e->down)) {
++        if (e->rising) {
++            e->level += e->inc;
++            if (e->level >= e->target) {
++                e->level = e->target;
++                fm6_penv_advance(e, p, e->ix + 1u);
++            }
++        } else {
++            e->level -= e->inc;
++            if (e->level <= e->target) {
++                e->level = e->target;
++                fm6_penv_advance(e, p, e->ix + 1u);
++            }
++        }
++    }
++    return e->level;
++}
++static void fm6_penv_key(fm6_penv_t *e, const uint8_t *p, int down)
++{
++    if (e->down != (uint8_t)down) {
++        e->down = (uint8_t)down;
++        fm6_penv_advance(e, p, down ? 0u : 3u);
++    }
++}
++
++/* ----------------------------------------------------------------- LFO --- */
++typedef struct {
++    uint32_t phase, delta, dstate, dinc, dinc2;
++    uint8_t wave, rnd, sync, rsv;
++} fm6_lfo_t;
++
++static void fm6_lfo_reset(fm6_lfo_t *l, const uint8_t *p)   /* the patch's LFO (msfa Lfo::reset); phase kept */
++{
++    int32_t a = 99 - (p[FP_LFD] % 100u);
++    l->delta = FM6_LFO_DELTA[p[FP_LFS] % 100u];
++    if (a == 99) {
++        l->dinc = l->dinc2 = ~0u;
++    } else {
++        a = (16 + (a & 15)) << (1 + (a >> 4));
++        l->dinc = (uint32_t)(FM6_LFO_UNIT * a);
++        a &= 0xff80;
++        a = a < 0x80 ? 0x80 : a;
++        l->dinc2 = (uint32_t)(FM6_LFO_UNIT * a);
++    }
++    l->wave = p[FP_LFW];
++    l->sync = p[FP_LKS] != 0;
++}
++
++static int32_t fm6_lfo_sample(fm6_lfo_t *l)   /* 0..1, Q24; once a block */
++{
++    int32_t x;
++    l->phase += l->delta;
++    switch (l->wave) {
++    case 0:                                       /* triangle */
++        x = (int32_t)(l->phase >> 7);
++        x ^= -(int32_t)(l->phase >> 31);
++        return x & ((1 << 24) - 1);
++    case 1:                                       /* saw down */
++        return (int32_t)((~l->phase ^ (1u << 31)) >> 8);
++    case 2:                                       /* saw up */
++        return (int32_t)((l->phase ^ (1u << 31)) >> 8);
++    case 3:                                       /* square */
++        return (int32_t)(((~l->phase) >> 7) & (1u << 24));
++    case 4:                                       /* sine */
++        return (1 << 23) + (fm6_sin((int32_t)(l->phase >> 8)) << 8);
++    case 5:                                       /* sample and hold */
++        if (l->phase < l->delta)
++            l->rnd = (uint8_t)((l->rnd * 179 + 17) & 0xff);
++        return ((l->rnd ^ 0x80) + 1) << 16;
++    }
++    return 1 << 23;
++}
++
++static int32_t fm6_lfo_delay(fm6_lfo_t *l)   /* the delay ramp, 0..1 Q24; once a block */
++{
++    uint32_t d = l->dstate < (1u << 31) ? l->dinc : l->dinc2, s = l->dstate + d;
++    if (s < l->dstate)                            /* past 2^32: delayed in full */
++        return 1 << 24;
++    l->dstate = s;
++    return s < (1u << 31) ? 0 : (int32_t)((s >> 7) & ((1u << 24) - 1u));
++}
++
++static void fm6_lfo_key(fm6_lfo_t *l)
++{
++    if (l->sync)
++        l->phase = (1u << 31) - 1u;
++    l->dstate = 0;
++}
++
++/* ------------------------------------------------------- the algorithms --- */
++enum { FM6_OB1 = 1, FM6_OB2 = 2, FM6_OADD = 4, FM6_IB1 = 16, FM6_IB2 = 32, FM6_FBIN = 64, FM6_FBOUT = 128 };
++static const uint8_t FM6_ALG[32][6] = {      /* per operator (the sixth first): in bus, out bus, add, feedback */
++    {0xc1, 0x11, 0x11, 0x14, 0x01, 0x14}, {0x01, 0x11, 0x11, 0x14, 0xc1, 0x14}, {0xc1, 0x11, 0x14, 0x01, 0x11, 0x14},
++    {0xc1, 0x11, 0x94, 0x01, 0x11, 0x14}, {0xc1, 0x14, 0x01, 0x14, 0x01, 0x14}, {0xc1, 0x94, 0x01, 0x14, 0x01, 0x14},
++    {0xc1, 0x11, 0x05, 0x14, 0x01, 0x14}, {0x01, 0x11, 0xc5, 0x14, 0x01, 0x14}, {0x01, 0x11, 0x05, 0x14, 0xc1, 0x14},
++    {0x01, 0x05, 0x14, 0xc1, 0x11, 0x14}, {0xc1, 0x05, 0x14, 0x01, 0x11, 0x14}, {0x01, 0x05, 0x05, 0x14, 0xc1, 0x14},
++    {0xc1, 0x05, 0x05, 0x14, 0x01, 0x14}, {0xc1, 0x05, 0x11, 0x14, 0x01, 0x14}, {0x01, 0x05, 0x11, 0x14, 0xc1, 0x14},
++    {0xc1, 0x11, 0x02, 0x25, 0x05, 0x14}, {0x01, 0x11, 0x02, 0x25, 0xc5, 0x14}, {0x01, 0x11, 0x11, 0xc5, 0x05, 0x14},
++    {0xc1, 0x14, 0x14, 0x01, 0x11, 0x14}, {0x01, 0x05, 0x14, 0xc1, 0x14, 0x14}, {0x01, 0x14, 0x14, 0xc1, 0x14, 0x14},
++    {0xc1, 0x14, 0x14, 0x14, 0x01, 0x14}, {0xc1, 0x14, 0x14, 0x01, 0x14, 0x04}, {0xc1, 0x14, 0x14, 0x14, 0x04, 0x04},
++    {0xc1, 0x14, 0x14, 0x04, 0x04, 0x04}, {0xc1, 0x05, 0x14, 0x01, 0x14, 0x04}, {0x01, 0x05, 0x14, 0xc1, 0x14, 0x04},
++    {0x04, 0xc1, 0x11, 0x14, 0x01, 0x14}, {0xc1, 0x14, 0x01, 0x14, 0x04, 0x04}, {0x04, 0xc1, 0x11, 0x14, 0x04, 0x04},
++    {0xc1, 0x14, 0x04, 0x04, 0x04, 0x04}, {0xc4, 0x04, 0x04, 0x04, 0x04, 0x04}};
++
++/* bit k: operator k (the sixth first) is a carrier of algorithm a (0..31): it writes the output bus (msfa's
++ * isCarrier also counts the modulators that add into bus 1 or 2) */
++static uint32_t fm6_carriers(uint32_t a)
++{
++    uint32_t k, c = 0;
++    for (k = 0; k < 6u; k++)
++        c |= ((FM6_ALG[a & 31u][k] & 3u) ? 0u : 1u) << k;
++    return c;
++}
++
++/* ------------------------------------------------------- the operators --- */
++typedef struct {                 /* msfa FmOpParams */
++    int32_t level_in;            /* Q24 log2 */
++    int32_t gain_out;            /* Q24 */
++    int32_t freq;                /* Q24 cycles per sample */
++    int32_t phase;               /* Q24 */
++} fm6_op_t;
++
++#define FM6_THRESH 1120          /* msfa kLevelThresh: an operator below it on both block ends is skipped */
++#define FM6_DONE (FM6_THRESH * 8) /* (JIANT 0.6.14) a released note ends once its carriers are under it (~18 dB above
++                                   * the skip: a long release's tail, inaudible, computed for seconds on six operators) */
++
++/* one operator over the block: modulated by in (0: none), into out (add: += else =). Four loops, so none
++ * tests a flag per sample */
++#define FM6_OP_LOOP(PH, STORE)                                                    \
++    for (i = 0; i < FM6_N; i++) {                                               \
++        g += dg;                                                                \
++        out[i] STORE fm6_mulg(fm6_sin(PH), g);                                  \
++        phase = (int32_t)((uint32_t)phase + (uint32_t)freq);                    \
++    }
++static __attribute__((noinline)) void fm6_op_run(int32_t *out, const int32_t *in, int32_t phase, int32_t freq,
++                                                 int32_t g1, int32_t g2, int add)
++{
++    int32_t dg = (g2 - g1 + (FM6_N >> 1)) >> FM6_LG_N, g = g1;
++    uint32_t i;
++    if (in && add)
++        FM6_OP_LOOP(phase + in[i], +=)
++    else if (in)
++        FM6_OP_LOOP(phase + in[i], =)
++    else if (add)
++        FM6_OP_LOOP(phase, +=)
++    else
++        FM6_OP_LOOP(phase, =)
++}
++
++/* the operator with feedback (fb: its last two outputs) */
++static __attribute__((noinline)) void fm6_op_fb(int32_t *out, int32_t phase, int32_t freq, int32_t g1, int32_t g2,
++                                                int32_t *fb, int32_t shift, int add)
++{
++    int32_t dg = (g2 - g1 + (FM6_N >> 1)) >> FM6_LG_N, g = g1, y0 = fb[0], y = fb[1];
++    uint32_t i;
++    for (i = 0; i < FM6_N; i++) {
++        int32_t s = (y0 + y) >> (shift + 1);
++        g += dg;
++        y0 = y;
++        y = fm6_mulg(fm6_sin(phase + s), g);
++        out[i] = add ? out[i] + y : y;
++        phase = (int32_t)((uint32_t)phase + (uint32_t)freq);
++    }
++    fb[0] = y0;
++    fb[1] = y;
++}
++
++/* msfa FmCore::render: the six operators of algorithm alg into out (Q24). Unlike msfa, out starts empty:
++ * the first carrier sounding writes it, the next ones add. Returns 0 when none sounded (out untouched) */
++#ifndef MC_CPU
++#define MC_CPU() 0u                 /* (built alone: tests/fm6_test.c) */
++#endif
++static int32_t fm6_bus_c[2][2][FM6_N];   /* (JIANT 0.6.71) one pair a core (core.h MC_CPU) */
++static int fm6_core_render(int32_t *out, fm6_op_t *op, uint32_t alg, int32_t *fb, int32_t fb_shift)
++{
++    int32_t (*fm6_bus)[FM6_N] = fm6_bus_c[MC_CPU() & 1u];
++    const uint8_t *a = FM6_ALG[alg & 31u];
++    uint8_t has[3] = {0, 0, 0};
++    uint32_t k;
++    for (k = 0; k < 6u; k++) {
++        uint32_t f = a[k], inbus = (f >> 4) & 3u, outbus = f & 3u;
++        int add = (f & FM6_OADD) != 0;
++        int32_t *o = outbus ? fm6_bus[outbus - 1u] : out;
++        int32_t g1 = op[k].gain_out, g2 = fm6_exp2(op[k].level_in - (14 << 24));
++        op[k].gain_out = g2;
++        if (g1 >= FM6_THRESH || g2 >= FM6_THRESH) {
++            if (!has[outbus])
++                add = 0;
++            if (inbus == 0u || !has[inbus]) {
++                if ((f & 0xc0u) == 0xc0u && fb_shift < 16)
++                    fm6_op_fb(o, op[k].phase, op[k].freq, g1, g2, fb, fb_shift, add);
++                else
++                    fm6_op_run(o, 0, op[k].phase, op[k].freq, g1, g2, add);
++            } else {
++                fm6_op_run(o, fm6_bus[inbus - 1u], op[k].phase, op[k].freq, g1, g2, add);
++            }
++            has[outbus] = 1;
++        } else if (!add) {
++            has[outbus] = 0;
++        }
++        op[k].phase = (int32_t)((uint32_t)op[k].phase + ((uint32_t)op[k].freq << FM6_LG_N));
++    }
++    return has[0];
++}
++
++/* ------------------------------------------------------------ the note --- */
++typedef struct {                 /* a sounding note (msfa's note): 244 bytes */
++    fm6_env_t env[6];
++    fm6_op_t op[6];
++    int32_t base[6];             /* the operator's pitch: ratio: log2 offset from the note's (Q24); fixed: log2 Hz */
++    int32_t fb[2];
++    fm6_penv_t penv;
++    uint8_t fixed;               /* bit k: operator k has a fixed frequency */
++    uint8_t live, down, trim;    /* trim (eng_fm6.c, JIANT 0.6.8): the output attenuation its last block had */
++    int32_t dc;                  /* (eng_fm6.c) the output's DC blocker */
++} fm6_note_t;
++
++static const int32_t FM6_COARSE[32] = {
++    -16777216, 0, 16777216, 26591258, 33554432, 38955489, 43368474, 47099600, 50331648, 53182516, 55732705,
++    58039632, 60145690, 62083076, 63876816, 65546747, 67108864, 68576247, 69959732, 71268397, 72509921, 73690858,
++    74816848, 75892776, 76922906, 77910978, 78860292, 79773775, 80654032, 81503396, 82323963, 83117622};
++static const uint8_t FM6_VELDATA[64] = {
++    0, 70, 86, 97, 106, 114, 121, 126, 132, 138, 142, 148, 152, 156, 160, 163, 166, 170, 173, 174, 178, 181, 184,
++    186, 189, 190, 194, 196, 198, 200, 202, 205, 206, 209, 211, 214, 216, 218, 220, 222, 224, 225, 227, 229, 230,
++    232, 233, 235, 237, 238, 240, 241, 242, 243, 244, 246, 246, 248, 249, 250, 251, 252, 253, 254};
++static const uint8_t FM6_EXPSCALE[33] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 14, 16, 19, 23, 27, 33, 39, 47, 56, 66,
++                                         80, 94, 110, 126, 142, 158, 174, 190, 206, 222, 238, 250};
++static const uint8_t FM6_PMS[8] = {0, 10, 20, 33, 55, 92, 153, 255};
++static const uint32_t FM6_AMSENS[4] = {0, 4342338, 7171437, 16777216};
++#define FM6_LOGF0 50857777       /* log2 of MIDI note 0's frequency, Q24 */
++
++static int32_t fm6_scale_vel(int32_t vel, int32_t sens)
++{
++    int32_t v = FM6_VELDATA[(vel < 0 ? 0 : vel > 127 ? 127 : vel) >> 1] - 239;
++    return ((sens * v + 7) >> 3) << 4;
++}
++static int32_t fm6_scale_rate(int32_t note, int32_t sens)
++{
++    int32_t x = note / 3 - 7;
++    x = x < 0 ? 0 : x > 31 ? 31 : x;
++    return (sens * x) >> 3;
++}
++static int32_t fm6_scale_curve(int32_t group, int32_t depth, int32_t curve)
++{
++    int32_t s;
++    if (curve == 0 || curve == 3)
++        s = (group * depth * 329) >> 12;
++    else
++        s = (FM6_EXPSCALE[group > 32 ? 32 : group] * depth * 329) >> 15;
++    return curve < 2 ? -s : s;
++}
++static int32_t fm6_scale_level(int32_t note, const uint8_t *op)
++{
++    int32_t off = note - op[FP_BP] - 17;
++    return off >= 0 ? fm6_scale_curve((off + 1) / 3, op[FP_RD], op[FP_RC])
++                    : fm6_scale_curve(-(off - 1) / 3, op[FP_LD], op[FP_LC]);
++}
++
++/* the operator's pitch (msfa note osc_freq): ratio mode as an offset from the note, fixed mode absolute */
++static int32_t fm6_osc_base(const uint8_t *op, int32_t note, int32_t extra)
++{
++    int32_t det = op[FP_DET];
++    if (!op[FP_MODE]) {
++        int32_t lf = (int32_t)FM6_DETUNE[note] * (det - 7) + FM6_COARSE[op[FP_FC] & 31u] + extra;
++        return op[FP_FF] ? lf + FM6_FINE[op[FP_FF] % 100u] : lf;
++    }
++    return ((4458616 * ((op[FP_FC] & 3) * 100 + op[FP_FF] % 100u)) >> 3) + (det > 7 ? 13457 * (det - 7) : 0);
++}
++
++/* a note-on (msfa note init) of patch p, MIDI note `note` (transposed), velocity vel. fresh: from silence
++ * (phases, gains, feedback 0); else a retrigger keeps them, as msfa does */
++static void fm6_note_init(fm6_note_t *n, const uint8_t *p, int32_t note, int32_t vel, int fresh)
++{
++    uint32_t k;
++    note = note < 0 ? 0 : note > 127 ? 127 : note;
++    if (fresh) {
++        for (k = 0; k < 6u; k++)
++            n->op[k].phase = n->op[k].gain_out = 0;
++        n->fb[0] = n->fb[1] = 0;
++        n->dc = 0;
++    }
++    n->fixed = 0;
++    for (k = 0; k < 6u; k++) {
++        const uint8_t *op = p + k * FP_OP;
++        int32_t ol = fm6_scaleout(op[FP_OL]) + fm6_scale_level(note, op);
++        ol = (ol > 127 ? 127 : ol) << 5;
++        ol += fm6_scale_vel(vel, op[FP_KVS]);
++        fm6_env_init(&n->env[k], op, ol < 0 ? 0 : ol, fm6_scale_rate(note, op[FP_RS]));
++        n->base[k] = fm6_osc_base(op, note, 0);
++        n->fixed |= (uint8_t)((op[FP_MODE] & 1u) << k);
++    }
++    fm6_penv_init(&n->penv, p);
++    n->live = n->down = 1;
++}
++
++static void fm6_note_key(fm6_note_t *n, const uint8_t *p, int down)
++{
++    uint32_t k;
++    for (k = 0; k < 6u; k++)
++        fm6_env_key(&n->env[k], p + k * FP_OP, down);
++    fm6_penv_key(&n->penv, p, down);
++    n->down = (uint8_t)down;
++}
++
++/* the log2 frequency (Q24) of a pitch in 1/16 semitone plus a fine factor (1 + fine / 4096: Felucca's
++ * unison detune, tune and bend below 1/16 semitone): log2(1 + x) ~ x / ln 2 for these small factors */
++static int32_t fm6_note_logfreq(int32_t pitch16, int32_t fine)
++{
++    return FM6_LOGF0 + (int32_t)(fm6_smul(pitch16, (1 << 24) / 12) >> 4) + fine * 5909;
++}
++
++/* one block (msfa note compute): the LFO's value and delay (Q24), the note's log2 frequency, the patch's
++ * algorithm and feedback (already through the macros), dt[k]: a pitch offset per operator (Q24),
++ * modlvl: a level offset of the operators that are not carriers (Q24 log2). Writes out (Q24); 0 = silent
++ * (out untouched) */
++static int fm6_note_compute(fm6_note_t *n, const uint8_t *p, int32_t *out, int32_t lfo_val, int32_t lfo_delay,
++                             int32_t logfreq, uint32_t alg, int32_t fb, const int32_t *dt, int32_t modlvl)
++{
++    uint32_t pmd = (uint32_t)((p[FP_LPMD] % 100u) * 165u >> 6) * (uint32_t)lfo_delay;   /* Q32 */
++    int32_t senslfo = FM6_PMS[p[FP_LPMS] & 7u] * (lfo_val - (1 << 23));
++    int32_t pmod = (int32_t)(fm6_smul(pmd, senslfo) >> 39), pitch_mod;
++    uint32_t amd = (uint32_t)((p[FP_LAMD] % 100u) * 165u >> 6), amod, car = fm6_carriers(alg), k;
++    pmod = pmod < 0 ? -pmod : pmod;
++    pitch_mod = fm6_penv_get(&n->penv, p) + (senslfo < 0 ? -pmod : pmod);
++    amod = (uint32_t)(fm6_smul(amd, lfo_delay) >> 8);                 /* Q24 */
++    amod = (uint32_t)(fm6_smul(amod, (1 << 24) - lfo_val) >> 24);
++    for (k = 0; k < 6u; k++) {
++        const uint8_t *op = p + k * FP_OP;
++        int32_t level = fm6_env_get(&n->env[k], op);
++        uint32_t ams = FM6_AMSENS[op[FP_AMS] & 3u];
++        n->op[k].freq = fm6_freq((n->fixed >> k) & 1u ? n->base[k] : logfreq + n->base[k] + pitch_mod + dt[k]);
++        if (ams) {                                 /* msfa: pt = exp(sensamp / 262144 * 0.07 + 12.2) */
++            uint32_t sensamp = (uint32_t)(fm6_umul(amod, ams) >> 24);
++            int32_t lg = FM6_AMS_C0 + (int32_t)(fm6_umul(sensamp, FM6_AMS_K) >> 10);
++            uint32_t pt = fm6_mant(lg) << ((lg >> 24) - 16);   /* (2^17.6 .. 2^24.1: shift 1..8) */
++            level -= (int32_t)(fm6_umul((uint32_t)level, (uint64_t)pt << 4) >> 28);
++        }
++        if (!((car >> k) & 1u))
++            level += modlvl;
++        n->op[k].level_in = level < 0 ? 0 : level > (17 << 24) ? 17 << 24 : level;
++    }
++    return fm6_core_render(out, n->op, alg, n->fb, fb ? 8 - fb : 16);
++}
++
++/* the note can be dropped: every carrier silent for good (released and done, or held at a silent
++ * sustain whose release can only fall) */
++static int fm6_note_done(const fm6_note_t *n, const uint8_t *p, uint32_t alg)
++{
++    uint32_t car = fm6_carriers(alg), k;
++    for (k = 0; k < 6u; k++) {
++        const fm6_env_t *e = &n->env[k];
++        if (!((car >> k) & 1u))
++            continue;
++        if (n->op[k].gain_out >= FM6_DONE)
++            return 0;
++        if (e->ix < 3u)
++            return 0;
++        if (e->ix == 3u && !e->down && e->rising)
++            return 0;
++        if (e->ix == 3u && e->down) {              /* holding: a release towards L4 must not rise */
++            int32_t a = (fm6_scaleout(p[k * FP_OP + FP_L1 + 3]) >> 1 << 6) + e->outlevel - 4256;
++            if ((a < 16 ? 16 : a) << 16 > e->level)
++                return 0;
++        }
++    }
++    return 1;
++}
+diff --git a/app/dsp/fm6_tables.h b/app/dsp/fm6_tables.h
+new file mode 100644
+index 0000000..308669b
+--- /dev/null
++++ b/app/dsp/fm6_tables.h
+@@ -0,0 +1,267 @@
++/* SPDX-License-Identifier: MPL-2.0
++ * generated by tools/gen_fm6_tables.py: the start-up tables of msfa (fm6_core.c), precomputed */
++#pragma once
++#include <stdint.h>
++#define CTL 32                          /* the FM6 block, in samples */
++#define FM6_LFO_UNIT 18279
++#define FM6_PENV_UNIT 572
++#define FM6_FREQ_R 24932236u
++#define FM6_AMS_C0 295293757
++#define FM6_AMS_K 6618
++
++static const int16_t SINE[1025] = {
++    0, 201, 402, 603, 804, 1005, 1206, 1407, 1608, 1809, 2009, 2210,
++    2410, 2611, 2811, 3012, 3212, 3412, 3612, 3811, 4011, 4210, 4410, 4609,
++    4808, 5007, 5205, 5404, 5602, 5800, 5998, 6195, 6393, 6590, 6786, 6983,
++    7179, 7375, 7571, 7767, 7962, 8157, 8351, 8545, 8739, 8933, 9126, 9319,
++    9512, 9704, 9896, 10087, 10278, 10469, 10659, 10849, 11039, 11228, 11417, 11605,
++    11793, 11980, 12167, 12353, 12539, 12725, 12910, 13094, 13279, 13462, 13645, 13828,
++    14010, 14191, 14372, 14553, 14732, 14912, 15090, 15269, 15446, 15623, 15800, 15976,
++    16151, 16325, 16499, 16673, 16846, 17018, 17189, 17360, 17530, 17700, 17869, 18037,
++    18204, 18371, 18537, 18703, 18868, 19032, 19195, 19357, 19519, 19680, 19841, 20000,
++    20159, 20317, 20475, 20631, 20787, 20942, 21096, 21250, 21403, 21554, 21705, 21856,
++    22005, 22154, 22301, 22448, 22594, 22739, 22884, 23027, 23170, 23311, 23452, 23592,
++    23731, 23870, 24007, 24143, 24279, 24413, 24547, 24680, 24811, 24942, 25072, 25201,
++    25329, 25456, 25582, 25708, 25832, 25955, 26077, 26198, 26319, 26438, 26556, 26674,
++    26790, 26905, 27019, 27133, 27245, 27356, 27466, 27575, 27683, 27790, 27896, 28001,
++    28105, 28208, 28310, 28411, 28510, 28609, 28706, 28803, 28898, 28992, 29085, 29177,
++    29268, 29358, 29447, 29534, 29621, 29706, 29791, 29874, 29956, 30037, 30117, 30195,
++    30273, 30349, 30424, 30498, 30571, 30643, 30714, 30783, 30852, 30919, 30985, 31050,
++    31113, 31176, 31237, 31297, 31356, 31414, 31470, 31526, 31580, 31633, 31685, 31736,
++    31785, 31833, 31880, 31926, 31971, 32014, 32057, 32098, 32137, 32176, 32213, 32250,
++    32285, 32318, 32351, 32382, 32412, 32441, 32469, 32495, 32521, 32545, 32567, 32589,
++    32609, 32628, 32646, 32663, 32678, 32692, 32705, 32717, 32728, 32737, 32745, 32752,
++    32757, 32761, 32765, 32766, 32767, 32766, 32765, 32761, 32757, 32752, 32745, 32737,
++    32728, 32717, 32705, 32692, 32678, 32663, 32646, 32628, 32609, 32589, 32567, 32545,
++    32521, 32495, 32469, 32441, 32412, 32382, 32351, 32318, 32285, 32250, 32213, 32176,
++    32137, 32098, 32057, 32014, 31971, 31926, 31880, 31833, 31785, 31736, 31685, 31633,
++    31580, 31526, 31470, 31414, 31356, 31297, 31237, 31176, 31113, 31050, 30985, 30919,
++    30852, 30783, 30714, 30643, 30571, 30498, 30424, 30349, 30273, 30195, 30117, 30037,
++    29956, 29874, 29791, 29706, 29621, 29534, 29447, 29358, 29268, 29177, 29085, 28992,
++    28898, 28803, 28706, 28609, 28510, 28411, 28310, 28208, 28105, 28001, 27896, 27790,
++    27683, 27575, 27466, 27356, 27245, 27133, 27019, 26905, 26790, 26674, 26556, 26438,
++    26319, 26198, 26077, 25955, 25832, 25708, 25582, 25456, 25329, 25201, 25072, 24942,
++    24811, 24680, 24547, 24413, 24279, 24143, 24007, 23870, 23731, 23592, 23452, 23311,
++    23170, 23027, 22884, 22739, 22594, 22448, 22301, 22154, 22005, 21856, 21705, 21554,
++    21403, 21250, 21096, 20942, 20787, 20631, 20475, 20317, 20159, 20000, 19841, 19680,
++    19519, 19357, 19195, 19032, 18868, 18703, 18537, 18371, 18204, 18037, 17869, 17700,
++    17530, 17360, 17189, 17018, 16846, 16673, 16499, 16325, 16151, 15976, 15800, 15623,
++    15446, 15269, 15090, 14912, 14732, 14553, 14372, 14191, 14010, 13828, 13645, 13462,
++    13279, 13094, 12910, 12725, 12539, 12353, 12167, 11980, 11793, 11605, 11417, 11228,
++    11039, 10849, 10659, 10469, 10278, 10087, 9896, 9704, 9512, 9319, 9126, 8933,
++    8739, 8545, 8351, 8157, 7962, 7767, 7571, 7375, 7179, 6983, 6786, 6590,
++    6393, 6195, 5998, 5800, 5602, 5404, 5205, 5007, 4808, 4609, 4410, 4210,
++    4011, 3811, 3612, 3412, 3212, 3012, 2811, 2611, 2410, 2210, 2009, 1809,
++    1608, 1407, 1206, 1005, 804, 603, 402, 201, 0, -201, -402, -603,
++    -804, -1005, -1206, -1407, -1608, -1809, -2009, -2210, -2410, -2611, -2811, -3012,
++    -3212, -3412, -3612, -3811, -4011, -4210, -4410, -4609, -4808, -5007, -5205, -5404,
++    -5602, -5800, -5998, -6195, -6393, -6590, -6786, -6983, -7179, -7375, -7571, -7767,
++    -7962, -8157, -8351, -8545, -8739, -8933, -9126, -9319, -9512, -9704, -9896, -10087,
++    -10278, -10469, -10659, -10849, -11039, -11228, -11417, -11605, -11793, -11980, -12167, -12353,
++    -12539, -12725, -12910, -13094, -13279, -13462, -13645, -13828, -14010, -14191, -14372, -14553,
++    -14732, -14912, -15090, -15269, -15446, -15623, -15800, -15976, -16151, -16325, -16499, -16673,
++    -16846, -17018, -17189, -17360, -17530, -17700, -17869, -18037, -18204, -18371, -18537, -18703,
++    -18868, -19032, -19195, -19357, -19519, -19680, -19841, -20000, -20159, -20317, -20475, -20631,
++    -20787, -20942, -21096, -21250, -21403, -21554, -21705, -21856, -22005, -22154, -22301, -22448,
++    -22594, -22739, -22884, -23027, -23170, -23311, -23452, -23592, -23731, -23870, -24007, -24143,
++    -24279, -24413, -24547, -24680, -24811, -24942, -25072, -25201, -25329, -25456, -25582, -25708,
++    -25832, -25955, -26077, -26198, -26319, -26438, -26556, -26674, -26790, -26905, -27019, -27133,
++    -27245, -27356, -27466, -27575, -27683, -27790, -27896, -28001, -28105, -28208, -28310, -28411,
++    -28510, -28609, -28706, -28803, -28898, -28992, -29085, -29177, -29268, -29358, -29447, -29534,
++    -29621, -29706, -29791, -29874, -29956, -30037, -30117, -30195, -30273, -30349, -30424, -30498,
++    -30571, -30643, -30714, -30783, -30852, -30919, -30985, -31050, -31113, -31176, -31237, -31297,
++    -31356, -31414, -31470, -31526, -31580, -31633, -31685, -31736, -31785, -31833, -31880, -31926,
++    -31971, -32014, -32057, -32098, -32137, -32176, -32213, -32250, -32285, -32318, -32351, -32382,
++    -32412, -32441, -32469, -32495, -32521, -32545, -32567, -32589, -32609, -32628, -32646, -32663,
++    -32678, -32692, -32705, -32717, -32728, -32737, -32745, -32752, -32757, -32761, -32765, -32766,
++    -32767, -32766, -32765, -32761, -32757, -32752, -32745, -32737, -32728, -32717, -32705, -32692,
++    -32678, -32663, -32646, -32628, -32609, -32589, -32567, -32545, -32521, -32495, -32469, -32441,
++    -32412, -32382, -32351, -32318, -32285, -32250, -32213, -32176, -32137, -32098, -32057, -32014,
++    -31971, -31926, -31880, -31833, -31785, -31736, -31685, -31633, -31580, -31526, -31470, -31414,
++    -31356, -31297, -31237, -31176, -31113, -31050, -30985, -30919, -30852, -30783, -30714, -30643,
++    -30571, -30498, -30424, -30349, -30273, -30195, -30117, -30037, -29956, -29874, -29791, -29706,
++    -29621, -29534, -29447, -29358, -29268, -29177, -29085, -28992, -28898, -28803, -28706, -28609,
++    -28510, -28411, -28310, -28208, -28105, -28001, -27896, -27790, -27683, -27575, -27466, -27356,
++    -27245, -27133, -27019, -26905, -26790, -26674, -26556, -26438, -26319, -26198, -26077, -25955,
++    -25832, -25708, -25582, -25456, -25329, -25201, -25072, -24942, -24811, -24680, -24547, -24413,
++    -24279, -24143, -24007, -23870, -23731, -23592, -23452, -23311, -23170, -23027, -22884, -22739,
++    -22594, -22448, -22301, -22154, -22005, -21856, -21705, -21554, -21403, -21250, -21096, -20942,
++    -20787, -20631, -20475, -20317, -20159, -20000, -19841, -19680, -19519, -19357, -19195, -19032,
++    -18868, -18703, -18537, -18371, -18204, -18037, -17869, -17700, -17530, -17360, -17189, -17018,
++    -16846, -16673, -16499, -16325, -16151, -15976, -15800, -15623, -15446, -15269, -15090, -14912,
++    -14732, -14553, -14372, -14191, -14010, -13828, -13645, -13462, -13279, -13094, -12910, -12725,
++    -12539, -12353, -12167, -11980, -11793, -11605, -11417, -11228, -11039, -10849, -10659, -10469,
++    -10278, -10087, -9896, -9704, -9512, -9319, -9126, -8933, -8739, -8545, -8351, -8157,
++    -7962, -7767, -7571, -7375, -7179, -6983, -6786, -6590, -6393, -6195, -5998, -5800,
++    -5602, -5404, -5205, -5007, -4808, -4609, -4410, -4210, -4011, -3811, -3612, -3412,
++    -3212, -3012, -2811, -2611, -2410, -2210, -2009, -1809, -1608, -1407, -1206, -1005,
++    -804, -603, -402, -201, 0,
++};
++static const uint32_t FM6_EXP2[1025] = {
++    0, 727064, 1454619, 2182668, 2911209, 3640244, 4369773, 5099795,
++    5830312, 6561323, 7292830, 8024832, 8757329, 9490322, 10223812, 10957798,
++    11692282, 12427263, 13162741, 13898717, 14635192, 15372166, 16109638, 16847610,
++    17586082, 18325053, 19064525, 19804498, 20544972, 21285947, 22027424, 22769403,
++    23511884, 24254869, 24998356, 25742346, 26486841, 27231840, 27977343, 28723350,
++    29469863, 30216882, 30964406, 31712437, 32460974, 33210018, 33959569, 34709627,
++    35460194, 36211269, 36962852, 37714944, 38467546, 39220657, 39974278, 40728409,
++    41483051, 42238204, 42993868, 43750044, 44506732, 45263933, 46021646, 46779872,
++    47538612, 48297865, 49057633, 49817915, 50578712, 51340024, 52101851, 52864194,
++    53627054, 54390430, 55154323, 55918733, 56683661, 57449107, 58215071, 58981554,
++    59748555, 60516076, 61284117, 62052678, 62821759, 63591362, 64361485, 65132129,
++    65903296, 66674985, 67447196, 68219930, 68993187, 69766968, 70541273, 71316102,
++    72091456, 72867335, 73643739, 74420669, 75198125, 75976108, 76754617, 77533654,
++    78313218, 79093310, 79873930, 80655078, 81436756, 82218963, 83001699, 83784966,
++    84568763, 85353090, 86137949, 86923339, 87709261, 88495715, 89282702, 90070222,
++    90858275, 91646861, 92435982, 93225636, 94015826, 94806550, 95597810, 96389606,
++    97181938, 97974806, 98768212, 99562154, 100356634, 101151652, 101947209, 102743304,
++    103539938, 104337112, 105134825, 105933079, 106731873, 107531208, 108331084, 109131502,
++    109932462, 110733964, 111536009, 112338597, 113141728, 113945404, 114749623, 115554387,
++    116359696, 117165550, 117971950, 118778896, 119586389, 120394428, 121203014, 122012148,
++    122821830, 123632060, 124442838, 125254166, 126066043, 126878470, 127691446, 128504974,
++    129319052, 130133681, 130948862, 131764595, 132580881, 133397719, 134215110, 135033055,
++    135851554, 136670606, 137490214, 138310376, 139131094, 139952367, 140774197, 141596583,
++    142419526, 143243026, 144067084, 144891700, 145716874, 146542607, 147368899, 148195750,
++    149023162, 149851134, 150679666, 151508759, 152338414, 153168631, 153999409, 154830751,
++    155662655, 156495122, 157328153, 158161749, 158995908, 159830633, 160665923, 161501778,
++    162338200, 163175187, 164012742, 164850863, 165689552, 166528809, 167368635, 168209029,
++    169049992, 169891524, 170733627, 171576299, 172419542, 173263356, 174107742, 174952699,
++    175798228, 176644330, 177491005, 178338253, 179186075, 180034471, 180883442, 181732987,
++    182583107, 183433804, 184285076, 185136924, 185989350, 186842353, 187695933, 188550091,
++    189404828, 190260143, 191116037, 191972512, 192829566, 193687200, 194545415, 195404211,
++    196263589, 197123549, 197984091, 198845215, 199706923, 200569214, 201432089, 202295549,
++    203159593, 204024222, 204889437, 205755237, 206621624, 207488597, 208356158, 209224305,
++    210093041, 210962365, 211832278, 212702780, 213573871, 214445552, 215317823, 216190685,
++    217064138, 217938182, 218812818, 219688046, 220563868, 221440282, 222317289, 223194891,
++    224073086, 224951877, 225831262, 226711243, 227591819, 228472992, 229354762, 230237129,
++    231120093, 232003655, 232887815, 233772574, 234657932, 235543890, 236430448, 237317606,
++    238205364, 239093724, 239982685, 240872248, 241762414, 242653182, 243544554, 244436529,
++    245329108, 246222291, 247116079, 248010473, 248905472, 249801077, 250697288, 251594107,
++    252491532, 253389566, 254288207, 255187457, 256087316, 256987784, 257888862, 258790550,
++    259692848, 260595758, 261499279, 262403411, 263308156, 264213514, 265119485, 266026069,
++    266933267, 267841079, 268749506, 269658548, 270568206, 271478479, 272389369, 273300876,
++    274213000, 275125741, 276039101, 276953079, 277867676, 278782892, 279698728, 280615185,
++    281532261, 282449959, 283368278, 284287219, 285206782, 286126968, 287047777, 287969209,
++    288891266, 289813946, 290737252, 291661182, 292585739, 293510921, 294436730, 295363165,
++    296290228, 297217919, 298146238, 299075186, 300004762, 300934968, 301865804, 302797270,
++    303729367, 304662095, 305595455, 306529446, 307464070, 308399327, 309335217, 310271741,
++    311208899, 312146692, 313085120, 314024183, 314963882, 315904217, 316845189, 317786798,
++    318729045, 319671930, 320615453, 321559615, 322504416, 323449858, 324395939, 325342661,
++    326290024, 327238029, 328186675, 329135964, 330085895, 331036470, 331987689, 332939551,
++    333892058, 334845211, 335799008, 336753451, 337708541, 338664277, 339620661, 340577692,
++    341535371, 342493699, 343452675, 344412301, 345372577, 346333503, 347295079, 348257307,
++    349220186, 350183718, 351147901, 352112738, 353078228, 354044372, 355011169, 355978622,
++    356946729, 357915493, 358884912, 359854987, 360825720, 361797109, 362769157, 363741863,
++    364715227, 365689250, 366663933, 367639276, 368615280, 369591944, 370569269, 371547257,
++    372525906, 373505219, 374485194, 375465833, 376447136, 377429103, 378411736, 379395034,
++    380378997, 381363627, 382348924, 383334887, 384321519, 385308818, 386296786, 387285423,
++    388274729, 389264706, 390255352, 391246670, 392238658, 393231319, 394224651, 395218656,
++    396213335, 397208686, 398204712, 399201412, 400198787, 401196838, 402195564, 403194967,
++    404195046, 405195802, 406197236, 407199348, 408202139, 409205609, 410209758, 411214587,
++    412220097, 413226287, 414233159, 415240713, 416248948, 417257867, 418267469, 419277754,
++    420288723, 421300377, 422312716, 423325741, 424339451, 425353848, 426368931, 427384702,
++    428401161, 429418308, 430436144, 431454669, 432473884, 433493789, 434514385, 435535671,
++    436557649, 437580319, 438603682, 439627737, 440652486, 441677929, 442704067, 443730899,
++    444758426, 445786649, 446815568, 447845185, 448875498, 449906509, 450938218, 451970625,
++    453003732, 454037538, 455072045, 456107252, 457143159, 458179769, 459217080, 460255093,
++    461293810, 462333229, 463373353, 464414181, 465455713, 466497951, 467540895, 468584545,
++    469628901, 470673965, 471719736, 472766216, 473813404, 474861301, 475909908, 476959224,
++    478009252, 479059990, 480111440, 481163601, 482216476, 483270063, 484324363, 485379378,
++    486435107, 487491550, 488548709, 489606584, 490665175, 491724483, 492784509, 493845252,
++    494906713, 495968893, 497031792, 498095411, 499159751, 500224811, 501290592, 502357095,
++    503424319, 504492267, 505560938, 506630332, 507700451, 508771294, 509842862, 510915156,
++    511988176, 513061922, 514136396, 515211597, 516287526, 517364184, 518441570, 519519686,
++    520598533, 521678110, 522758417, 523839457, 524921228, 526003732, 527086969, 528170939,
++    529255643, 530341082, 531427256, 532514165, 533601810, 534690192, 535779311, 536869167,
++    537959761, 539051094, 540143165, 541235976, 542329527, 543423819, 544518851, 545614625,
++    546711141, 547808400, 548906401, 550005146, 551104635, 552204868, 553305847, 554407571,
++    555510041, 556613257, 557717220, 558821931, 559927390, 561033598, 562140555, 563248261,
++    564356717, 565465924, 566575882, 567686591, 568798053, 569910267, 571023234, 572136955,
++    573251430, 574366660, 575482645, 576599385, 577716882, 578835135, 579954146, 581073914,
++    582194441, 583315726, 584437770, 585560575, 586684139, 587808465, 588933551, 590059400,
++    591186011, 592313385, 593441522, 594570423, 595700088, 596830518, 597961714, 599093676,
++    600226404, 601359900, 602494162, 603629193, 604764993, 605901561, 607038899, 608177007,
++    609315886, 610455536, 611595958, 612737152, 613879119, 615021859, 616165372, 617309660,
++    618454723, 619600561, 620747176, 621894566, 623042733, 624191678, 625341401, 626491903,
++    627643183, 628795243, 629948083, 631101704, 632256106, 633411289, 634567255, 635724004,
++    636881535, 638039851, 639198951, 640358836, 641519506, 642680962, 643843205, 645006234,
++    646170051, 647334656, 648500050, 649666233, 650833205, 652000968, 653169521, 654338866,
++    655509003, 656679931, 657851653, 659024168, 660197477, 661371581, 662546479, 663722173,
++    664898664, 666075950, 667254034, 668432916, 669612596, 670793075, 671974353, 673156431,
++    674339309, 675522989, 676707470, 677892753, 679078838, 680265727, 681453419, 682641916,
++    683831217, 685021324, 686212236, 687403955, 688596481, 689789814, 690983956, 692178906,
++    693374665, 694571234, 695768613, 696966803, 698165804, 699365617, 700566242, 701767681,
++    702969933, 704172999, 705376880, 706581575, 707787087, 708993415, 710200560, 711408522,
++    712617302, 713826900, 715037318, 716248555, 717460613, 718673491, 719887190, 721101712,
++    722317055, 723533222, 724750212, 725968026, 727186665, 728406129, 729626419, 730847535,
++    732069477, 733292248, 734515846, 735740273, 736965529, 738191614, 739418530, 740646276,
++    741874854, 743104264, 744334506, 745565582, 746797490, 748030233, 749263811, 750498224,
++    751733473, 752969559, 754206481, 755444241, 756682839, 757922276, 759162552, 760403667,
++    761645624, 762888421, 764132059, 765376540, 766621864, 767868031, 769115041, 770362896,
++    771611596, 772861141, 774111533, 775362771, 776614857, 777867790, 779121572, 780376202,
++    781631683, 782888013, 784145194, 785403226, 786662110, 787921847, 789182437, 790443880,
++    791706177, 792969329, 794233337, 795498200, 796763920, 798030497, 799297931, 800566224,
++    801835375, 803105386, 804376257, 805647989, 806920581, 808194035, 809468352, 810743531,
++    812019574, 813296481, 814574253, 815852889, 817132392, 818412761, 819693997, 820976100,
++    822259072, 823542912, 824827622, 826113202, 827399652, 828686973, 829975166, 831264231,
++    832554169, 833844981, 835136666, 836429227, 837722662, 839016973, 840312161, 841608226,
++    842905168, 844202989, 845501688, 846801267, 848101725, 849403065, 850705285, 852008387,
++    853312372, 854617239, 855922990, 857229626, 858537146, 859845551, 861154842, 862465020,
++    863776085, 865088038, 866400880, 867714610, 869029229, 870344739, 871661140, 872978432,
++    874296616, 875615693, 876935663, 878256526, 879578284, 880900937, 882224486, 883548931,
++    884874272, 886200511, 887527648, 888855684, 890184619, 891514454, 892845189, 894176826,
++    895509364, 896842804, 898177148, 899512395, 900848546, 902185601, 903523562, 904862429,
++    906202203, 907542884, 908884473, 910226970, 911570376, 912914692, 914259918, 915606055,
++    916953103, 918301064, 919649937, 920999724, 922350425, 923702040, 925054571, 926408017,
++    927762380, 929117660, 930473858, 931830974, 933189008, 934547963, 935907838, 937268633,
++    938630350, 939992989, 941356551, 942721036, 944086444, 945452778, 946820036, 948188221,
++    949557332, 950927370, 952298335, 953670229, 955043052, 956416805, 957791488, 959167101,
++    960543646, 961921123, 963299533, 964678876, 966059154, 967440365, 968822513, 970205596,
++    971589615, 972974572, 974360466, 975747299, 977135071, 978523783, 979913435, 981304028,
++    982695563, 984088039, 985481459, 986875822, 988271130, 989667382, 991064580, 992462724,
++    993861814, 995261852, 996662838, 998064773, 999467656, 1000871490, 1002276275, 1003682010,
++    1005088698, 1006496337, 1007904931, 1009314477, 1010724979, 1012136435, 1013548847, 1014962216,
++    1016376542, 1017791825, 1019208067, 1020625267, 1022043427, 1023462548, 1024882629, 1026303672,
++    1027725678, 1029148646, 1030572578, 1031997473, 1033423334, 1034850160, 1036277953, 1037706712,
++    1039136438, 1040567133, 1041998797, 1043431430, 1044865033, 1046299606, 1047735151, 1049171669,
++    1050609158, 1052047622, 1053487059, 1054927471, 1056368858, 1057811222, 1059254562, 1060698879,
++    1062144174, 1063590448, 1065037701, 1066485935, 1067935149, 1069385344, 1070836521, 1072288681,
++    1073741824,
++};
++static const uint32_t FM6_LFO_DELTA[100] = {
++    201379, 402594, 1005891, 1407506, 2011215, 2417200, 3014939, 3623420,
++    4023683, 4626371, 5026074, 5641620, 6037790, 6641135, 7235851, 7645622,
++    8244666, 8651140, 9254070, 9656481, 10265255, 10850729, 11270402, 11856591,
++    12274673, 12882391, 13479377, 13880307, 14493850, 14886520, 15502906, 15875918,
++    16492285, 17114670, 17499751, 18087595, 18516123, 19148155, 19521972, 20119682,
++    20709762, 21136628, 21732950, 22115069, 22707714, 23346534, 23749475, 24330919,
++    24753644, 25365953, 25739040, 26345557, 26958758, 27385219, 27965554, 28369639,
++    28935604, 29373782, 29947488, 30590480, 30937298, 31549618, 32039344, 32577437,
++    36228104, 36657035, 40451683, 44036570, 44771328, 48595745, 52699737, 53576605,
++    57540278, 61803339, 62547667, 67082373, 67731468, 72456209, 77291263, 78116302,
++    82903038, 87498749, 88801820, 93548924, 98832228, 100435246, 105158523, 110499451,
++    111648891, 117259796, 122992895, 124130839, 130046607, 131212468, 137252941, 142728457,
++    144522171, 150605894, 156460350, 158618424,
++};
++static const uint16_t FM6_DETUNE[128] = {
++    45716, 45448, 45149, 44822, 44468, 44091, 43690, 43270, 42830, 42374, 41902, 41416, 40917, 40407, 39887, 39359,
++    38822, 38279, 37730, 37177, 36620, 36059, 35497, 34933, 34368, 33803, 33239, 32676, 32114, 31554, 30997, 30442,
++    29891, 29344, 28800, 28262, 27727, 27198, 26674, 26155, 25641, 25134, 24632, 24137, 23647, 23164, 22688, 22218,
++    21755, 21298, 20848, 20405, 19968, 19539, 19116, 18700, 18291, 17889, 17493, 17105, 16723, 16348, 15980, 15618,
++    15263, 14915, 14573, 14238, 13909, 13586, 13270, 12960, 12656, 12358, 12066, 11781, 11500, 11226, 10958, 10695,
++    10437, 10185, 9938, 9697, 9461, 9230, 9004, 8783, 8566, 8355, 8148, 7946, 7749, 7555, 7367, 7182,
++    7002, 6826, 6654, 6486, 6321, 6161, 6005, 5852, 5702, 5556, 5414, 5275, 5140, 5007, 4878, 4752,
++    4629, 4509, 4392, 4277, 4166, 4057, 3951, 3847, 3746, 3648, 3552, 3458, 3367, 3278, 3191, 3107,
++};
++static const int32_t FM6_FINE[100] = {
++    0, 240842, 479311, 715453, 949314, 1180937, 1410364, 1637637, 1862796, 2085880,
++    2306926, 2525972, 2743054, 2958205, 3171461, 3382855, 3592418, 3800183, 4006179, 4210437,
++    4412985, 4613853, 4813067, 5010655, 5206643, 5401057, 5593922, 5785262, 5975102, 6163464,
++    6350371, 6535847, 6719911, 6902587, 7083894, 7263853, 7442485, 7619807, 7795840, 7970602,
++    8144111, 8316385, 8487441, 8657298, 8825970, 8993475, 9159829, 9325048, 9489146, 9652139,
++    9814042, 9974869, 10134635, 10293353, 10451037, 10607700, 10763356, 10918018, 11071697, 11224407,
++    11376159, 11526966, 11676839, 11825789, 11973829, 12120969, 12267219, 12412591, 12557096, 12700743,
++    12843542, 12985504, 13126637, 13266953, 13406460, 13545168, 13683085, 13820221, 13956584, 14092183,
++    14227027, 14361124, 14494482, 14627109, 14759014, 14890203, 15020685, 15150468, 15279559, 15407964,
++    15535692, 15662750, 15789144, 15914881, 16039969, 16164413, 16288221, 16411399, 16533954, 16655890,
++};
+diff --git a/tools/gen_fm6_tables.py b/tools/gen_fm6_tables.py
+new file mode 100644
+index 0000000..a25fcf6
+--- /dev/null
++++ b/tools/gen_fm6_tables.py
+@@ -0,0 +1,70 @@
++#!/usr/bin/env python3
++# SPDX-License-Identifier: MPL-2.0
++# Copyright (C) 2026 the AMB-1 FM6 contributors
++"""The tables of the FM6 core (app/dsp/fm6_core.c, msfa from Dexed as ported to integer C in JIANT FM):
++msfa built them with double math at start-up; here they are made once, so the firmware needs no float for
++them. 32-sample blocks at 44.1 kHz. The constants are msfa's (Apache-2.0), the code is AMB-1's.
++
++    python3 tools/gen_fm6_tables.py app/dsp/fm6_tables.h
++"""
++import math
++import sys
++
++FS = 44100
++CTL = 32
++
++# msfa lfo.cc: the LFO rates 0..99 (Hz)
++LFO_HZ = [
++    0.062541, 0.125031, 0.312393, 0.437120, 0.624610, 0.750694, 0.936330, 1.125302, 1.249609, 1.436782,
++    1.560915, 1.752081, 1.875117, 2.062494, 2.247191, 2.374451, 2.560492, 2.686728, 2.873976, 2.998950,
++    3.188013, 3.369840, 3.500175, 3.682224, 3.812065, 4.000800, 4.186202, 4.310716, 4.501260, 4.623209,
++    4.814636, 4.930480, 5.121901, 5.315191, 5.434783, 5.617346, 5.750431, 5.946717, 6.062811, 6.248438,
++    6.431695, 6.564264, 6.749460, 6.868132, 7.052186, 7.250580, 7.375719, 7.556294, 7.687577, 7.877738,
++    7.993605, 8.181967, 8.372405, 8.504848, 8.685079, 8.810573, 8.986341, 9.122423, 9.300595, 9.500285,
++    9.607994, 9.798158, 9.950249, 10.117361, 11.251125, 11.384335, 12.562814, 13.676149, 13.904338, 15.092062,
++    16.366612, 16.638935, 17.869907, 19.193858, 19.425019, 20.833333, 21.034918, 22.502250, 24.003841, 24.260068,
++    25.746653, 27.173913, 27.578599, 29.052876, 30.693677, 31.191516, 32.658393, 34.317090, 34.674064, 36.416606,
++    38.197097, 38.550501, 40.387722, 40.749796, 42.625746, 44.326241, 44.883303, 46.772685, 48.590865, 49.261084]
++
++
++def table(name, ctype, vals, per):
++    out = [f"static const {ctype} {name}[{len(vals)}] = {{"]
++    for i in range(0, len(vals), per):
++        out.append("    " + ", ".join(str(v) for v in vals[i:i + per]) + ",")
++    out.append("};")
++    return out
++
++
++def main(path):
++    lf0 = 50857777                       # log2 of MIDI note 0's frequency, Q24 (fm6_core.c FM6_LOGF0)
++    semi = (1 << 24) // 12
++    lforatio = int(4437500000.0 * CTL / FS)
++    L = ["/* SPDX-License-Identifier: MPL-2.0",
++         " * generated by tools/gen_fm6_tables.py: the start-up tables of msfa (fm6_core.c), precomputed */",
++         "#pragma once",
++         "#include <stdint.h>",
++         f"#define CTL {CTL}                          /* the FM6 block, in samples */",
++         f"#define FM6_LFO_UNIT {int(CTL * 25190424 / FS + 0.5)}",
++         f"#define FM6_PENV_UNIT {int(CTL * (1 << 24) / (21.3 * FS) + 0.5)}",
++         f"#define FM6_FREQ_R {int(round(2 ** 40 / FS))}u",
++         f"#define FM6_AMS_C0 {int(round(12.2 * math.log2(math.e) * 2 ** 24))}",
++         f"#define FM6_AMS_K {int(round(0.07 / 262144 * math.log2(math.e) * 2 ** 24 * 1024))}",
++         ""]
++    # a sine, Q15, 1024 points and the first again (the operators interpolate without a wrap)
++    L += table("SINE", "int16_t", [int(round(32767 * math.sin(2 * math.pi * i / 1024))) for i in range(1025)], 12)
++    # 2^(i / 1024) - 1, Q30: Exp2's and Freqlut's mantissa
++    L += table("FM6_EXP2", "uint32_t", [int(round((1 << 30) * (2 ** (i / 1024) - 1))) for i in range(1025)], 8)
++    L += table("FM6_LFO_DELTA", "uint32_t", [int(s * lforatio) for s in LFO_HZ], 8)
++    # the DETUNE step of note mn (msfa note osc_freq), Q24 log2
++    L += table("FM6_DETUNE", "uint16_t",
++               [int(round(0.0209 * math.exp(-0.396 * ((lf0 + semi * mn) / (1 << 24))) / 7 * (lf0 + semi * mn)))
++                for mn in range(128)], 16)
++    # FINE: log2(1 + fine / 100), Q24
++    L += table("FM6_FINE", "int32_t",
++               [int(math.floor((1 << 24) / math.log(2) * math.log(1 + 0.01 * f) + 0.5)) for f in range(100)], 10)
++    with open(path, "w") as f:
++        f.write("\n".join(L) + "\n")
++
++
++if __name__ == "__main__":
++    main(sys.argv[1])
+-- 
+2.43.0
+

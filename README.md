@@ -1,0 +1,69 @@
+# AMB-1 com as vozes do motor FM6 do JIANT
+
+Modificação do firmware alternativo **AMB-1** (Charles Vestal, <https://github.com/charlesvestal/fm1-amb>) para o
+M-VAVE FM-1: as vozes passam a ser geradas pelo **motor FM6 do JIANT FM** (<https://github.com/juanjiant-bit/JIANT>),
+FM de 6 operadores no estilo DX7 (msfa, o núcleo do Dexed, portado para C inteiro).
+
+Base usada: `charlesvestal/fm1-amb` no commit `188b0a4`. Motor: `juanjiant-bit/JIANT`,
+`firmware/src/fm6_core.c` no commit `8580aea`.
+
+## O que mudou
+
+| Camada | Antes (AMB-1) | Agora |
+| --- | --- | --- |
+| PAD (4 vozes) | Rhodes FM de 2 operadores em float / "Voices": serras em filtros de formante | Nota FM6 sustentada com patch próprio: **AMB RHODES** ou **AMB VOICES** (2 portadoras com ~2,4 cents de diferença, uma com feedback, vibrato) |
+| BELLS (6 vozes) | Sino FM de 2 operadores em float | Sino FM6, um patch por loop (4 timbres); Bell tone controla razão, índice e ataque |
+| BASS | Seno + suboitava + 2º harmônico | Patch FM6 **AMB BASS** (seno, suboitava -4,4 dB, 2º harmônico -16 dB, um pouco de modulação) |
+| PULSE | Bumbo e hats sintetizados | **Sem mudança** (percussão, não é voz) |
+
+Continua igual a parte do AMB-1 que *toca* as vozes: respirações do pad, loops de fita, glide do baixo, acordes,
+eco de fita, Echoplex e o plate de Dattorro. Os controles também: **Bright** e o arco agora controlam o nível dos
+moduladores FM6 (o pad fica mais brilhante quando cresce), **Bell tone** reconstrói os patches dos sinos, **Pad tone**
+alterna entre Rhodes e Voices, **Tune** chega ao FM6.
+
+Arquivos (em `files/`, os mesmos que o patch cria ou altera):
+
+- `app/dsp/fm6_core.c`: o núcleo FM6 do JIANT (Apache-2.0). Única alteração: as multiplicações de 64 bits saíram das
+  linhas de código quente. O fm1-base documenta (`bsp/docs/CPU.md`) que a CPU do FM-1 às vezes corrompe um registrador
+  quando multiplicações 32x32→64 ficam ao lado de leituras de 16 bits, exatamente o que o loop dos operadores faz.
+  Agora o loop multiplica em 32 bits com uma decomposição exata (`fm6_mulg`), e os produtos por bloco passam por
+  funções `noinline`. O som é idêntico bit a bit.
+- `app/dsp/fm6_tables.h` e `tools/gen_fm6_tables.py`: tabelas do msfa (exp2, LFO, detune, fine, seno Q15),
+  geradas por um script próprio.
+- `app/dsp/amb.c`: as vozes em FM6. Elas são renderizadas em blocos de 32 amostras (o bloco do FM6), e uma nota
+  começa no bloco seguinte, no máximo 0,7 ms depois. Patches escritos do zero em `fm_patches()` e `bell_patches()`.
+- `app/dsp/amb.h`, `README.md`, `LICENSING.md`, `LICENSES/Apache-2.0-msfa.txt`: documentação e licenças.
+
+**Licença:** o resultado continua **MPL-2.0** como o AMB-1. Do JIANT entrou só o `fm6_core.c`, que é Apache-2.0
+(compatível). Nada do código GPL do JIANT ou do Felucca entrou: nem o `eng_fm6.c`, nem os patches de fábrica, nem o
+gerador de tabelas.
+
+## Como compilar e instalar
+
+```sh
+git clone --recursive https://github.com/charlesvestal/fm1-amb
+cd fm1-amb
+git checkout 188b0a4 && git submodule update --init --recursive
+git apply /caminho/para/amb1-fm6.patch       # ou copie o conteúdo de files/ por cima da árvore
+sh tests/run_tests.sh                        # testes do instrumento e simulador
+./build.sh                                   # gera app/build/amb.fwsc (precisa do toolchain JieLi + SDK AC79, ver BUILDING.md)
+python3 base/tools/fm1_install.py app/build/amb.fwsc
+```
+
+O emulador no navegador (`./build.sh --web`, precisa do emcc) deixa ouvir tudo antes de gravar no aparelho.
+Instalar firmware no FM-1 é por sua conta e risco: o instalador web do AMB-1 consegue restaurar o firmware de fábrica
+da M-VAVE.
+
+## O que ainda NÃO foi verificado
+
+- O código compila sem avisos (gcc e clang, com as flags estritas do teste de host do AMB-1: `-Wall -Wextra
+  -Wdouble-promotion -Werror`).
+- **Os testes não foram executados** (`tests/run_tests.sh`, o teste do instrumento, o simulador). O ambiente onde a
+  modificação foi feita não tinha permissão para executar código vindo de repositórios externos.
+- **Não houve build para o aparelho**: faltam o toolchain JieLi e o SDK AC79. Por isso as checagens de imagem, RAM e
+  CPU do `build.py` ainda não rodaram.
+- **Os timbres não foram ouvidos.** Os níveis e envelopes dos patches foram calculados a partir da matemática do msfa
+  para reproduzir o volume e o decaimento das vozes originais, mas vale ouvir e ajustar: os números estão em
+  `fm_patches()` e `bell_patches()`, e `PAD_OUT` define o volume do pad.
+- **CPU**: no pior caso são 11 notas FM6 (4 do pad, 6 dos sinos e 1 do baixo). A estimativa é de uns 10 % a mais de
+  CPU que as vozes originais a 360 MHz. Se faltar fôlego, reduza `NBELL`.
