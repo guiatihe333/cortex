@@ -595,6 +595,263 @@ static void set_piece(int i)                    /* the piece playing kept as it 
     mark_dirty();
 }
 
+/* ------------------------------------------------------------ the dice --- */
+/* SEL rolls the dice: tapped alone, on the page shown (its values, in ranges that keep it music: no voice silenced, no
+ * value at an extreme the ear hears as broken); held with a page's button, on that whole layer (a voice: its patch, how
+ * it plays, its modulators; the garden: the garden and new loops; the pulse: new patterns; SETUP: a new key); with
+ * EDIT, the loops and patterns grown anew (the settings kept). Held alone a second: back to before the last roll (one
+ * step of undo: the piece's settings and patches as they were). */
+static void caps(char *d, const char *s, int n);
+static uint32_t dice_rng = 0x6A09E667u;
+static struct {
+    uint8_t ok;
+    int16_t par[P_NPARAMS];
+    uint16_t pool;
+    uint8_t pat[EN_NVOX][EN_PATCH];
+} undo;
+static int dice(int lo, int hi)                 /* lo..hi, both in */
+{
+    uint32_t x = dice_rng;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    dice_rng = x;
+    return lo + (int)((x >> 8) % (uint32_t)(hi - lo + 1));
+}
+static void dice_keep(void)                     /* the undo: the piece as it is before a roll */
+{
+    memcpy(undo.par, proj.par, sizeof undo.par);
+    undo.pool = proj.pool;
+    memcpy(undo.pat, vpatch, sizeof undo.pat);
+    undo.ok = 1;
+    dice_rng ^= plat_ms() * 2654435761u;
+    if (!dice_rng)
+        dice_rng = 1u;
+}
+static void dice_par(int p, int lo, int hi)     /* a parameter rolled in lo..hi (within its range) */
+{
+    const en_param_t *pi = en_param_info(p);
+    int v = dice(lo < pi->lo ? pi->lo : lo, hi > pi->hi ? pi->hi : hi);
+    proj.par[p] = (int16_t)v;
+    en_set(p, v);
+    par_out(p);
+}
+static void dice_byte(int v, int off, int lo, int hi)
+{
+    int x = dice(lo, hi);
+    project_patch_set(v, off, x);
+    patch_out(v, off, x);
+}
+static void dice_source(int v)                  /* a patch: the voice's own six or a bank's voice, as loaded */
+{
+    const int sp = EN_VOX_PATCH[v];
+    int s = dice(0, EN_NSRC - 1);
+    uint8_t q[EN_PATCH + 1];
+    if (s >= EN_NFACT && !bank_voice(v, s, q)) {
+        s = bank_next(s, 1);
+        if (s >= EN_NFACT && !bank_voice(v, s, q))
+            s = dice(0, EN_NFACT - 1);
+    }
+    project_source(v, s);
+    par_out(sp);
+}
+static void dice_op(int v, int n)               /* operator n (1..6): a harmonic ratio, a level, an envelope */
+{
+    static const uint8_t RATIO[8] = {0, 1, 1, 2, 2, 3, 4, 7};   /* (0 is x0.5) */
+    const int o = EP_OPN(n), fc = RATIO[dice(0, 7)], ff = dice(0, 3) ? 0 : dice(0, 50);
+    dice_byte(v, o + EP_MODE, 0, 0);
+    dice_byte(v, o + EP_FC, fc, fc);
+    dice_byte(v, o + EP_FF, ff, ff);
+    dice_byte(v, o + EP_OL, 55, 95);
+    dice_byte(v, o + EP_DET, 5, 9);
+}
+static void dice_env(int v, int n)              /* operator n's envelope: an attack, a decay, a sustain, a release */
+{
+    const int o = EP_OPN(n);
+    dice_byte(v, o + EP_R1, 35, 99);
+    dice_byte(v, o + EP_R1 + 1, 20, 80);
+    dice_byte(v, o + EP_R1 + 2, 15, 70);
+    dice_byte(v, o + EP_R1 + 3, 20, 75);
+    dice_byte(v, o + EP_L1, 99, 99);
+    dice_byte(v, o + EP_L1 + 1, 60, 99);
+    dice_byte(v, o + EP_L1 + 2, 0, 90);
+    dice_byte(v, o + EP_L1 + 3, 0, 0);
+}
+static void dice_mod(int v, int s, int on)      /* modulator s: a target, a shape, a pace; on 0: off */
+{
+    static const uint8_t DEST[] = {MOD_TIMBRE, MOD_TIMBRE, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD_SPACE,
+                                   MOD_LEVEL, MOD_LFOPM, MOD_ALL};
+    int d = dice(0, (int)sizeof DEST);           /* (one more: an operator's own, its level or fine pitch) */
+    if (!on) {
+        dice_par(P_MS(v, s, MS_DEPTH), 0, 0);
+        return;
+    }
+    if (d == (int)sizeof DEST)
+        d = MOD_OP + (dice(1, 6) - 1) * OPT_N + (dice(0, 1) ? OPT_LEVEL : OPT_FINE);
+    else
+        d = DEST[d];
+    proj.par[P_MS(v, s, MS_DEST)] = (int16_t)d;
+    en_set(P_MS(v, s, MS_DEST), d);
+    par_out(P_MS(v, s, MS_DEST));
+    dice_par(P_MS(v, s, MS_DEPTH), 10, d == MOD_PITCH || d == MOD_LEVEL ? 35 : 60);
+    dice_par(P_MS(v, s, MS_RATE), 10, 70);
+    dice_par(P_MS(v, s, MS_SHAPE), 0, EN_NMODSHAPE - 1);
+    dice_par(P_MS(v, s, MS_SPREAD), 30, 100);
+    dice_par(P_MS(v, s, MS_FADE), 0, 50);
+    dice_par(P_MS(v, s, MS_SYNC), 0, EN_NMODSYNC - 1);
+    dice_par(P_MS(v, s, MS_SMOOTH), 0, 60);
+}
+static void dice_layer(int vw)                  /* a layer's page: its four, in their ranges */
+{
+    switch (vw) {
+    case V_GARDEN:
+        dice_par(P_TEMPO, 50, 100);
+        dice_par(P_EVOLVE, 10, 80);
+        dice_par(P_MOTION, 20, 90);
+        dice_par(P_DRIFT, 10, 70);
+        break;
+    case V_PAD:
+        dice_par(P_PAD, 45, 80);
+        dice_par(P_SWELL, 10, 90);
+        dice_par(P_BRIGHT, 10, 80);
+        dice_source(VOX_PAD);
+        break;
+    case V_BELLS:
+        dice_par(P_BELLS, 45, 80);
+        dice_par(P_DENSITY, 15, 80);
+        dice_par(P_BTONE, 0, 100);
+        dice_par(P_BOCT, -1, 1);
+        break;
+    case V_BASS:
+        dice_par(P_BASS, 35, 70);
+        dice_par(P_BASSOCT, -1, 0);
+        dice_par(P_GLIDE, 0, 60);
+        dice_par(P_FIFTH, 0, 70);
+        break;
+    case V_PULSE:
+        dice_par(P_PULSE, 0, 60);
+        dice_par(P_HITS, 10, 80);
+        dice_par(P_SWING, 0, 40);
+        dice_par(P_HATS, 0, 100);
+        break;
+    case V_SPACE:
+        dice_par(P_ECHO, 15, 70);
+        dice_par(P_ETIME, 0, 5);
+        dice_par(P_REVERB, 30, 90);
+        dice_par(P_SIZE, 40, 100);
+        break;
+    default: {                                  /* SETUP: a new key (the root, a mode) */
+        int m = dice(0, EN_NMODES - 1);
+        dice_par(P_ROOT, 0, 11);
+        proj.par[P_MODE] = (int16_t)m;
+        proj.pool = EN_MODE_POOL[m];
+        en_set(P_MODE, m);
+        en_pool(proj.pool);
+        break;
+    }
+    }
+}
+static void dice_page(int vw)                   /* the page shown */
+{
+    const int v = view_vox(vw), s = view_sub(vw), n = ui.op[v < 0 ? 0 : v] ? ui.op[v < 0 ? 0 : v] : 1;
+    int k;
+    if (vw < V_MAIN) {
+        dice_layer(vw);
+        return;
+    }
+    switch (s) {
+    case S_VOICE:
+        dice_source(v);
+        dice_par(P_VX(v, VX_INDEX), -6, 6);
+        break;
+    case S_PLAY:
+        dice_par(P_PL(v, PL_ENV), 0, 1);
+        dice_par(P_PL(v, PL_GATE), 20, 90);
+        break;
+    case S_LFO: case S_LFO2:
+        dice_byte(v, EP_LFS, 10, 70);
+        dice_byte(v, EP_LFD, 0, 60);
+        dice_byte(v, EP_LPMD, 0, 20);
+        dice_byte(v, EP_LAMD, 0, 30);
+        dice_byte(v, EP_LFW, 0, 5);
+        dice_byte(v, EP_LPMS, 0, 4);
+        break;
+    case S_PEG:                                 /* the pitch envelope: small moves around the note */
+        for (k = 0; k < 4; k++) {
+            dice_byte(v, EP_PR1 + k, 40, 99);
+            dice_byte(v, EP_PL1 + k, k == 3 ? 50 : 44, k == 3 ? 50 : 56);
+        }
+        break;
+    case S_OPENV:
+        dice_env(v, n);
+        break;
+    case S_MOD: case S_MOD2: case S_MOD3:
+        dice_mod(v, ui.slot[v], 1);
+        break;
+    default:                                    /* the operator's pages: the one picked */
+        dice_op(v, n);
+        break;
+    }
+}
+static void dice_voice(int v)                   /* a voice whole: its patch, how it plays, two or three modulators */
+{
+    int s, on = dice(2, 3);
+    dice_layer(VOX_VIEW[v]);
+    if (v != VOX_PAD)
+        dice_source(v);
+    dice_par(P_VX(v, VX_INDEX), -6, 6);
+    dice_par(P_PL(v, PL_ENV), 0, 1);
+    dice_par(P_PL(v, PL_GATE), 20, 90);
+    for (s = 0; s < EN_NSLOT; s++)
+        dice_mod(v, s, s < on);
+}
+static void dice_roll(int b)                    /* SEL alone (b B_SEL), or held with button b */
+{
+    int v;
+    dice_keep();
+    if (b == B_SEL) {
+        dice_page(ui.view);
+        say("DICE", "THIS PAGE");
+    } else if (b == B_EDIT) {
+        en_seed((uint32_t)dice(0, 65535));
+        en_regrow();
+        say("DICE", "NEW LOOPS");
+    } else {
+        for (v = 0; v < V_MAIN && VIEW_BTN[v] != b; v++)
+            ;
+        if (v >= V_MAIN)
+            return;
+        if (view_vox(v) >= 0)
+            dice_voice(view_vox(v));
+        else
+            dice_layer(v);
+        if (v == V_GARDEN || v == V_PULSE) {    /* the garden and the pulse: grown anew as well */
+            en_seed((uint32_t)dice(0, 65535));
+            en_regrow();
+        }
+        {
+            char t[12];
+            caps(t, MAIN_NAME[v], sizeof t);
+            say("DICE", t);
+        }
+    }
+    mark_dirty();
+}
+static void dice_undo(void)
+{
+    if (!undo.ok) {
+        warn("NOTHING", "TO UNDO");
+        return;
+    }
+    memcpy(proj.par, undo.par, sizeof proj.par);
+    proj.pool = undo.pool;
+    memcpy(vpatch, undo.pat, sizeof vpatch);
+    undo.ok = 0;
+    project_apply();
+    say("UNDO", "BEFORE THE DICE");
+    mark_dirty();
+}
+
 /* ------------------------------------------------------------ buttons --- */
 static void set_view(int v)
 {
@@ -604,8 +861,6 @@ static void set_view(int v)
     if (g >= 0)                                  /* the group remembers its page */
         ui.gsub[view_vox(v)][g] = (uint8_t)(view_sub(v) - GROUP0[g]);
 }
-
-static void caps(char *d, const char *s, int n);
 
 static void vox_title(void)                     /* which voice, and which of its pages, large on the screen (a
                                                  * screen reader hears the page itself) */
@@ -791,7 +1046,15 @@ static void input(void)
             if (i == B_PLAY)                   /* transport on the press */
                 button((int)i);
         } else if (!(ui.btn_used & m) && i != B_PLAY) {
-            button((int)i);
+            if (i == B_SEL) {                    /* SEL alone: this page */
+                dice_roll(B_SEL);
+            } else if (btn >> B_SEL & 1u) {      /* with SEL held: the dice on its layer (SEL's own release then
+                                                  * does nothing) */
+                ui.btn_used |= 1u << B_SEL;
+                dice_roll((int)i);
+            } else {
+                button((int)i);
+            }
         }
     }
     ch = keys ^ ui.keys;
@@ -853,6 +1116,10 @@ static void input(void)
             ui.touch_until = plat_ms() + 1200u;
             ui.act_t = ui.turn_t = plat_ms();
         }
+    if (btn == 1u << B_SEL && !(ui.btn_used >> B_SEL & 1u) && plat_ms() - ui.down_t[B_SEL] >= 1000u) {
+        ui.btn_used |= 1u << B_SEL;              /* SEL held alone a second: undo the last roll */
+        dice_undo();
+    }
     help_tick(btn, keys);
 }
 
