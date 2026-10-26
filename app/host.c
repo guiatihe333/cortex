@@ -4,8 +4,9 @@
  * "expect", its command, a reboot and the screen reader's dump.
  *
  * AMB-1's checks: playing frozen view piece pool dirty sixteenths ext pad_level bass_level chordroot chordN loopnotes
- * parN (fm1-base's own: store_writes clocks_out midi_out peak_db_max peak_db_min). Its command: storev3 N (the
- * project as AMB-1 0.9 before the layer pages wrote it, format 3, the playing piece's Pad at N). */
+ * parN (fm1-base's own: store_writes clocks_out midi_out peak_db_max peak_db_min). Its commands: storev3 N (the
+ * project as AMB-1 0.9 before the layer pages wrote it, format 3, the playing piece's Pad at N); storev5 N (as the
+ * first FM6 build wrote it, format 5: one MOD for all three voices, its depth N, chaos 90, target Feedback). */
 
 int app_expect(const char *what, int *got)
 {
@@ -69,6 +70,29 @@ int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, c
             o.slot[i].pool = proj.slot[i].pool;
         }
         o.slot[proj.piece].par[P_PAD] = o.par[P_PAD];
+        plat_store_save(OBJ_PROJ, &o, sizeof o);
+        return 1;
+    }
+    if (!strcmp(cmd, "storev5")) {               /* format 5, one MOD for all: depth N, rate 31, chaos 90, Feedback */
+        static project_v5_t o;
+        int i, k;
+        memset(&o, 0, sizeof o);
+        o.magic = PROJ_MAGIC;
+        o.format = 5u;
+        for (k = 0; k < P_BELLPATCH; k++)
+            o.par[k] = proj.par[k];
+        o.par[P_HATS + 1] = (int16_t)atoi(a);
+        o.par[P_HATS + 2] = 31;
+        o.par[P_HATS + 3] = 90;
+        o.par[P_HATS + 4] = MOD_FEEDBACK;
+        o.pool = proj.pool;
+        o.leds = proj.leds;
+        o.piece = proj.piece;
+        for (i = 0; i < NPIECES; i++) {
+            for (k = 0; k < V5_NPARAMS; k++)
+                o.slot[i].par[k] = k < P_BELLPATCH ? proj.slot[i].par[k] : o.par[k];
+            o.slot[i].pool = proj.slot[i].pool;
+        }
         plat_store_save(OBJ_PROJ, &o, sizeof o);
         return 1;
     }

@@ -67,6 +67,13 @@ static void run(float secs)
     }
 }
 
+static void vox_all(int k, int v)               /* a voice block's setting, the same for all three voices */
+{
+    int x;
+    for (x = 0; x < EN_NVOX; x++)
+        en_set(P_VX(x, k), v);
+}
+
 int main(void)
 {
     int pcs[4], n, i;
@@ -299,17 +306,17 @@ int main(void)
     }
 
     /* MOD: silent at depth 0; at depth 100 every generator moves, each its own way, inside -1..1, every target and
-     * chaos at its ends bounded and never NaN */
+     * shape bounded and never NaN */
     {
         int k, g, d, moved = 0, apart = 0, out = 0;
         float lo[EN_NMOD], hi[EN_NMOD];
-        en_set(P_MDEPTH, 0);
+        vox_all(VX_MDEPTH, 0);
         run(1.0f);
         for (g = 0; g < EN_NMOD; g++)
             CHECK(en_mod[g] == 0.0f, "MOD at depth 0: generator %d at %f", g, (double)en_mod[g]);
-        en_set(P_MDEPTH, 100);
-        en_set(P_MRATE, 80);
-        en_set(P_MCHAOS, 50);
+        vox_all(VX_MDEPTH, 100);
+        vox_all(VX_MRATE, 80);
+        vox_all(VX_MSHAPE, SHAPE_WALK);
         for (g = 0; g < EN_NMOD; g++)
             lo[g] = hi[g] = en_mod[g];
         for (k = 0; k < 40; k++) {
@@ -327,36 +334,109 @@ int main(void)
         CHECK(moved == EN_NMOD, "MOD: %d of %d generators moved", moved, EN_NMOD);
         CHECK(apart > 30, "MOD: the pad's first two voices together (%d of 40 apart)", apart);
         for (d = 0; d < EN_NMODDEST; d++)
-            for (k = 0; k <= 100; k += 100) {
-                en_set(P_MDEST, d);
-                en_set(P_MCHAOS, k);
+            for (k = 0; k < 2; k++) {
+                vox_all(VX_MDEST, d);
+                vox_all(VX_MSHAPE, k ? SHAPE_CHAOS : SHAPE_SINE);
                 peak = 0.0f;
                 run(3.0f);
-                CHECK(!bad && peak < 1.0f, "MOD target %d chaos %d: peak %f", d, k, (double)peak);
+                CHECK(!bad && peak < 1.0f, "MOD target %d shape %d: peak %f", d, k, (double)peak);
             }
-        en_set(P_MDEPTH, 0);
+        /* every shape: bounded, and (but the envelope, which waits for notes) moving */
+        vox_all(VX_MDEST, MOD_ALL);
+        for (k = 0; k < EN_NMODSHAPE; k++) {
+            float l0 = 9.0f, h0 = -9.0f;
+            int j;
+            vox_all(VX_MSHAPE, k);
+            out = 0;
+            peak = 0.0f;
+            for (j = 0; j < 30; j++) {
+                run(0.1f);
+                l0 = en_mod[0] < l0 ? en_mod[0] : l0;
+                h0 = en_mod[0] > h0 ? en_mod[0] : h0;
+                for (g = 0; g < EN_NMOD; g++)
+                    out += en_mod[g] < -1.0f || en_mod[g] > 1.0f || en_mod[g] != en_mod[g];
+            }
+            CHECK(!out && !bad && peak < 1.0f, "MOD shape %d: out %d, peak %f", k, out, (double)peak);
+            CHECK(k == SHAPE_ENV || h0 - l0 > 0.3f, "MOD shape %d: moved only %f", k, (double)(h0 - l0));
+        }
+        /* SPREAD 0: the pad's four as one; 100: apart */
+        vox_all(VX_MSHAPE, SHAPE_SINE);
+        vox_all(VX_MSPREAD, 0);
+        run(1.0f);
+        CHECK(fabsf(en_mod[0] - en_mod[1]) < 1e-3f && fabsf(en_mod[0] - en_mod[3]) < 1e-3f,
+              "MOD spread 0: the pad's voices apart (%f %f %f)", (double)en_mod[0], (double)en_mod[1], (double)en_mod[3]);
+        vox_all(VX_MSPREAD, 100);
+        /* SYNC Tempo: a square at 1/4, tempo 120: two cycles a second, four sign changes */
+        {
+            int flips = 0, j, s0;
+            char t[16];
+            en_set(P_TEMPO, 120);
+            vox_all(VX_MSYNC, SYNC_TEMPO);
+            vox_all(VX_MRATE, 60);                 /* 60 * 12 / 101: the eighth division, 1/4 */
+            vox_all(VX_MSHAPE, SHAPE_SQUARE);
+            run(0.5f);
+            en_param_text(P_VX(VOX_PAD, VX_MRATE), 60, t);
+            CHECK(!strcmp(t, "1/4"), "MOD sync tempo: rate shows %s", t);
+            s0 = en_mod[0] > 0.0f;
+            for (j = 0; j < 861; j++) {          /* 5 s, a block (5.8 ms) at a time */
+                run(0.006f);
+                if ((en_mod[0] > 0.0f) != s0) {
+                    s0 = !s0;
+                    flips++;
+                }
+            }
+            CHECK(flips >= 18 && flips <= 22, "MOD sync tempo 1/4 at 120: %d sign changes in 5 s (20)", flips);
+            vox_all(VX_MSYNC, SYNC_FREE);
+            en_set(P_TEMPO, 72);
+        }
+        /* FADE and SMOOTH at their ends, NOTE sync, the envelope: bounded */
+        vox_all(VX_MFADE, 100);
+        vox_all(VX_MSMOOTH, 100);
+        vox_all(VX_MSYNC, SYNC_NOTE);
+        vox_all(VX_MSHAPE, SHAPE_ENV);
+        peak = 0.0f;
+        run(10.0f);
+        CHECK(!bad && peak < 1.0f, "MOD fade, smooth, note sync, env: peak %f", (double)peak);
+        vox_all(VX_MFADE, 0);
+        vox_all(VX_MSMOOTH, 0);
+        vox_all(VX_MSYNC, SYNC_FREE);
+        vox_all(VX_MSHAPE, SHAPE_SINE);
+        vox_all(VX_MDEPTH, 0);
     }
 
-    /* MOD's FM targets are heard: RATIO (harmonic steps up) and FEEDBACK (more of it) are one-sided, so at full
-     * depth the bells alone are brighter (zero crossings) than without */
+    /* MOD's FM targets and the FM edits are heard on the bells alone (zero crossings: brighter): RATIO (harmonic
+     * steps up) and FEEDBACK (more of it) one-sided at full depth; FM's Index +24 dB and Ratio x4. And LEVEL quieter,
+     * on the pad alone (the bells' level wanders 2 dB from one garden to the next) */
     {
         static const int DEST[3] = {-1, MOD_RATIO, MOD_FEEDBACK};
-        float zc[3];
+        float zc[7], rms[2];
         int k;
-        for (k = 0; k < 3; k++) {
+        for (k = 0; k < 7; k++) {
             int b2, j;
             long z = 0;
+            double s2 = 0.0;
             float prev = 0.0f;
             en_init();
-            en_set(P_PAD, 0);
+            en_set(P_PAD, k >= 5 ? 70 : 0);
+            en_set(P_BELLS, k >= 5 ? 0 : 65);
             en_set(P_BASS, 0);
             en_set(P_PULSE, 0);
             en_set(P_ECHO, 0);
             en_set(P_REVERB, 0);
             en_set(P_DENSITY, 100);
-            en_set(P_MDEPTH, DEST[k] < 0 ? 0 : 100);
-            en_set(P_MDEST, DEST[k] < 0 ? 0 : DEST[k]);
-            en_set(P_MRATE, 60);
+            if (k < 3) {
+                en_set(P_VX(VOX_BELLS, VX_MDEPTH), DEST[k] < 0 ? 0 : 100);
+                en_set(P_VX(VOX_BELLS, VX_MDEST), DEST[k] < 0 ? 0 : DEST[k]);
+                en_set(P_VX(VOX_BELLS, VX_MRATE), 60);
+            } else if (k == 3) {
+                en_set(P_VX(VOX_BELLS, VX_INDEX), 24);
+            } else if (k == 4) {
+                en_set(P_VX(VOX_BELLS, VX_RATIO), 3);
+            } else if (k == 6) {
+                en_set(P_VX(VOX_PAD, VX_MDEPTH), 100);
+                en_set(P_VX(VOX_PAD, VX_MDEST), MOD_LEVEL);
+                en_set(P_VX(VOX_PAD, VX_MRATE), 80);   /* (fast: its mean, -3 dB, over the 20 s) */
+            }
             en_play(1);
             for (b2 = 0; b2 < 20 * 44100 / 256; b2++) {
                 en_render(buf, 256, 2048);
@@ -364,14 +444,57 @@ int main(void)
                     float x = (float)buf[2 * j];
                     z += (x > 0.0f) != (prev > 0.0f);
                     prev = x;
+                    s2 += (double)x * (double)x;
                 }
             }
             zc[k] = (float)z;
+            if (k >= 5)
+                rms[k - 5] = (float)s2;
         }
         CHECK(zc[1] > 1.15f * zc[0], "MOD Ratio not brighter: %.0f vs %.0f", (double)zc[1], (double)zc[0]);
         CHECK(zc[2] > 1.15f * zc[0], "MOD Feedback not brighter: %.0f vs %.0f", (double)zc[2], (double)zc[0]);
-        printf("  MOD on the bells, zero crossings: off %.0f, ratio %.0f, feedback %.0f\n", (double)zc[0], (double)zc[1],
-               (double)zc[2]);
+        CHECK(zc[3] > 1.3f * zc[0], "FM Index +24 not brighter: %.0f vs %.0f", (double)zc[3], (double)zc[0]);
+        CHECK(zc[4] > 1.3f * zc[0], "FM Ratio x4 not brighter: %.0f vs %.0f", (double)zc[4], (double)zc[0]);
+        CHECK(rms[1] < 0.7f * rms[0], "MOD Level not quieter: %g vs %g", (double)rms[1], (double)rms[0]);
+        printf("  the bells, zero crossings: off %.0f, MOD ratio %.0f, MOD feedback %.0f, FM index +24 %.0f, "
+               "FM ratio x4 %.0f\n", (double)zc[0], (double)zc[1], (double)zc[2], (double)zc[3], (double)zc[4]);
+        en_init();
+        en_play(1);
+    }
+
+    /* every voice's every patch, alone: heard, bounded; changed while it sounds (the pad crossing over, the bass
+     * struck anew): bounded */
+    {
+        static const int LAYER[EN_NVOX] = {P_PAD, P_BELLS, P_BASS};
+        static const int NP[EN_NVOX] = {EN_PADPATCHES, EN_BELLPATCHES, EN_BASSPATCHES};
+        int v, p, k;
+        for (v = 0; v < EN_NVOX; v++)
+            for (p = 0; p < NP[v]; p++) {
+                en_init();
+                for (k = 0; k < EN_NVOX; k++)
+                    en_set(LAYER[k], k == v ? 100 : 0);
+                en_set(P_PULSE, 0);
+                en_set(P_DENSITY, 100);
+                en_set(EN_VOX_PATCH[v], p);
+                en_play(1);
+                peak = 0.0f;
+                run(8.0f);
+                CHECK(!bad && peak < 1.0f && peak > 0.02f, "voice %d patch %d: peak %f", v, p, (double)peak);
+            }
+        en_init();
+        en_play(1);
+        run(3.0f);
+        peak = 0.0f;
+        for (k = 0; k < 30; k++) {
+            for (v = 0; v < EN_NVOX; v++) {
+                en_set(EN_VOX_PATCH[v], k % NP[v]);
+                en_set(P_VX(v, VX_ATK), (k * 37) % 101 - 50);
+                en_set(P_VX(v, VX_SUS), (k * 53) % 101 - 50);
+            }
+            run(0.2f);
+        }
+        run(3.0f);
+        CHECK(!bad && peak < 1.0f, "patches and envelopes changed while playing: peak %f", (double)peak);
         en_init();
         en_play(1);
     }

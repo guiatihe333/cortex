@@ -18,3 +18,24 @@ reboot
 wait 300
 expect par0 33
 expect par26 30
+# (each voice's MOD from Night Bus's recipe: depth 35, a walk, Metal)
+expect par37 35
+expect par39 6
+expect par40 2
+expect par67 35
+# a project of the first FM6 build (format 5: one MOD for all three voices) loads with it as each voice's own;
+# the patches and FM edits as they were
+storev5 55
+reboot
+wait 300
+expect piece 4
+expect par0 33
+expect par37 55
+expect par52 55
+expect par67 55
+expect par39 7
+expect par40 3
+expect par70 3
+expect par28 0
+expect par30 0
+expect par38 31

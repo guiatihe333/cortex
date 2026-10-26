@@ -94,7 +94,7 @@ The drawing at the top shows them all; here they are in more detail.
 | REC | **Freeze**: the chord holds and the reverb rings on forever, while the bells and pulse go on dry above it. Press again to thaw. Lit while frozen. |
 | EDIT | The next chord, at the start of the next bar (at once while resting). |
 | HOME | The Garden page: the whole garden. |
-| ENV · ARP · LFO · SEQ | The layers' pages: Pad, Bells, Bass, Pulse. ENV, ARP or LFO again: Mod, the voices' modulation. |
+| ENV · ARP · LFO · SEQ | The layers' pages: Pad, Bells, Bass, Pulse. ENV, ARP or LFO again: that voice's FM, Env, Mod and Mod 2 pages. |
 | FX · GLO | The Space and Setup pages. The lit button shows the page. |
 | SELECT | The previous or next page. Hold HOME and turn it for the tempo, from any page. |
 | ALGORITHM | Mode: Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, pentatonic major and minor. Loads the mode's scale; editing it with the keys makes it Custom. |
@@ -194,8 +194,9 @@ the same for all.
 ## 7. The pages
 
 One page a layer, each on its own button, with four values on KNOB 1–4. A layer's level is
-always KNOB 1. SELECT steps through them in this order. The voices' modulation (MOD) comes last: press
-ENV, ARP or LFO again on its own page.
+always KNOB 1. SELECT steps through them in this order. Each voice (the pad, the bells, the bass) has four
+pages more, its own: press ENV, ARP or LFO again on its page for FM, again for Env, Mod and Mod 2, and once
+more to come back. SELECT reaches them after Setup.
 
 ### HOME: Garden
 
@@ -218,7 +219,8 @@ ENV, ARP or LFO again on its own page.
 - **Swell:** how long the voices breathe, from a few seconds to about half a minute.
 - **Bright:** opens the pad's filter and turns up its FM modulators: the voices bloom brighter as
   they swell.
-- **Colour:** Rhodes or Voices. Each piece keeps its own.
+- **Colour:** the pad's patch, the same as on its FM page: Rhodes, Voices, Glass, Strings, Warm or Halo.
+  Each piece keeps its own.
 
 ### ARP: Bells
 
@@ -272,18 +274,42 @@ ENV, ARP or LFO again on its own page.
 
 The top right of this page shows how much of the FM-1's time the sound takes (CPU).
 
-### ENV, ARP or LFO again: Mod
+### ENV, ARP or LFO again: the voice's own pages
 
-The voices' generative modulation. Every voice (the four pad voices, the six bells, the bass) has a
-generator of its own, each at its own pace around Rate, so the voices never move together; the arc
-deepens it when the garden is full and calms it when sparse. The three voice buttons light on this page.
-SELECT reaches it after Setup.
+Each voice has four pages of its own, the same for the pad, the bells and the bass, and each piece keeps
+them. The voice's button stays lit on them; the dot under its page shows where you are.
 
-- **Depth:** how far it goes. 0: the voices as they are.
-- **Rate:** how long a cycle takes, from 60 seconds to an eighth of a second, a vibrato's speed (each
-  voice a little faster or slower).
-- **Chaos:** what it makes. 0: slow waves; 50: a random walk, gliding between random values; 100: the
-  logistic map at the edge of chaos, jumping.
+**FM.** The voice's sound.
+
+- **Patch:** which FM6 patch it plays. The pad: Rhodes, Voices, Glass, Strings, Warm, Halo. The bells: Bell
+  (shaped by Tone), Vibes, Marimba, Tubular, Kalimba, Celesta. The bass: Sine, Round, Pick, Sub, Reed,
+  Fretless. Each as loud as the voice's first. The pad's voices cross over to a new patch as they do for a new
+  key; the bells take it at their next strike; the bass is struck anew once the knob rests.
+- **Ratio:** the modulators' frequency times ×1 (the patch's own), ×2, ×3, ×4, ×5, ×7, or the inharmonic
+  ×1.41, ×2.76, ×3.5 (a bell's partials).
+- **Index:** the modulators' level, ±24 dB: the FM index, darker or brighter.
+- **Feedback:** more or less feedback on the operator that has it, ±7 steps.
+
+Ratio, Index and Feedback are heard at once.
+
+**Env.** Every operator's envelope, from the next note (the bass: struck anew once the knob rests).
+
+- **Attack:** + slower, − quicker.
+- **Decay:** + longer, − shorter.
+- **Sustain:** + higher, − lower. A bell held up at a sustain is let go after a beat.
+- **Release:** + longer, − shorter.
+
+**Mod.** The voice's generative modulation. Every sounding voice (the four pad voices, the six bells, the
+bass) has a generator of its own, each at its own pace around Rate; the arc deepens it when the garden is full
+and calms it when sparse.
+
+- **Depth:** how far it goes. 0: the voice as it is.
+- **Rate:** how long a cycle takes, from 60 seconds to an eighth of a second, a vibrato's speed (each voice a
+  little faster or slower). With Sync at Tempo: a note value, 8 bars to a sixteenth.
+- **Shape:** what it makes. Sine, Triangle, Saw up, Saw down, Square: a wave a cycle. S&H: a random value a
+  cycle, held. Walk: gliding between random values. Chaos: the logistic map at the edge of chaos, jumping.
+  Env: from each note's start, falling from the top to nothing over a cycle (a pluck of brightness, a pitch
+  drop).
 - **Target:** what it moves, the FM voice's own parameters first:
   - **Timbre:** the modulators' level, ±12 dB: the FM index, brighter and darker.
   - **Ratio:** the modulators' frequency ratio in harmonic steps, ×1 to ×5, gliding: the voice jumps
@@ -294,10 +320,18 @@ SELECT reaches it after Setup.
     works on struck notes, the bells; the pad and the bass are held and barely decay.
   - **Pitch:** the voice's pitch, ±30 cents: tape wow, a choir's drift, at the fastest a vibrato.
   - **Space:** the voice's place in the stereo field.
-  - **All:** timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio).
+  - **All:** timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio, not level).
+  - **Level:** the voice's loudness, down to −10 dB: a tremolo, a swell. Never louder than the voice.
 
-Ratio, Metal and Feedback work where there is modulation to change: the bells and the pad. The bass is
-nearly a pure sine on purpose and stays put.
+**Mod 2.** How the generators move together and in time.
+
+- **Spread:** 100: each voice its own way. 0: the layer's voices move as one.
+- **Fade:** the modulation coming in after each note, from at once (Off) to 8 seconds.
+- **Sync:** Free. Note: each note starts the shape again. Tempo: Rate is a note value at the tempo.
+- **Smooth:** a glide on the shape, 2 ms (a square's edge never clicks) to half a second.
+
+Ratio, Metal and Feedback as targets work where there is modulation to change: the bells and the pad. The
+bass's first patch is nearly a pure sine on purpose and stays put; its other patches move.
 
 ---
 
@@ -423,10 +457,19 @@ The defaults are Garden's; each piece has its own.
 | Setup | Tune | −50 – +50 cents | 0 |
 | Setup | MIDI out | Off, On | On |
 | Setup | Lights | Off, On, Keys | On |
-| Mod | Depth | 0–100 | 20 |
-| Mod | Rate | 0–100 (60 s – 0.12 s a cycle) | 27 (11 s) |
-| Mod | Chaos | 0–100 | 25 |
-| Mod | Target | Timbre, Ratio, Metal, Feedback, Decay, Pitch, Space, All | Timbre |
+| Each voice's FM | Patch | the voice's six | Rhodes, Bell, Sine |
+| Each voice's FM | Ratio | ×1, ×2, ×3, ×4, ×5, ×7, ×1.41, ×2.76, ×3.5 | ×1 |
+| Each voice's FM | Index | −24 – +24 dB | 0 dB |
+| Each voice's FM | Feedback | −7 – +7 | 0 |
+| Each voice's Env | Attack, Decay, Sustain, Release | −50 – +50 | 0 |
+| Each voice's Mod | Depth | 0–100 | 20 |
+| Each voice's Mod | Rate | 0–100 (60 s – 0.12 s a cycle; Tempo: 8 bars – 1/16) | 27 (11 s) |
+| Each voice's Mod | Shape | Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos, Env | Sine |
+| Each voice's Mod | Target | Timbre, Ratio, Metal, Feedback, Decay, Pitch, Space, All, Level | Timbre |
+| Each voice's Mod 2 | Spread | 0–100 | 100 |
+| Each voice's Mod 2 | Fade | Off – 8 s | Off |
+| Each voice's Mod 2 | Sync | Free, Note, Tempo | Free |
+| Each voice's Mod 2 | Smooth | 2 ms – 500 ms | 2 ms |
 | ALGORITHM | Mode | 8 modes, or Custom | Dorian |
 
 ---

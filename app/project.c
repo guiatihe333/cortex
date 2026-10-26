@@ -76,11 +76,21 @@ static int project_valid(void)                  /* an older format: the recipes 
     return 1;
 }
 
-/* older formats: fewer settings a piece (format 3, 0.9 before the layer pages: 23; format 4, before MOD: 28).
- * Carried over: each piece's own, the new ones from its recipe */
+/* older formats: fewer settings a piece (format 3, 0.9 before the layer pages: 23; format 4, before MOD: 28; format
+ * 5, one MOD for all three voices: 32). Carried over: each piece's own, the new ones from its recipe; format 5's MOD
+ * as every voice's own (en_mod_legacy), the patches and FM edits as they were (the defaults) */
 #define V3_NPARAMS (P_PADTONE + 1)
 #define V4_NPARAMS (P_HATS + 1)
-#define OLD_PROJECT(T, N)                                                                                          \
+#define V5_NPARAMS (P_HATS + 5)
+static void fix_none(int16_t *par, const int16_t *o) { (void)par, (void)o; }
+static void fix_v5(int16_t *par, const int16_t *o)
+{
+    int p;
+    for (p = P_BELLPATCH; p < P_NPARAMS; p++)
+        par[p] = en_param_info(p)->def;
+    en_mod_legacy(par, o[P_HATS + 1], o[P_HATS + 2], o[P_HATS + 3], o[P_HATS + 4]);
+}
+#define OLD_PROJECT(T, N, K, FIX)                                                                                  \
     typedef struct {                                                                                               \
         int16_t par[N];                                                                                            \
         uint16_t pool;                                                                                             \
@@ -105,15 +115,18 @@ static int project_valid(void)                  /* an older format: the recipes 
         for (i = 0; i < NPIECES; i++) {                                                                            \
             recipe(i, &r);                                                                                         \
             for (p = 0; p < P_NPARAMS; p++)                                                                        \
-                proj.slot[i].par[p] = p < (N) ? o->slot[i].par[p] : r.par[p];                                      \
+                proj.slot[i].par[p] = p < (K) ? o->slot[i].par[p] : r.par[p];                                      \
+            FIX(proj.slot[i].par, o->slot[i].par);                                                                 \
             proj.slot[i].pool = o->slot[i].pool;                                                                   \
         }                                                                                                          \
         recipe(proj.piece, &r);                                                                                    \
         for (p = 0; p < P_NPARAMS; p++)                                                                            \
-            proj.par[p] = p < (N) ? o->par[p] : r.par[p];                                                          \
+            proj.par[p] = p < (K) ? o->par[p] : r.par[p];                                                          \
+        FIX(proj.par, o->par);                                                                                     \
     }
-OLD_PROJECT(project_v3, V3_NPARAMS)
-OLD_PROJECT(project_v4, V4_NPARAMS)
+OLD_PROJECT(project_v3, V3_NPARAMS, V3_NPARAMS, fix_none)
+OLD_PROJECT(project_v4, V4_NPARAMS, V4_NPARAMS, fix_none)
+OLD_PROJECT(project_v5, V5_NPARAMS, P_BELLPATCH, fix_v5)
 
 int project_load(void)
 {
@@ -121,6 +134,7 @@ int project_load(void)
         project_t now;
         project_v3_t v3;
         project_v4_t v4;
+        project_v5_t v5;
     } buf;
     int n;
     memset(&buf, 0, sizeof buf);
@@ -129,6 +143,8 @@ int project_load(void)
         from_project_v3(&buf.v3);
     else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 4u)
         from_project_v4(&buf.v4);
+    else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 5u)
+        from_project_v5(&buf.v5);
     else
         proj = buf.now;
     if (n >= 8 && project_valid())
