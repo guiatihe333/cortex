@@ -78,7 +78,7 @@ td.v { width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
   <button id="play" hidden>Rest</button>
   <button id="freeze" aria-pressed="false">Freeze</button>
   <button id="next">Next chord</button>
-  <label for="colour">Pad</label> <select id="colour"><option value="0">Rhodes</option><option value="1">Voices</option><option value="2">Glass</option><option value="3">Strings</option><option value="4">Warm</option><option value="5">Halo</option></select>
+  <label for="colour">Voice 1</label> <select id="colour"><option value="0">Rhodes</option><option value="1">Voices</option><option value="2">Glass</option><option value="3">Strings</option><option value="4">Warm</option><option value="5">Halo</option></select>
   <span role="group" aria-labelledby="octName">
     <span id="octName">Bells octave</span> <button id="octDn" aria-label="Bells an octave down">&minus;</button>
     <span id="octVal">0</span> <button id="octUp" aria-label="Bells an octave up">+</button></span>
@@ -119,15 +119,15 @@ const VOX = 30, VXN = 42, VX = { OWN: 0, INDEX: 1, SLOT: 2 }, NSLOT = 5,
       MS = { DEPTH: 0, RATE: 1, SHAPE: 2, DEST: 3, SPREAD: 4, FADE: 5, SYNC: 6, SMOOTH: 7 }, MSN = 8;
 const vx = (v, k) => VOX + v * VXN + k;
 const ms = (v, s, k) => vx(v, VX.SLOT + s * MSN + k);
-const VOICES = [["Pad", P.PADTONE], ["Bells", P.BELLPATCH], ["Bass", P.BASSPATCH]];
+const VOICES = [["Voice 1", P.PADTONE], ["Voice 2", P.BELLPATCH], ["Voice 3", P.BASSPATCH]];
 const NLOOP = 4, LOOP_MAX = 29;
 const STORE = "eno-app-3";               // 3: each voice its own patch and five modulators (format 7)
 // the layers, as the FM-1's pages: [parameter, its name there]
 const GROUPS = [
   ["Garden", [[P.EVOLVE, "Evolve"], [P.MOTION, "Motion"], [P.DRIFT, "Drift"]]],
-  ["Pad", [[P.PAD, "Level"], [P.SWELL, "Swell"], [P.BRIGHT, "Bright"]]],
-  ["Bells", [[P.BELLS, "Level"], [P.DENSITY, "Density"], [P.BTONE, "Tone"]]],
-  ["Bass", [[P.BASS, "Level"], [P.BASSOCT, "Octave"], [P.GLIDE, "Glide"], [P.FIFTH, "Fifth"]]],
+  ["Voice 1 (pad)", [[P.PAD, "Level"], [P.SWELL, "Swell"], [P.BRIGHT, "Bright"]]],
+  ["Voice 2 (bells)", [[P.BELLS, "Level"], [P.DENSITY, "Density"], [P.BTONE, "Tone"]]],
+  ["Voice 3 (bass)", [[P.BASS, "Level"], [P.BASSOCT, "Octave"], [P.GLIDE, "Glide"], [P.FIFTH, "Fifth"]]],
   ["Pulse", [[P.PULSE, "Level"], [P.HITS, "Hits"], [P.SWING, "Swing"], [P.HATS, "Hats"]]],
   ["Space", [[P.ECHO, "Echo"], [P.ETIME, "Echo time"], [P.REVERB, "Reverb"], [P.SIZE, "Size"]]],
   ...VOICES.flatMap(([n, patch], v) => [

@@ -27,8 +27,8 @@ enum { S_VOICE, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5,
 #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
 #define NGROUP 3
 static const uint8_t GROUP0[NGROUP + 1] = {S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
-static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Pad", "Bells", "Bass", "Pulse", "Space", "Setup"};
-static const char *const SUB_NAME[NSUB] = {"Voice", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
+static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Pulse", "Space", "Setup"};
+static const char *const SUB_NAME[NSUB] = {"Patch", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
 static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO};
 static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
@@ -586,6 +586,8 @@ static void set_view(int v)
         ui.gsub[view_vox(v)][g] = (uint8_t)(view_sub(v) - GROUP0[g]);
 }
 
+static void caps(char *d, const char *s, int n);
+
 static void button(int b)
 {
     int v;
@@ -596,6 +598,13 @@ static void button(int b)
                 set_view(V_MAIN + x * NSUB + GROUP0[g] + ui.gsub[x][g]);
             else
                 set_view(v);
+            if (x >= 0) {                        /* which voice, and which of its groups, large on the screen */
+                static const char *const GNAME[NGROUP] = {"PATCH", "OPERATOR", "MOD"};
+                char t[12];
+                g = view_group(ui.view);
+                caps(t, MAIN_NAME[v], sizeof t);
+                say_as(t, g < 0 ? "LAYER" : GNAME[g], 0);   /* (a screen reader hears the page itself) */
+            }
             return;
         }
     switch (b) {
@@ -698,7 +707,7 @@ void ui_patch_in(int voice)                     /* a DX7 voice came in over USB:
     for (k = 0; k < 10; k++)
         t[k] = (char)vpatch[voice][EP_NAME + k];
     t[10] = 0;
-    say(voice == VOX_PAD ? "PAD: VOICE IN" : voice == VOX_BELLS ? "BELLS: VOICE IN" : "BASS: VOICE IN", t);
+    say(voice == VOX_PAD ? "VOICE 1: DX7 IN" : voice == VOX_BELLS ? "VOICE 2: DX7 IN" : "VOICE 3: DX7 IN", t);
     mark_dirty();
 }
 void ui_bank_in(int bank, int voices)          /* a bank came in */
@@ -1166,16 +1175,16 @@ static int help_lines(int b, const char *l[HELP_LINES])
 #define L(t) (l[n++] = (t))
     switch (b) {
     case B_HOME: L("THE GARDEN"); L("TEMPO, EVOLVE, MOTION, DRIFT"); L("+ SELECT: TEMPO"); break;
-    case B_ENV: L("THE PAD"); L("LEVEL, SWELL, BRIGHT,"); L(" COLOUR"); L("AGAIN: VOICE, OPERATOR, MOD"); break;
-    case B_ARP: L("THE BELLS"); L("LEVEL, DENSITY, TONE,"); L(" OCTAVE"); L("AGAIN: VOICE, OPERATOR, MOD"); break;
-    case B_LFO: L("THE BASS"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: VOICE, OPERATOR, MOD"); break;
+    case B_ENV: L("VOICE 1 (THE PAD)"); L("LEVEL, SWELL, BRIGHT,"); L(" COLOUR"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
+    case B_ARP: L("VOICE 2 (THE BELLS)"); L("LEVEL, DENSITY, TONE,"); L(" OCTAVE"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
+    case B_LFO: L("VOICE 3 (THE BASS)"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
     case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); break;
     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
     case B_EDIT: L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); break;
     case B_REC: L("FREEZE: THE CHORD HOLDS"); L(" AND THE REVERB RINGS ON"); L("AGAIN: THAW"); break;
-    case B_OCTDN: L("THE BELLS AN OCTAVE DOWN"); L("WITH OCT+, 5 S: UPDATE MODE"); break;
-    case B_OCTUP: L("THE BELLS AN OCTAVE UP"); L("WITH OCT-, 5 S: UPDATE MODE"); break;
+    case B_OCTDN: L("VOICE 2 AN OCTAVE DOWN"); L("WITH OCT+, 5 S: UPDATE MODE"); break;
+    case B_OCTUP: L("VOICE 2 AN OCTAVE UP"); L("WITH OCT-, 5 S: UPDATE MODE"); break;
     case B_SAVE: L("SAVES ALL EIGHT PIECES"); L("KEEP HOLDING: THE PIECE"); L(" BACK TO ITS RECIPE"); break;
     default: break;
     }

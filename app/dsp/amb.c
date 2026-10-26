@@ -29,15 +29,15 @@ const uint8_t EN_LOOP_LEN[EN_NLOOP] = {13, 17, 23, 29};
 const uint8_t EN_DRUM_N[EN_NDRUM] = {16, 12, 7};
 
 static const en_param_t PARAMS[P_NPARAMS] = {
-    {"Pad", 0, 100, 60},      {"Bells", 0, 100, 65},    {"Bass", 0, 100, 45},     {"Pulse", 0, 100, 40},
+    {"Voice 1", 0, 100, 60},  {"Voice 2", 0, 100, 65},  {"Voice 3", 0, 100, 45},  {"Pulse", 0, 100, 40},
     {"Density", 0, 100, 40},  {"Evolve", 0, 100, 35},   {"Drift", 0, 100, 25},    {"Hits", 0, 100, 35},
     {"Echo", 0, 100, 45},     {"Echo time", 0, 5, 3},   {"Reverb", 0, 100, 65},   {"Size", 0, 100, 80},
-    {"Bright", 0, 100, 40},   {"Swell", 0, 100, 60},    {"Bell tone", 0, 100, 50}, {"Motion", 0, 100, 50},
+    {"Bright", 0, 100, 40},   {"Swell", 0, 100, 60},    {"V2 tone", 0, 100, 50}, {"Motion", 0, 100, 50},
     {"Tune", -50, 50, 0},     {"MIDI out", 0, 1, 1},    {"Tempo", 30, 120, 72},   {"Root", 0, 11, 2},
-    {"Mode", 0, EN_NMODES - 1, 1}, {"Bell oct", -2, 2, 0}, {"Pad patch", 0, EN_NSRC - 1, 0},
-    {"Bass oct", -1, 1, 0},   {"Glide", 0, 100, 20},    {"Fifth", 0, 100, 35},
+    {"Mode", 0, EN_NMODES - 1, 1}, {"V2 oct", -2, 2, 0},   {"V1 patch", 0, EN_NSRC - 1, 0},
+    {"V3 oct", -1, 1, 0},     {"Glide", 0, 100, 20},    {"Fifth", 0, 100, 35},
     {"Swing", 0, 100, 0},     {"Hats", 0, 100, 50},
-    {"Bell patch", 0, EN_NSRC - 1, 0}, {"Bass patch", 0, EN_NSRC - 1, 0},
+    {"V2 patch", 0, EN_NSRC - 1, 0}, {"V3 patch", 0, EN_NSRC - 1, 0},
 #define MS_PARAMS(w, n)                                                                                            \
     {w " mod" n " depth", 0, 100, 0}, {w " mod" n " rate", 0, 100, 31},                                            \
     {w " mod" n " shape", 0, EN_NMODSHAPE - 1, 0}, {w " mod" n " target", 0, EN_NMODDEST - 1, 0},                 \
@@ -46,7 +46,7 @@ static const en_param_t PARAMS[P_NPARAMS] = {
 #define VOX_PARAMS(w)                                                                                              \
     {w " own", 0, 1, 0}, {w " index", -24, 24, 0}, MS_PARAMS(w, "1"), MS_PARAMS(w, "2"), MS_PARAMS(w, "3"),        \
     MS_PARAMS(w, "4"), MS_PARAMS(w, "5")
-    VOX_PARAMS("Pad"), VOX_PARAMS("Bell"), VOX_PARAMS("Bass"),
+    VOX_PARAMS("V1"), VOX_PARAMS("V2"), VOX_PARAMS("V3"),
 #undef VOX_PARAMS
 #undef MS_PARAMS
 };
