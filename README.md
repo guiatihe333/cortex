@@ -108,6 +108,42 @@ Níveis: cada camada ficou a até 0,3 dB do AMB-1 original, medido com `analysis
 (compatível). Nada do código GPL do JIANT ou do Felucca entrou: nem o `eng_fm6.c`, nem os patches de fábrica, nem o
 gerador de tabelas.
 
+## Instalar no FM-1 ligado ao seu computador
+
+Antes de tudo: se o FM-1 roda o firmware **FM1 Open** da M-VAVE, ele só aceita o firmware de fábrica V15 por cima.
+Volte ao V15 primeiro (pelo M-UPGRADE da M-VAVE, ou em "Back to the stock firmware" no instalador web do AMB-1).
+O `instalar.sh` detecta isso e avisa.
+
+**Linux (x86-64) ou macOS** (no Mac, com o Docker aberto), com o FM-1 no USB:
+
+```sh
+git clone -b claude/amb1-jiant-fm6 https://github.com/guiatihe333/lostgear
+cd lostgear/fm1-amb-fm6
+sh instalar.sh
+```
+
+O script:
+1. Prepara um Python isolado com mido, python-rtmidi e Pillow.
+2. Encontra o FM-1 e mostra o firmware atual, antes de gastar tempo no build.
+3. Compila o pacote (`build_release.sh`).
+4. Instala, pedindo confirmação.
+
+Se o `python-rtmidi` não instalar: no Linux, `sudo apt install build-essential libasound2-dev libjack-dev python3-dev`;
+no Mac, `xcode-select --install`.
+
+**Windows:** o toolchain da JieLi só roda em Linux, e o WSL não enxerga o USB-MIDI. Então:
+1. No **WSL (Ubuntu)**: clone como acima e rode `sh build_release.sh`. O pacote sai em
+   `work/fm1-amb/app/build/amb-1.3.90-fm6.fwsc`.
+2. No **PowerShell do Windows**, com Python instalado:
+   ```powershell
+   py -m pip install mido python-rtmidi
+   cd \\wsl$\Ubuntu\home\<seu-usuario>\lostgear\fm1-amb-fm6\work\fm1-amb
+   py base\tools\fm1_install.py app\build\amb-1.3.90-fm6.fwsc
+   ```
+
+Feche outros programas que usem MIDI (DAW, editores web) antes de instalar. Não desligue o FM-1 enquanto grava. Se
+uma instalação for interrompida, o FM-1 fica no modo de atualização: rode o mesmo comando de novo para terminar.
+
 ## Como compilar e instalar: um comando
 
 Num Linux x86-64 ou num Mac (com Docker), com acesso a `github.com`, `pkgman.jieliapp.com` e `gitee.com`:
