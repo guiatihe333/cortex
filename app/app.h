@@ -20,18 +20,23 @@
 enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_NOBJ };
 #define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u}   /* the pieces' patches after the panel, in the data area */
 #define PROJ_MAGIC 0x314F4E45u           /* "ENO1" */
-#define PROJ_FORMAT 9u                   /* 9: the voices alike (a ROLE each, its own octave, density, pace, glide,
+#define PROJ_FORMAT 10u                  /* 10: the reel's settings; 9: the voices alike (a ROLE each, its own octave, density, pace, glide,
                                           * an ADSR), AMB-1's eighteen patches; 8: how each voice plays (ENV, GATE); 7:
                                           * each voice's own patch
                                           * (OBJ_PATCH) and five modulators; 6: each
                                           * voice's patch choice, FM edits and MOD; 5: one MOD for all; 4: the bass's
-                                          * and the pulse's own settings (8, 7, 6, 5, 4 and 3 are carried over; older formats
+                                          * and the pulse's own settings (9 down to 3 are carried over; older formats
                                           * give the recipes) */
 #define NPIECES EN_NPIECES
 
 /* the DX7 banks (bank.c): EN_NBANK sectors of the data area, each a 32-voice bulk dump's voices (VMEM, 4096 bytes),
  * sent from a computer over USB-MIDI (tools/amb_syx.py) */
 #define BANK_BASE 0x97000u
+/* the reel (amb.h en_reel_mem): its splices at REEL_BASE, its blocks' states a sector on, its samples three on; the
+ * splices written last (a reel half written has none) */
+#define REEL_BASE 0xA7000u
+int project_reel_save(void);
+void project_reel_load(void);
 int bank_voice(int voice, int src, uint8_t *p);   /* source src's patch for the voice (a bank's: from the flash);
                                                  * 0: none there */
 int bank_name(int src, char *b);         /* its name (10 characters, trimmed) into b; 0: an empty slot */

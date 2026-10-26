@@ -15,6 +15,7 @@ void app_init(void)
 {
     en_init();
     project_load();                      /* defaults when nothing (or another format) is saved */
+    project_reel_load();                 /* the reel, as it was saved */
     project_apply();
 }
 void app_render(int32_t *lr, uint32_t n, uint32_t gain_q12) { en_render(lr, n, gain_q12); }

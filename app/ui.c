@@ -22,15 +22,17 @@
  * the bass) has NSUB more, in three groups (SUB_*), with no button of their own: its page's button pressed again goes
  * to the next group (the page it was left on) and from the last back to the layer's page; SELECT steps through the
  * voice's own pages; the voice's button stays lit on them */
-enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_MAIN };
+enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_TAPE, V_GENE, V_MAIN };
 enum { S_VOICE, S_PLAY, S_ADSR, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
 #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
 #define NGROUP 3
 static const uint8_t GROUP0[NGROUP + 1] = {S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
-static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Pulse", "Space", "Setup"};
+static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Pulse", "Space", "Setup",
+                                              "Tape", "Gene"};
 static const char *const SUB_NAME[NSUB] = {"Patch", "Play", "ADSR", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
-static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO};
+static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO, B_SEQ, B_SEQ};
+static int tape_view(int v) { return v == V_TAPE || v == V_GENE; }   /* the reel's pages (SEQ again, and again) */
 static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
 static int view_vox(int v)                     /* the voice a page is of (its layer's or its own); -1 none */
 {
@@ -77,6 +79,8 @@ static const uint16_t MAIN_KNOB[V_MAIN][4] = {
     {P_PULSE, P_HITS, P_SWING, P_HATS},
     {P_ECHO, P_ETIME, P_REVERB, P_SIZE},
     {P_ROOT, P_TUNE, P_MIDI, K_LEDS},
+    {P_RL(SRC), P_RL(LEVEL), P_RL(SOS), P_RL(SPEED)},
+    {P_RL(GENE), P_RL(SLIDE), P_RL(MORPH), P_RL(ORG)},
 };
 static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_SRC, KV(ALG), KV(FB), K_NONE},          /* (INDEX: P_VX, put in below) */
@@ -103,6 +107,8 @@ static const char *const MAIN_LABEL[V_MAIN][4] = {
     {"Level", "Hits", "Swing", "Hats"},
     {"Echo", "Echo time", "Reverb", "Size"},
     {"Root", "Tune", "MIDI out", "Lights"},
+    {"Source", "Level", "SOS", "Speed"},
+    {"Gene", "Slide", "Morph", "Organize"},
 };
 static const char *const SUB_LABEL[NSUB][4] = {
     {"Patch", "Algorithm", "Feedback", "Index"},
@@ -165,6 +171,7 @@ static struct {
     uint32_t turn_t;                   /* the last knob turn */
     uint8_t help;                      /* a button's card is up: the button + 1 */
     uint8_t reset_done;                /* SAVE held: the piece went back to its recipe this hold */
+    uint8_t erase_done;                /* REC held on the reel's pages: the reel erased this hold */
     uint8_t dirty;                     /* the project changed since the last save */
     uint32_t act_t, saved_t;
     char msg[2][24];
@@ -475,6 +482,8 @@ static void par_out(int p)                      /* a parameter the knobs set, ou
     if (p < P_VOX) {
         if (p != P_MIDI && p - P_PAD < 30)
             cc_out(15, CC0 + p, is_src(p) ? (v > 127 ? 127 : v) : cc_scale(v, pi->lo, pi->hi));
+    } else if (p >= P_TAPE) {
+        cc_out(15, 50 + p - P_TAPE, cc_scale(v, pi->lo, pi->hi));
     } else if (p >= P_PLAY) {
         cc_out((p - P_PLAY) / PL_N, CC_PL + (p - P_PLAY) % PL_N, cc_scale(v, pi->lo, pi->hi));
     } else if ((p - P_VOX) % VX_N != VX_OWN) {
@@ -740,6 +749,20 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
         dice_par(P_REVERB, 30, 90);
         dice_par(P_SIZE, 40, 100);
         break;
+    case V_TAPE: {                              /* the tape: a level, a sound on sound, a speed (1x, -1x, or about) */
+        static const int8_t SPEED[6] = {75, 75, 25, 62, 88, 38};
+        const int sp = SPEED[dice(0, 5)];
+        dice_par(P_RL(LEVEL), 50, 90);
+        dice_par(P_RL(SOS), 30, 90);
+        dice_par(P_RL(SPEED), sp, sp);
+        break;
+    }
+    case V_GENE:                                /* the genes: their size, where, how they follow, a splice */
+        dice_par(P_RL(GENE), 20, 100);
+        dice_par(P_RL(SLIDE), 0, 100);
+        dice_par(P_RL(MORPH), 20, 95);
+        dice_par(P_RL(ORG), 0, en_reel_nspl ? (int)en_reel_nspl - 1 : 0);
+        break;
     default: {                                  /* SETUP: a new key (the root, a mode) */
         int m = dice(0, EN_NMODES - 1);
         dice_par(P_ROOT, 0, 11);
@@ -881,9 +904,88 @@ static void vox_title(void)                     /* which voice, and which of its
     say_as(t, s, 0);
 }
 
+static void reel_say(void)                     /* the reel as it is: recording, or its splices and seconds */
+{
+    char t[24];
+    const uint32_t ds = (en_reel_len * 10u + 11025u) / 22050u;   /* tenths of a second */
+    if (en_reel_state) {
+        say("TAPE", en_reel_state == 1 ? "RECORDING" : "OVERDUB");
+        return;
+    }
+    itoa_u(en_reel_nspl, t);
+    {
+        int k = 0;
+        while (t[k])
+            k++;
+        t[k++] = ' ';
+        t[k++] = 'S';
+        t[k++] = 'P';
+        t[k++] = 'L';
+        t[k++] = ',';
+        t[k++] = ' ';
+        itoa_u(ds / 10u, t + k);
+        while (t[k])
+            k++;
+        t[k++] = '.';
+        t[k++] = (char)('0' + ds % 10u);
+        t[k++] = ' ';
+        t[k++] = 'S';
+        t[k] = 0;
+    }
+    say("TAPE", t);
+}
+int project_reel_save(void);
+static void reel_button(int b)                  /* on the reel's pages: REC overdubs the splice picked (again: stop),
+                                                 * EDIT records a new one at the end, SAVE keeps the reel too */
+{
+    if (b == B_SAVE) {
+        if (en_reel_state) {
+            warn("STOP THE TAPE", "FIRST");
+            return;
+        }
+        say("SAVING", "THE REEL");
+        if (project_save() == 0 && project_reel_save() == 0) {
+            ui.dirty = 0;
+            say("SAVED", "PIECES AND REEL");
+        } else {
+            warn("NOT SAVED", "FLASH ERROR");
+        }
+        return;
+    }
+    if (b == B_EDIT) {
+        if (en_reel_state == 1) {                /* (recording one: it ends, and the next begins) */
+            en_reel(EN_REEL_NEW);
+            say("TAPE", "A NEW SPLICE");
+        } else if (en_reel_nspl >= 8u || en_reel_len + 2048u > 260096u) {
+            warn("THE REEL", "IS FULL");
+            return;
+        } else {
+            en_reel(EN_REEL_NEW);
+            say("TAPE", "RECORDING");
+        }
+        proj.par[P_RL(ORG)] = (int16_t)(en_reel_nspl < 8u ? en_reel_nspl : 7);   /* (the new one plays) */
+        en_set(P_RL(ORG), proj.par[P_RL(ORG)]);
+        par_out(P_RL(ORG));
+        mark_dirty();
+        return;
+    }
+    if (en_reel_state) {
+        en_reel(EN_REEL_DUB);                    /* (stops either) */
+        say("TAPE", "STOPPED");
+    } else {
+        en_reel(EN_REEL_DUB);
+        say("TAPE", en_reel_nspl ? "OVERDUB" : "RECORDING");
+    }
+}
 static void button(int b)
 {
     int v;
+    if (b == B_SEQ && (ui.view == V_PULSE || tape_view(ui.view))) {   /* SEQ again: the tape, the genes, the pulse */
+        set_view(ui.view == V_PULSE ? V_TAPE : ui.view == V_TAPE ? V_GENE : V_PULSE);
+        if (tape_view(ui.view))
+            reel_say();
+        return;
+    }
     for (v = 0; v < V_MAIN; v++)                 /* a page's button: its page; a voice's again: its next group */
         if (VIEW_BTN[v] == b) {
             int x = view_vox(v), g = view_group(ui.view) + 1;
@@ -895,6 +997,10 @@ static void button(int b)
                 vox_title();
             return;
         }
+    if (tape_view(ui.view) && (b == B_REC || b == B_EDIT || b == B_SAVE)) {   /* the reel's transport */
+        reel_button(b);
+        return;
+    }
     switch (b) {
     case B_EDIT:
         en_next();
@@ -957,6 +1063,8 @@ static void midi_cc(int ch, int cc, int v)
         p = P_VX(ch, VX_INDEX + cc - CC0);
     } else if (ch < EN_NVOX && cc >= CC_PL && cc < CC_PL + PL_N) {
         p = P_PL(ch, cc - CC_PL);
+    } else if (ch == 15 && cc >= 50 && cc < 50 + TP_N) {   /* the reel's */
+        p = P_TAPE + cc - 50;
     } else if (ch == 15 && cc >= CC0 && cc < CC0 + 30) {
         p = cc - CC0;
     }
@@ -1052,6 +1160,8 @@ static void input(void)
             ui.down_t[i] = plat_ms();
             if (i == B_SAVE)
                 ui.reset_done = 0;
+            if (i == B_REC)
+                ui.erase_done = 0;
             if (i == B_PLAY)                   /* transport on the press */
                 button((int)i);
         } else if (!(ui.btn_used & m) && i != B_PLAY) {
@@ -1125,6 +1235,13 @@ static void input(void)
             ui.touch_until = plat_ms() + 1200u;
             ui.act_t = ui.turn_t = plat_ms();
         }
+    if ((btn >> B_REC & 1u) && tape_view(ui.view) && !ui.erase_done && plat_ms() - ui.down_t[B_REC] >= RESET_HOLD) {
+        ui.erase_done = 1;                       /* REC held on the reel's pages: the reel erased */
+        ui.btn_used |= 1u << B_REC;
+        ui.help = 0;
+        en_reel(EN_REEL_ERASE);
+        warn("TAPE", "ERASED");
+    }
     if (btn == 1u << B_SEL && !(ui.btn_used >> B_SEL & 1u) && plat_ms() - ui.down_t[B_SEL] >= 1000u) {
         ui.btn_used |= 1u << B_SEL;              /* SEL held alone a second: undo the last roll */
         dice_undo();
@@ -1483,11 +1600,11 @@ static int help_lines(int b, const char *l[HELP_LINES])
     case B_ENV: L("VOICE 1"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
     case B_ARP: L("VOICE 2"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
     case B_LFO: L("VOICE 3"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
-    case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); break;
+    case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); L("AGAIN: TAPE, GENE"); break;
     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
-    case B_EDIT: L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); break;
-    case B_REC: L("FREEZE: THE CHORD HOLDS"); L(" AND THE REVERB RINGS ON"); L("AGAIN: THAW"); break;
+    case B_EDIT: L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); L("TAPE: A NEW SPLICE"); break;
+    case B_REC: L("FREEZE: THE CHORD HOLDS"); L(" AND THE REVERB RINGS ON"); L("TAPE: OVERDUB, HELD: ERASE"); break;
     case B_OCTDN: L("THE VOICE SHOWN AN OCTAVE"); L(" DOWN"); L("WITH OCT+, 5 S: UPDATE MODE"); break;
     case B_OCTUP: L("THE VOICE SHOWN AN OCTAVE"); L(" UP"); L("WITH OCT-, 5 S: UPDATE MODE"); break;
     case B_SAVE: L("SAVES ALL EIGHT PIECES"); L("KEEP HOLDING: THE PIECE"); L(" BACK TO ITS RECIPE"); break;

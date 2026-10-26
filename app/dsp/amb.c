@@ -54,6 +54,8 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     PL_PARAMS("V1", ROLE_CHORD, 100, 60, 70), PL_PARAMS("V2", ROLE_LOOPS, 40, 60, 25),
     PL_PARAMS("V3", ROLE_BASS, 35, 0, 80),
 #undef PL_PARAMS
+    {"Tape source", 0, 4, 0}, {"Tape level", 0, 100, 70}, {"SOS", 0, 100, 70}, {"Speed", 0, 100, 75},
+    {"Gene", 0, 100, 100}, {"Slide", 0, 100, 0}, {"Morph", 0, 100, 45}, {"Organize", 0, 7, 0},
 #undef VOX_PARAMS
 #undef MS_PARAMS
 };
@@ -70,6 +72,7 @@ static const char *const PATCH_NAME[EN_NFACT] = {
     "Rhodes", "Voices", "Glass", "Strings", "Warm", "Halo", "Bell", "Vibes", "Marimba", "Tubular", "Kalimba", "Celesta",
     "Sine", "Round", "Pick", "Sub", "Reed", "Fretless"};
 static const char *const ENV_NAME[EN_NENV] = {"AMB", "Patch", "ADSR"};
+static const char *const TSRC_NAME[5] = {"Mix", "Voice 1", "Voice 2", "Voice 3", "Pulse"};
 static const char *const ROLE_NAME[EN_NROLE] = {"Chord", "Loops", "Bass"};
 /* format 6's FM Ratio: the modulators' frequency times these (log2), harmonic, then three inharmonic */
 #define NRATIO 9
@@ -246,11 +249,15 @@ void en_param_text(int i, int v, char *b)
         s = DIV_NAME[div_of(v < 0 ? 0 : v > 100 ? 100 : v)];
     else if (mk == MS_FADE && v == 0)
         s = "Off";
-    else if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_ENV)
+    else if (i == P_RL(SRC))
+        s = TSRC_NAME[(unsigned)v < 5u ? v : 0];
+    else if (i == P_RL(SPEED) && v >= 48 && v <= 52)
+        s = "Stop";
+    else if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_ENV)
         s = ENV_NAME[(unsigned)v < EN_NENV ? v : 0];
-    else if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_ROLE)
+    else if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_ROLE)
         s = ROLE_NAME[(unsigned)v < EN_NROLE ? v : 0];
-    else if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_PACE && par[i - PL_PACE + PL_ROLE] != ROLE_CHORD) {
+    else if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_PACE && par[i - PL_PACE + PL_ROLE] != ROLE_CHORD) {
         static const char *const STEP[2][5] = {{"1/16", "1/8", "1/4", "1/2", "1/2"},
                                                {"Chord", "1 bar", "1/2", "1/4", "1/8"}};
         const int loops = par[i - PL_PACE + PL_ROLE] == ROLE_LOOPS;
@@ -284,20 +291,37 @@ void en_param_text(int i, int v, char *b)
         *b = 0;
         return;
     }
-    if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_PACE) {   /* a chord's breath, seconds a cycle */
+    if (i == P_RL(SPEED)) {                      /* "+1.00x", "-0.50x" */
+        const int c = v >= 73 && v <= 77 ? 100 : v >= 23 && v <= 27 ? -100 : (v - 50) * 4;
+        int a = c < 0 ? -c : c;
+        *b++ = c < 0 ? '-' : '+';
+        b = itoa_s(a / 100, b);
+        *b++ = '.';
+        *b++ = (char)('0' + a % 100 / 10);
+        *b++ = (char)('0' + a % 10);
+        *b++ = 'x';
+        *b = 0;
+        return;
+    }
+    if (i == P_RL(ORG)) {                        /* the splice, 1..8 */
+        b = itoa_s(v + 1, b);
+        *b = 0;
+        return;
+    }
+    if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_PACE) {   /* a chord's breath, seconds a cycle */
         b = itoa_s(4 + (12 * v + 50) / 100, b);
         *b++ = 's';
         *b = 0;
         return;
     }
-    if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_GLIDE) {
+    if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_GLIDE) {
         b = itoa_s(20 + 12 * v, b);
         *b++ = 'm';
         *b++ = 's';
         *b = 0;
         return;
     }
-    if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_GATE) {
+    if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_GATE) {
         b = itoa_s(v, b);
         *b++ = '%';
         *b = 0;
@@ -325,7 +349,7 @@ void en_param_text(int i, int v, char *b)
         *b = 0;
         return;
     }
-    if ((i == P_TUNE || i == P_BOCT || i == P_BASSOCT || (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_OCT)) && v > 0)
+    if ((i == P_TUNE || i == P_BOCT || i == P_BASSOCT || (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_OCT)) && v > 0)
         *b++ = '+';
     itoa_s(v, b);
 }
@@ -470,7 +494,8 @@ const char *en_chord_name(const int *pcs, int n, char *buf)
 }
 
 /* ------------------------------------------------------------ commands --- */
-enum { C_SET, C_POOL, C_PLAY, C_NEXT, C_FREEZE, C_SEED, C_PANIC, C_CLOCK, C_REGROW, C_PBYTE, C_PDONE, C_PLOAD };
+enum { C_SET, C_POOL, C_PLAY, C_NEXT, C_FREEZE, C_SEED, C_PANIC, C_CLOCK, C_REGROW, C_PBYTE, C_PDONE, C_PLOAD,
+       C_REEL };
 _Static_assert(P_NPARAMS <= 256, "C_SET carries a parameter's index in 8 bits");
 _Static_assert(FP_SIZE <= 256, "C_PBYTE carries a patch byte's offset in 8 bits");
 #define QN 1024u                              /* a piece (project_apply) posts every parameter and patch byte at once */
@@ -494,6 +519,11 @@ void en_seed(uint32_t s) { post(C_SEED, 0, (int)(s & 0xFFFFu)); }
 void en_panic(void) { post(C_PANIC, 0, 0); }
 void en_clock(int msg) { post(C_CLOCK, msg, 0); }
 void en_regrow(void) { post(C_REGROW, 0, 0); }
+void en_reel(int op) { post(C_REEL, op, 0); }
+static void reel_new(void);                      /* (reel.c) */
+static void reel_dub(void);
+static void reel_erase(void);
+static void reel_init(void);
 void en_patch_byte(int voice, int off, int v) { post(C_PBYTE, voice, off << 8 | (v & 0xFF)); }
 void en_patch_done(int voice, int fresh) { post(C_PDONE, voice, fresh); }
 /* each voice's patch mailbox: the UI writes it whole between two counts (odd while writing), the engine copies it on
@@ -604,6 +634,7 @@ static float motion;                            /* 0..1: Motion */
 #define FM_DB (16777216.0f / 6.0206f)          /* a level offset of the modulators, Q24 log2 a dB */
 enum { FB_PADL, FB_PADR, FB_BELLL, FB_BELLR, FB_BELLE, FB_BASSL, FB_BASSR, FB_N };
 static float fm_buf[FB_N][FM6_N];
+static float fm_vtap[EN_NVOX][FM6_N];           /* each voice's sound alone, mono (the reel's SOURCE) */
 static uint32_t fm_pos = FM6_N;
 static uint8_t vpat[EN_NVOX][FP_SIZE + 1];      /* each voice's patch, as the notes play it */
 static uint8_t vstage[EN_NVOX][FP_SIZE + 1];    /* its bytes as they arrive, into vpat when applied */
@@ -2133,9 +2164,11 @@ static const int DL_LEN[L_N] = {PRE_N, DS(142), DS(107), DS(379), DS(277), DS(67
                                 DS(3720), DS(908) + EXC + 2, DS(4217), DS(2656), DS(3163)};
 #define DL_TOTAL (PRE_N + DS(142) + DS(107) + DS(379) + DS(277) + DS(672) + DS(4453) + DS(1800) + DS(3720) + DS(908) + \
                   DS(4217) + DS(2656) + DS(3163) + 2 * (EXC + 2))
-static float pl_buf[DL_TOTAL] EN_POOL;
+/* the lines in 16 bits (half the RAM of floats: room for the tape), +-4 full scale: the tank's quantisation ~-78 dB */
+#define PL_Q 8192.0f
+static int16_t pl_buf[DL_TOTAL] EN_POOL;
 typedef struct {
-    float *b;
+    int16_t *b;
     int n, i;
 } dl_t;
 static dl_t dl[L_N];
@@ -2144,11 +2177,12 @@ static float pl_bw, pl_damp_l, pl_damp_r, pl_decay = 0.5f, pl_decay_t = 0.5f, pl
 static inline float tap(const dl_t *d, int k)
 {
     int j = d->i - k;
-    return d->b[j < 0 ? j + d->n : j];
+    return (float)d->b[j < 0 ? j + d->n : j] * (1.0f / PL_Q);
 }
 static inline void push(dl_t *d, float x)
 {
-    d->b[d->i] = x;
+    float y = x * PL_Q;
+    d->b[d->i] = (int16_t)(y > 32767.0f ? 32767 : y < -32767.0f ? -32767 : (int)(y + (y >= 0.0f ? 0.5f : -0.5f)));
     if (++d->i >= d->n)
         d->i = 0;
 }
@@ -2203,7 +2237,7 @@ static inline void reverb(float in, float *ol, float *or_)
 
 static void plate_init(void)
 {
-    float *p = pl_buf;
+    int16_t *p = pl_buf;
     int k, i;
     for (k = 0; k < L_N; k++) {
         dl[k].b = p;
@@ -2212,7 +2246,7 @@ static void plate_init(void)
         p += DL_LEN[k];
     }
     for (i = 0; i < DL_TOTAL; i++)
-        pl_buf[i] = 0.0f;
+        pl_buf[i] = 0;
     pl_bw = pl_damp_l = pl_damp_r = 0.0f;
     lfo_s = 0.0f;
     lfo_c = 1.0f;
@@ -2220,14 +2254,14 @@ static void plate_init(void)
 
 /* ------------------------------------------------- echo: tape and Echoplex --- */
 /* After Discreet Music's chain: an Echoplex (a short, smearing echo, ~160 ms, fed back) and a tape loop
- * (long: up to ~5.6 s, synced to the tempo), each repeat a little darker and thinner, with a little
+ * (long: up to ~2.8 s, synced to the tempo), each repeat a little darker and thinner, with a little
  * wow. The tape runs at a quarter rate (11 kHz, 16-bit, mono): it loses its highs anyway. Two heads:
  * the first plays the loop's length, the second a part of it (3/4 at first). With Motion the echo
  * evolves: each head wanders across the field, the feedback leans now on one head, now on the other
  * (the repeats fall in changing patterns, left and right), and now and then the second head slides to
  * another part of the loop, as a head moved by hand (the repeats bend a little in pitch on the way).
  * The Echoplex has a second tap, for the right. */
-#define TAPE_N 62000                             /* 5.6 s at 11.025 kHz */
+#define TAPE_N 31000                             /* 2.8 s at 11.025 kHz (the rest of what it had: the looper's) */
 #define TAPE_SR 11025.0f
 static int16_t tape[TAPE_N] EN_POOL;
 static int tape_w, tape_ph;
@@ -2470,7 +2504,7 @@ static void apply(int p, int v)
     default:
         if (p >= P_VOX && p < P_PLAY)            /* a voice's own (FM, its envelopes, MOD) */
             vox_apply((p - P_VOX) / VX_N, (p - P_VOX) % VX_N, v);
-        else if (p >= P_PLAY)
+        else if (p >= P_PLAY && p < P_TAPE)
             play_apply((p - P_PLAY) / PL_N, (p - P_PLAY) % PL_N, v);
         break;
     }
@@ -2557,6 +2591,7 @@ void en_init(void)
     for (i = 0; i < EN_NDRUM; i++)
         drum[i].on = 0, drum[i].wait = 0;
     fm_pos = FM6_N;
+    reel_init();
     mod_init();
     plate_init();
     for (i = 0; i < TAPE_N; i++)
@@ -2718,14 +2753,26 @@ static void drain(void)
             }
             break;
         case C_PANIC: quiet(); break;
+        case C_REEL:
+            if (a == EN_REEL_NEW)
+                reel_new();
+            else if (a == EN_REEL_DUB)
+                reel_dub();
+            else if (a == EN_REEL_ERASE)
+                reel_erase();
+            break;
         case C_REGROW: regrow(); break;
         }
     }
 }
 
+#include "reel.c"
+
 /* --------------------------------------------------------------- render --- */
 #define BLK 256
 static float mixl[BLK], mixr[BLK], rsend[BLK], esend[BLK];
+static float vsrc[EN_NVOX][BLK], dsrc[BLK];     /* each voice alone, the pulse alone (the reel's SOURCE) */
+static float rl_in[BLK], rl_l[BLK], rl_r[BLK];  /* what the reel records, what it plays */
 
 /* the pad's bus: a 12 dB low-pass, darker than it sounds on paper (Brian Eno darkened everything: the
  * Synthi's filter below half, then tape). No chorus: a modulated delay against pure tones beats (on
@@ -2801,6 +2848,7 @@ static void chord_block(int v)                  /* a Chord voice's block: its br
                 pr += dr;
                 fm_buf[FB_PADL][j] += x[j] * amp * pl;
                 fm_buf[FB_PADR][j] += x[j] * amp * pr;
+                fm_vtap[v][j] += x[j] * amp * (pl + pr) * 0.5f;
             }
         } else {
             for (j = 0; j < FM6_N; j++)
@@ -2884,6 +2932,7 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
                     fm_buf[FB_BELLL][j] += sm * pl;
                     fm_buf[FB_BELLR][j] += sm * pr;
                     fm_buf[FB_BELLE][j] += sm;
+                    fm_vtap[v][j] += sm * (pl + pr) * 0.5f;
                 }
             }
             n->pl = gl;
@@ -2951,6 +3000,7 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
                 pr += dr;
                 fm_buf[FB_BASSL][j] += x[j] * amp * xf * g * pl;
                 fm_buf[FB_BASSR][j] += x[j] * amp * xf * g * pr;
+                fm_vtap[v][j] += x[j] * amp * xf * g * (pl + pr) * 0.5f;
             }
         } else {
             for (j = 0; j < FM6_N; j++)
@@ -2974,6 +3024,9 @@ static void fm_block(void)
     for (i = 0; i < FB_N; i++)
         for (j = 0; j < FM6_N; j++)
             fm_buf[i][j] = 0.0f;
+    for (v = 0; v < EN_NVOX; v++)
+        for (j = 0; j < FM6_N; j++)
+            fm_vtap[v][j] = 0.0f;
     mod_step();
     if (first_role(ROLE_CHORD) < 0)
         en_pad_level = 0.0f;
@@ -3014,6 +3067,9 @@ static void fm_pull(uint32_t n)
         }
         padl[j] = fm_buf[FB_PADL][fm_pos];
         padr[j] = fm_buf[FB_PADR][fm_pos];
+        vsrc[0][j] = fm_vtap[0][fm_pos];
+        vsrc[1][j] = fm_vtap[1][fm_pos];
+        vsrc[2][j] = fm_vtap[2][fm_pos];
         bl = fm_buf[FB_BASSL][fm_pos];
         br = fm_buf[FB_BASSR][fm_pos];
         b = 0.5f * (bl + br);
@@ -3050,6 +3106,7 @@ static void render_hat(drum_t *v, uint32_t n, float g, float pl, float pr)
         x = hp * amp * att * g;
         mixl[j] += x * pl;
         mixr[j] += x * pr;
+        dsrc[j] += x * (pl + pr) * 0.5f;
         rsend[j] += x * 0.2f;
         esend[j] += x * 0.08f;
         amp *= v->adec;
@@ -3074,6 +3131,7 @@ static void render_drums(uint32_t n)
             float x = sine(ph) * amp * att * g;
             mixl[j] += x;
             mixr[j] += x;
+            dsrc[j] += x;
             rsend[j] += x * 0.1f;
             ph += inc;
             if (ph >= 1.0f)
@@ -3096,20 +3154,30 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
 {
     uint32_t j;
     const float rg = rev_send * rev_in_gain * (1.0f - 0.25f * arcm), eg = echo_send;
+    const int src = par[P_RL(SRC)];
     for (j = 0; j < n; j++)
-        mixl[j] = mixr[j] = rsend[j] = esend[j] = 0.0f;
+        mixl[j] = mixr[j] = rsend[j] = esend[j] = dsrc[j] = 0.0f;
     fm_pull(n);
     pad_bus(n);
     render_drums(n);
+    reel_play(rl_l, rl_r, n);                    /* the reel: to the mix, and a little to the space */
+    for (j = 0; j < n; j++) {
+        const float m = (rl_l[j] + rl_r[j]) * (1.0f / 0.36f);
+        rsend[j] += m * 0.25f;
+        esend[j] += m * 0.1f;
+    }
     for (j = 0; j < n; j++) {
         float wl, wr, l, r, el, er, xl, xr;
         echoes(esend[j] * eg, &el, &er, &xl, &xr);
         reverb((rsend[j] * rg + (el + er + xl + xr) * 0.35f * rev_send) * 0.8f, &wl, &wr);
-        l = (mixl[j] + 0.75f * el + 0.3f * xl + 1.3f * wl) * 0.36f * gain;
-        r = (mixr[j] + 0.75f * er + 0.3f * xr + 1.3f * wr) * 0.36f * gain;
-        out[2 * j] = (int32_t)(fm_tanhf(l) * 8300000.0f);
-        out[2 * j + 1] = (int32_t)(fm_tanhf(r) * 8300000.0f);
+        l = (mixl[j] + 0.75f * el + 0.3f * xl + 1.3f * wl) * 0.36f;
+        r = (mixr[j] + 0.75f * er + 0.3f * xr + 1.3f * wr) * 0.36f;
+        /* SOURCE: the whole mix (its space too, the reel's own sound left out) or one voice, or the pulse, alone */
+        rl_in[j] = src == 0 ? 0.5f * (l + r) : src <= EN_NVOX ? vsrc[src - 1][j] * 0.36f : dsrc[j] * 0.36f;
+        out[2 * j] = (int32_t)(fm_tanhf((l + rl_l[j]) * gain) * 8300000.0f);
+        out[2 * j + 1] = (int32_t)(fm_tanhf((r + rl_r[j]) * gain) * 8300000.0f);
     }
+    reel_record(rl_in, n);
 }
 
 /* the arc: a slow tide, minutes long, between sparse (-1) and full (+1); Motion sets how far it goes */

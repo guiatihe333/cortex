@@ -58,7 +58,8 @@ enum {
     P_BELLPATCH, P_BASSPATCH,                         /* the bells' and the bass's patches (sources) */
     P_VOX,                                            /* then each voice's own: EN_NVOX blocks of VX_N (P_VX) */
     P_PLAY = P_VOX + 3 * 42,                          /* then how each voice plays its notes: EN_NVOX of PL_N (P_PL) */
-    P_NPARAMS = P_PLAY + 3 * 11
+    P_TAPE = P_PLAY + 3 * 11,                         /* then the reel's (TP_*, P_RL) */
+    P_NPARAMS = P_TAPE + 8
 };
 /* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
  * index and five generative modulators */
@@ -92,9 +93,23 @@ enum { ROLE_CHORD, ROLE_LOOPS, ROLE_BASS, EN_NROLE };
 /* the settings of before each voice had its own (Swell, Density, Bell oct, Bass oct, Glide, Fifth: still in the table,
  * unshown) into each voice's (a piece's recipe, a project of an older format) */
 void en_upgrade(int16_t *par);
+/* the reel (reel.c): one track of tape, 11.8 s, with genes. SOURCE (Mix, Voice 1..3, Pulse), LEVEL, SOS (of what was
+ * there, how much stays as it is overdubbed), SPEED (-2x .. 0 .. +2x), GENE (a gene: the whole splice .. 1/256),
+ * SLIDE (where in the splice), MORPH (gaps, joined, overlapping, spread), ORGANIZE (the splice played, 1..8) */
+enum { TP_SRC, TP_LEVEL, TP_SOS, TP_SPEED, TP_GENE, TP_SLIDE, TP_MORPH, TP_ORG, TP_N };
+#define P_RL(k) (P_TAPE + TP_##k)
+_Static_assert(P_NPARAMS == P_TAPE + TP_N, "the reel's");
+enum { EN_REEL_NEW = 1, EN_REEL_DUB, EN_REEL_ERASE };
+void en_reel(int op);                             /* a new splice at the end; overdub the one picked (again: stop); erase */
+extern volatile uint8_t en_reel_state, en_reel_nspl;   /* 0 resting, 1 recording a new splice, 2 overdubbing; splices */
+extern volatile uint32_t en_reel_len, en_reel_w;  /* samples recorded (22.05 kHz, of 260096); where it records */
+extern volatile float en_reel_pos;                /* the cursor in the splice playing, 0..1 */
+void *en_reel_mem(int part, uint32_t *n);         /* the reel's memory: 0 its splices, 1 its blocks' states, 2 its
+                                                   * samples recorded (3: all of them), for saving and loading */
+int en_reel_valid(void);                          /* after loading: 1 a reel, 0 none (then empty) */
 #define P_PL(v, k) (P_PLAY + (v) * PL_N + (k))
 _Static_assert(P_PLAY == P_VOX + EN_NVOX * VX_N, "a block a voice");
-_Static_assert(P_NPARAMS == P_PLAY + EN_NVOX * PL_N, "how each voice plays");
+_Static_assert(P_TAPE == P_PLAY + EN_NVOX * PL_N, "how each voice plays");
 extern const uint8_t EN_VOX_PATCH[EN_NVOX];       /* each voice's patch parameter */
 /* the old global MOD (format 5 and the recipes: depth, rate, chaos, target) as every voice's first modulator */
 void en_mod_legacy(int16_t *par, int depth, int rate, int chaos, int dest);

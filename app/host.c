@@ -74,7 +74,13 @@ int app_expect(const char *what, int *got)
         for (l = 0; l < EN_NLOOP; l++)
             for (i = 0; i < EN_LOOP_MAX; i++)
                 g += en_loop_note[l][i] >= 0;
-    } else if (!strncmp(what, "par", 3))          /* parN: parameter N (amb.h P_*) */
+    } else if (!strcmp(what, "reelstate"))      /* the reel: 0 resting, 1 recording a splice, 2 overdubbing */
+        g = en_reel_state;
+    else if (!strcmp(what, "reelspl"))          /* its splices */
+        g = en_reel_nspl;
+    else if (!strcmp(what, "reelsec"))          /* its seconds recorded, tenths */
+        g = (int)(en_reel_len * 10u / 22050u);
+    else if (!strncmp(what, "par", 3))          /* parN: parameter N (amb.h P_*) */
         g = proj.par[atoi(what + 3)];
     else if (!strncmp(what, "pat", 3) && strchr(what, '_'))   /* patV_OFF: voice V's patch byte OFF */
         g = vpatch[atoi(what + 3) % EN_NVOX][atoi(strchr(what, '_') + 1) % EN_PATCH];
