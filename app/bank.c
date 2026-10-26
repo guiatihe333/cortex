@@ -118,11 +118,8 @@ int app_sysex(const uint8_t *p, uint32_t n)
             sum += p[5 + k];
         if (((128u - (sum & 127u)) & 127u) != p[160])
             return 1;                            /* (a bad checksum: taken, and dropped) */
-        for (k = 0; k < 155u; k++)
-            if (p[5 + k] > en_patch_max((int)k))
-                return 1;
-        for (k = 0; k < 155u; k++)
-            vpatch[v][k] = p[5 + k];
+        for (k = 0; k < 155u; k++)               /* (a value past its range: held to it, as a DX7 plays it) */
+            vpatch[v][k] = p[5 + k] > en_patch_max((int)k) ? en_patch_max((int)k) : p[5 + k];
         proj.par[P_VX(v, VX_OWN)] = 1;
         en_set(P_VX(v, VX_OWN), 1);
         project_patch_send(v, 1);

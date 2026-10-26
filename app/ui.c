@@ -404,10 +404,22 @@ static void patch_text(int off, int val, char *b)
     }
     cat_i(b, val, 0);
 }
-static void src_text(int k, int v, char *b)     /* a source: its name ("Rhodes", a bank voice's), "*" edited */
+static void src_text(int k, int v, char *b)     /* a source: its name ("Rhodes", a bank voice's), "*" edited. The
+                                                 * voice's own, of a bank: its name as the piece keeps it (the bank
+                                                 * since sent again may hold another there) */
 {
     int n = 0;
-    if (v < EN_NFACT || !bank_name(v, b))
+    b[0] = 0;
+    if (v >= EN_NFACT && v == proj.par[k]) {
+        const uint8_t *nm = vpatch[src_vox(k)] + EP_NAME;
+        int i;
+        for (i = 0; i < 10; i++)
+            if ((b[i] = (char)(nm[i] < 32u || nm[i] > 126u ? ' ' : nm[i])) != ' ')
+                n = i + 1;
+        b[n] = 0;
+        n = 0;
+    }
+    if (!b[0] && (v < EN_NFACT || !bank_name(v, b)))
         en_param_text(k, v, b);
     while (b[n])
         n++;
@@ -595,6 +607,18 @@ static void set_view(int v)
 
 static void caps(char *d, const char *s, int n);
 
+static void vox_title(void)                     /* which voice, and which of its pages, large on the screen (a
+                                                 * screen reader hears the page itself) */
+{
+    char t[12], s[12];
+    int x = view_vox(ui.view);
+    if (x < 0)
+        return;
+    caps(t, MAIN_NAME[VOX_VIEW[x]], sizeof t);
+    caps(s, ui.view < V_MAIN ? "Layer" : SUB_NAME[view_sub(ui.view)], sizeof s);
+    say_as(t, s, 0);
+}
+
 static void button(int b)
 {
     int v;
@@ -605,13 +629,8 @@ static void button(int b)
                 set_view(V_MAIN + x * NSUB + GROUP0[g] + ui.gsub[x][g]);
             else
                 set_view(v);
-            if (x >= 0) {                        /* which voice, and which of its groups, large on the screen */
-                static const char *const GNAME[NGROUP] = {"PATCH", "OPERATOR", "MOD"};
-                char t[12];
-                g = view_group(ui.view);
-                caps(t, MAIN_NAME[v], sizeof t);
-                say_as(t, g < 0 ? "LAYER" : GNAME[g], 0);   /* (a screen reader hears the page itself) */
-            }
+            if (x >= 0)
+                vox_title();
             return;
         }
     switch (b) {
@@ -805,6 +824,7 @@ static void input(void)
                 set_view(VOX_VIEW[x]);
             else if (s < NSUB)
                 set_view(V_MAIN + x * NSUB + s);
+            vox_title();
         }
         ui.turn_t = plat_ms();
     }

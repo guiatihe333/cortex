@@ -589,7 +589,7 @@ int main(void)
         en_factory(VOX_PAD, 0, 50, p);
         pack(p, m);
         m[14] = 120;                             /* OP6's level, past 99 */
-        CHECK(!en_unpack(m, q), "a level of 120 taken for a voice");
+        CHECK(en_unpack(m, q) && q[EP_OL] == 99, "a level of 120 not held to 99");
     }
 
     /* a bank's voice sent to a voice (bytes and done, as the FM page's Patch does): heard, bounded; then its operators
@@ -694,6 +694,103 @@ int main(void)
               (double)zc[0]);
         printf("  the bells, zero crossings: off %.0f, OP6 ratio %.0f, OP6 fine %.0f\n", (double)zc[0], (double)zc[1],
                (double)zc[2]);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.3.95. TRANSPOSE: the patch's (24 C3) moves its pitch, an octave up at 36 (the bass alone: twice the zero
+     * crossings); a quick run of patches through the mailbox ends on its last, as one load of it does; a bank's value
+     * past its range held to it (a voice, not refused); an external clock's tempo is the one that plays */
+    {
+        float lv2[2];
+        uint8_t p[EN_PATCH + 1], q[EN_PATCH + 1], m[128];
+        long zc[2];
+        int t, k, b2, j;
+        for (t = 0; t < 2; t++) {
+            float prev = 0.0f;
+            en_init();
+            en_set(P_PAD, 0);
+            en_set(P_BELLS, 0);
+            en_set(P_PULSE, 0);
+            en_set(P_ECHO, 0);
+            en_set(P_REVERB, 0);
+            en_factory(VOX_BASS, 0, 50, p);
+            p[EP_TRNSP] = (uint8_t)(t ? 36 : 24);
+            en_set(P_VX(VOX_BASS, VX_OWN), 1);
+            en_patch_load(VOX_BASS, p, 1);
+            en_play(1);
+            run(4.0f);
+            zc[t] = 0;
+            for (b2 = 0; b2 < 4 * 44100 / 256; b2++) {
+                en_render(buf, 256, 2048);
+                for (j = 0; j < 256; j++) {
+                    float x = (float)buf[2 * j];
+                    zc[t] += (x > 0.0f) != (prev > 0.0f);
+                    prev = x;
+                }
+            }
+        }
+        CHECK(zc[1] > 1.8f * zc[0] && zc[1] < 2.2f * zc[0], "TRANSPOSE +12: zero crossings %ld vs %ld", zc[1], zc[0]);
+
+        for (t = 0; t < 2; t++) {                /* one load of Pick, or 900 of others ending on it: the bass alone,
+                                                  * heard alike (its zero crossings, its level; the space's tails of
+                                                  * before are not cleared by an init, so not sample for sample) */
+            float prev = 0.0f;
+            en_init();
+            en_set(P_PAD, 0);
+            en_set(P_BELLS, 0);
+            en_set(P_PULSE, 0);
+            en_set(P_ECHO, 0);
+            en_set(P_REVERB, 0);
+            en_set(P_VX(VOX_BASS, VX_OWN), 1);
+            en_factory(VOX_BASS, 2, 50, q);
+            if (t)
+                for (k = 0; k < 900; k++) {   /* (in one drain, the queue short of full) */
+                    en_factory(VOX_BASS, k % 6, 50, p);
+                    en_patch_load(VOX_BASS, p, 1);
+                }
+            en_patch_load(VOX_BASS, q, 1);
+            en_play(1);
+            run(3.0f);
+            zc[t] = 0;
+            lv2[t] = 0.0f;
+            for (b2 = 0; b2 < 2 * 44100 / 256; b2++) {
+                en_render(buf, 256, 2048);
+                for (j = 0; j < 256; j++) {
+                    float x = (float)buf[2 * j];
+                    zc[t] += (x > 0.0f) != (prev > 0.0f);
+                    lv2[t] += x * x * 1e-12f;
+                    prev = x;
+                }
+            }
+        }
+        CHECK(zc[0] > 100 && labs(zc[1] - zc[0]) <= zc[0] / 50 && fabsf(lv2[1] - lv2[0]) <= 0.03f * lv2[0],
+              "900 patches through the mailbox: not as one load (crossings %ld vs %ld, level %f vs %f)", zc[1], zc[0],
+              (double)lv2[1], (double)lv2[0]);
+
+        en_factory(VOX_PAD, 0, 50, p);
+        pack(p, m);
+        m[14] = 127;                             /* OP6's output level, as an old bank has it */
+        m[118] = 1;                              /* a control character in its name */
+        CHECK(en_unpack(m, q) && q[EP_OL] == 99 && q[EP_NAME] == ' ', "a value past its range: %d", q[EP_OL]);
+        for (k = 0; k < 128; k++)
+            m[k] = 0;
+        CHECK(!en_unpack(m, q), "a voice of zeros taken");
+
+        en_init();
+        en_set(P_TEMPO, 120);
+        en_play(1);
+        run(0.5f);
+        en_clock(EN_CLK_START);
+        for (b2 = 0; b2 < 6 * 24; b2++) {        /* six beats at 60, a pulse every 1837.5 samples */
+            int n = 1837 + (b2 & 1), r;
+            en_clock(EN_CLK_TICK);
+            for (r = 0; r < n; r += 256)
+                en_render(buf, (uint32_t)(n - r < 256 ? n - r : 256), 2048);
+        }
+        CHECK(en_tempo > 58.5f && en_tempo < 61.5f, "an external clock at 60: the tempo %f", (double)en_tempo);
+        run(2.0f);                               /* the clock gone: the knob's */
+        CHECK(en_tempo == 120.0f, "the clock gone: the tempo %f", (double)en_tempo);
         en_init();
         en_play(1);
     }
