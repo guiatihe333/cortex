@@ -26,6 +26,13 @@ Abra a sessão do Claude Code nesta pasta (`lostgear/fm1-amb-fm6`) e cole o prom
 
 ## 3. Estado
 
+**Atualização (26/10/2026, no PC com Windows):** o FM-1 voltou do V16 ao V15 (arquivo oficial, hash conferido), o
+pacote foi compilado no WSL e o 1.3.90-fm6 foi instalado e ouvido. Depois veio o 1.3.91-fm6 (patch 0005): cada voz
+com seus seis patches, FM (Ratio, Index, Feedback), envelopes e o próprio MOD, com formas de onda, Spread, Fade,
+Sync e Smooth. Veja o README.
+
+O que segue abaixo é o estado de antes.
+
 **Feito e testado** (testes do AMB-1 todos passando, no simulador):
 - Vozes do AMB-1 (pad, sinos, baixo) no motor FM6 do JIANT, com núcleo seguro para a CPU do FM-1.
 - Página MOD: Depth, Rate, Chaos e Target, com 8 targets (Timbre, Ratio, Metal, Feedback, Decay, Pitch, Space, All).

@@ -1,5 +1,6 @@
-# MOD, the voices' generative modulation: a voice's page button pressed again opens it (from the pad, the bells and
-# the bass, never from the other pages); SELECT reaches it after Setup; its knobs, kept with the piece
+# each voice's own pages: its page button pressed again steps through FM, Env, Mod and Mod 2 and back (from the
+# pad, the bells and the bass, never from the other pages); SELECT reaches them after Setup; their knobs, each voice's
+# own (parN: amb.h, P_VOX 30, a block of 15 a voice), kept with the piece
 wait 300
 tap ENV
 wait 100
@@ -7,21 +8,54 @@ expect view 1
 tap ENV
 wait 100
 expect view 7
+shot pad_fm.png
+tap ENV
+wait 100
+expect view 8
+tap ENV
+wait 100
+expect view 9
 shot mod.png
+# the pad's Depth: Garden's recipe 20, the bells' and the bass's untouched
 turn K1 3 10
-expect par28 23
+expect par37 23
+expect par52 20
+expect par67 20
+# its Shape: Garden's a sine; Square
+turn K3 4 10
+expect par39 4
+tap ENV
+wait 100
+expect view 10
+shot mod2.png
+# Sync: Tempo
+turn K3 2 10
+expect par43 2
+tap ENV
+wait 100
+expect view 1
+# the bells: their FM page, the patch (Vibes)
 tap ARP
 wait 100
 expect view 2
 tap ARP
 wait 100
-expect view 7
+expect view 11
+turn K1 1 10
+expect par28 1
+# the bass: its FM page, Index +2 dB
 tap LFO
 wait 100
 expect view 3
 tap LFO
 wait 100
-expect view 7
+expect view 15
+turn K3 2 10
+expect par61 2
+# another voice's button from a voice's page: that voice's own first page
+tap ARP
+wait 100
+expect view 2
 tap SEQ
 wait 100
 tap SEQ
@@ -36,9 +70,15 @@ tap GLO
 wait 100
 turn SELECT 1 100
 expect view 7
-turn K4 4 10
-expect par31 4
+# the pad's Feedback, on its FM page
+turn K4 2 10
+expect par32 2
 wav mod.wav
 wait 20000
 wavstop
 expect peak_db_max -0.5
+# kept with the piece
+turn PRESET 1
+turn PRESET -1
+expect par28 1
+expect par37 23

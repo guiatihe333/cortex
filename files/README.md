@@ -6,9 +6,10 @@ bells on tape loops of unequal length, a gliding bass and quiet Euclidean percus
 a tape echo, a long tape loop and a plate reverb. You don't perform it, you tend it: pick a piece
 and a scale, take notes out, put them back, and let it grow.
 
-**This tree's voices are FM6**: the pad (Rhodes and Voices), the bells and the bass are 6-operator FM, the engine of
+**This tree's voices are FM6**: the pad, the bells and the bass are 6-operator FM, the engine of
 [JIANT FM](https://github.com/juanjiant-bit/JIANT) (msfa, Dexed's core, in integer C: `app/dsp/fm6_core.c`), with
-patches of their own (`fm_patches`, `bell_patches` in `app/dsp/amb.c`). Everything that plays them is AMB-1's as it
+patches of their own, six a voice (`pad_bank`, `bell_bank`, `bass_bank` in `app/dsp/amb.c`), and each voice its own FM
+edits and generative modulation. Everything that plays them is AMB-1's as it
 was: the breaths, the loops, the glide, the pulse, the echoes and the plate.
 
 ![AMB-1's screen: the garden](docs/img/screen-garden.png) ![Voices](docs/img/screen-voices.png) ![Frozen](docs/img/screen-frozen.png)
@@ -29,7 +30,7 @@ installer can reach.
 | Keys | The scale: each key adds its note or takes it out |
 | PLAY · REC · EDIT | Grow / rest · freeze · the next chord |
 | HOME · ENV · ARP · LFO · SEQ · FX · GLO | The pages: Garden, Pad, Bells, Bass, Pulse, Space, Setup; KNOB 1–4 set their values, a layer's level on KNOB 1 |
-| ENV · ARP · LFO again | Mod: the voices' generative modulation (depth, rate, chaos, target) |
+| ENV · ARP · LFO again | that voice's own pages: FM (patch, ratio, index, feedback), Env (attack, decay, sustain, release), Mod (depth, rate, shape, target), Mod 2 (spread, fade, sync, smooth) |
 | SELECT | The previous or next page; with HOME held, the tempo |
 | ALGORITHM · PRESETS | The mode · the piece (eight of them) |
 | OCT− / OCT+ | The bells' octave |

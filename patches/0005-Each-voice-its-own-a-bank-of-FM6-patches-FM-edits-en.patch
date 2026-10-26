@@ -1,0 +1,2163 @@
+From 582a1081317953ebf2179313caa08167a5a3f18a Mon Sep 17 00:00:00 2001
+From: AMB-1 FM6 <noreply@anthropic.com>
+Date: Mon, 26 Oct 2026 04:12:31 -0300
+Subject: [PATCH] Each voice its own: a bank of FM6 patches, FM edits,
+ envelopes and modulation
+
+The pad, the bells and the bass each get four pages (FM, Env, Mod, Mod 2), reached by pressing the voice's page
+button again:
+- FM: Patch (six a voice, levels matched), Ratio, Index, Feedback, heard at once
+- Env: every operator's attack, decay, sustain and release, from the next note (the bass struck anew)
+- Mod: depth, rate, shape (sine, triangle, saw up, saw down, square, S&H, walk, chaos, env) and target (Level
+  added: a one-sided tremolo)
+- Mod 2: spread, fade, sync (free, note, tempo) and smooth
+
+Project format 6; format 5's single MOD becomes every voice's own. The command queue grows to 256: a piece posts
+every parameter at once. A bell held at a sustain is let go after a beat.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ README.md                   |   7 +-
+ app/app.h                   |   5 +-
+ app/dsp/amb.c               | 778 +++++++++++++++++++++++++++---------
+ app/dsp/amb.h               |  44 +-
+ app/host.c                  |  28 +-
+ app/project.c               |  30 +-
+ app/ui.c                    | 104 +++--
+ docs/MANUAL.md              |  85 +++-
+ tests/host/amb_test.c       | 163 +++++++-
+ tests/scenarios/migrate.amb |  21 +
+ tests/scenarios/mod.amb     |  54 ++-
+ web/app/index.html          |  34 +-
+ 12 files changed, 1064 insertions(+), 289 deletions(-)
+
+diff --git a/README.md b/README.md
+index 2800148..2dbc272 100644
+--- a/README.md
++++ b/README.md
+@@ -6,9 +6,10 @@ bells on tape loops of unequal length, a gliding bass and quiet Euclidean percus
+ a tape echo, a long tape loop and a plate reverb. You don't perform it, you tend it: pick a piece
+ and a scale, take notes out, put them back, and let it grow.
+ 
+-**This tree's voices are FM6**: the pad (Rhodes and Voices), the bells and the bass are 6-operator FM, the engine of
++**This tree's voices are FM6**: the pad, the bells and the bass are 6-operator FM, the engine of
+ [JIANT FM](https://github.com/juanjiant-bit/JIANT) (msfa, Dexed's core, in integer C: `app/dsp/fm6_core.c`), with
+-patches of their own (`fm_patches`, `bell_patches` in `app/dsp/amb.c`). Everything that plays them is AMB-1's as it
++patches of their own, six a voice (`pad_bank`, `bell_bank`, `bass_bank` in `app/dsp/amb.c`), and each voice its own FM
++edits and generative modulation. Everything that plays them is AMB-1's as it
+ was: the breaths, the loops, the glide, the pulse, the echoes and the plate.
+ 
+ ![AMB-1's screen: the garden](docs/img/screen-garden.png) ![Voices](docs/img/screen-voices.png) ![Frozen](docs/img/screen-frozen.png)
+@@ -29,7 +30,7 @@ installer can reach.
+ | Keys | The scale: each key adds its note or takes it out |
+ | PLAY · REC · EDIT | Grow / rest · freeze · the next chord |
+ | HOME · ENV · ARP · LFO · SEQ · FX · GLO | The pages: Garden, Pad, Bells, Bass, Pulse, Space, Setup; KNOB 1–4 set their values, a layer's level on KNOB 1 |
+-| ENV · ARP · LFO again | Mod: the voices' generative modulation (depth, rate, chaos, target) |
++| ENV · ARP · LFO again | that voice's own pages: FM (patch, ratio, index, feedback), Env (attack, decay, sustain, release), Mod (depth, rate, shape, target), Mod 2 (spread, fade, sync, smooth) |
+ | SELECT | The previous or next page; with HOME held, the tempo |
+ | ALGORITHM · PRESETS | The mode · the piece (eight of them) |
+ | OCT− / OCT+ | The bells' octave |
+diff --git a/app/app.h b/app/app.h
+index a604c81..a07f4a1 100644
+--- a/app/app.h
++++ b/app/app.h
+@@ -20,8 +20,9 @@
+ enum { OBJ_PROJ, OBJ_PANEL, OBJ_NOBJ };
+ #define APP_STORE_MAP {0xFC000u, 0xDC000u}
+ #define PROJ_MAGIC 0x314F4E45u           /* "ENO1" */
+-#define PROJ_FORMAT 5u                   /* 5: the voices' modulation (MOD); 4: the bass's and the pulse's own
+-                                          * settings (4 and 3 are carried over; older formats give the recipes) */
++#define PROJ_FORMAT 6u                   /* 6: each voice's patch, FM edits and MOD; 5: one MOD for all; 4: the
++                                          * bass's and the pulse's own settings (5, 4 and 3 are carried over; older
++                                          * formats give the recipes) */
+ #define NPIECES EN_NPIECES
+ 
+ typedef struct {
+diff --git a/app/dsp/amb.c b/app/dsp/amb.c
+index 44d0338..66b481e 100644
+--- a/app/dsp/amb.c
++++ b/app/dsp/amb.c
+@@ -34,23 +34,65 @@ static const en_param_t PARAMS[P_NPARAMS] = {
+     {"Echo", 0, 100, 45},     {"Echo time", 0, 5, 3},   {"Reverb", 0, 100, 65},   {"Size", 0, 100, 80},
+     {"Bright", 0, 100, 40},   {"Swell", 0, 100, 60},    {"Bell tone", 0, 100, 50}, {"Motion", 0, 100, 50},
+     {"Tune", -50, 50, 0},     {"MIDI out", 0, 1, 1},    {"Tempo", 30, 120, 72},   {"Root", 0, 11, 2},
+-    {"Mode", 0, EN_NMODES - 1, 1}, {"Bell oct", -2, 2, 0}, {"Pad tone", 0, 1, 0},
++    {"Mode", 0, EN_NMODES - 1, 1}, {"Bell oct", -2, 2, 0}, {"Pad patch", 0, EN_PADPATCHES - 1, 0},
+     {"Bass oct", -1, 1, 0},   {"Glide", 0, 100, 20},    {"Fifth", 0, 100, 35},
+     {"Swing", 0, 100, 0},     {"Hats", 0, 100, 50},
+-    {"Mod depth", 0, 100, 0}, {"Mod rate", 0, 100, 31}, {"Chaos", 0, 100, 30}, {"Mod dest", 0, EN_NMODDEST - 1, 0},
++    {"Bell patch", 0, EN_BELLPATCHES - 1, 0}, {"Bass patch", 0, EN_BASSPATCHES - 1, 0},
++#define VOX_PARAMS(w)                                                                                              \
++    {w " ratio", 0, 8, 0},    {w " index", -24, 24, 0}, {w " feedback", -7, 7, 0},                                \
++    {w " attack", -50, 50, 0}, {w " decay", -50, 50, 0}, {w " sustain", -50, 50, 0}, {w " release", -50, 50, 0},   \
++    {w " mod depth", 0, 100, 0}, {w " mod rate", 0, 100, 31}, {w " mod shape", 0, EN_NMODSHAPE - 1, 0},              \
++    {w " mod target", 0, EN_NMODDEST - 1, 0}, {w " mod spread", 0, 100, 100}, {w " mod fade", 0, 100, 0},           \
++    {w " mod sync", 0, EN_NMODSYNC - 1, 0}, {w " mod smooth", 0, 100, 0}
++    VOX_PARAMS("Pad"), VOX_PARAMS("Bell"), VOX_PARAMS("Bass"),
++#undef VOX_PARAMS
+ };
++const uint8_t EN_VOX_PATCH[EN_NVOX] = {P_PADTONE, P_BELLPATCH, P_BASSPATCH};
+ const char *const EN_MODDEST_NAME[EN_NMODDEST] = {"Timbre", "Ratio", "Metal", "Feedback", "Decay", "Pitch", "Space",
+-                                                 "All"};
++                                                 "All", "Level"};
++const char *const EN_MODSHAPE_NAME[EN_NMODSHAPE] = {"Sine", "Triangle", "Saw up", "Saw down", "Square", "S&H",
++                                                   "Walk", "Chaos", "Env"};
++static const char *const SYNC_NAME[EN_NMODSYNC] = {"Free", "Note", "Tempo"};
++static const char *const PATCH_NAME[EN_NVOX][6] = {
++    {"Rhodes", "Voices", "Glass", "Strings", "Warm", "Halo"},
++    {"Bell", "Vibes", "Marimba", "Tubular", "Kalimba", "Celesta"},
++    {"Sine", "Round", "Pick", "Sub", "Reed", "Fretless"}};
++_Static_assert(EN_PADPATCHES <= 6 && EN_BELLPATCHES <= 6 && EN_BASSPATCHES <= 6, "a name a patch");
++/* FM's Ratio: the modulators' frequency times these, harmonic, then three inharmonic (a bell's partials) */
++#define NRATIO 9
++static const char *const RATIO_NAME[NRATIO] = {"x1", "x2", "x3", "x4", "x5", "x7", "x1.41", "x2.76", "x3.5"};
++static const float RATIO_MUL[NRATIO] = {0.0f, 1.0f, 1.5849625f, 2.0f, 2.3219281f, 2.8073549f, 0.4956951f,
++                                        1.4646683f, 1.8073549f};   /* log2 */
++/* SYNC Tempo: RATE as a note value, a cycle of so many beats */
++#define NDIV 12
++static const char *const DIV_NAME[NDIV] = {"8 bars", "4 bars", "2 bars", "1 bar", "1/2.", "1/2", "1/4.", "1/4",
++                                           "1/8.", "1/8", "1/8t", "1/16"};
++static const float DIV_BEATS[NDIV] = {32.0f, 16.0f, 8.0f, 4.0f, 3.0f, 2.0f, 1.5f, 1.0f, 0.75f, 0.5f,
++                                      0.33333333f, 0.25f};
++static int div_of(int v) { return v * NDIV / 101; }
+ const en_param_t *en_param_info(int i) { return (i >= 0 && i < P_NPARAMS) ? &PARAMS[i] : &PARAMS[0]; }
+ 
++void en_mod_legacy(int16_t *par, int depth, int rate, int chaos, int dest)
++{
++    int v;
++    for (v = 0; v < EN_NVOX; v++) {             /* Chaos blended a wave (0), a walk (50) and the map (100) */
++        par[P_VX(v, VX_MDEPTH)] = (int16_t)depth;
++        par[P_VX(v, VX_MRATE)] = (int16_t)rate;
++        par[P_VX(v, VX_MSHAPE)] = (int16_t)(chaos < 30 ? SHAPE_SINE : chaos < 85 ? SHAPE_WALK : SHAPE_CHAOS);
++        par[P_VX(v, VX_MDEST)] = (int16_t)dest;
++    }
++}
++
+ /* the pieces: eight recipes for the whole garden (the FM-1's PRESETS, the web app's cards). Tune and
+- * MIDI out are taken from here by neither: they belong to the player, not the piece */
++ * MIDI out are taken from here by neither: they belong to the player, not the piece. The recipe's last four are
++ * the modulation as format 5 had it, one for all three voices (en_mod_legacy); patches and FM edits their own */
+ /*                     Pad Bel Bas Pul  Den Evo Dri Hit  Ech ET Rev Siz  Bri Swe Ton Mot  Tun MI Tem Rt Md Oc  PT  BO Gli Fif  Swi Hat  MD MR Cha MT
+  * (PT: the pad's colour, 0 Rhodes, 1 Voices; BO: the bass's octave; MD MR Cha MT: the modulation's depth, rate,
+  * chaos and target, 0 Timbre 1 Ratio 2 Metal 3 Feedback 4 Decay 5 Pitch 6 Space 7 All) */
++#define REC_N (P_BELLPATCH + 4)
+ static const struct {
+     const char *name;
+-    int8_t v[P_NPARAMS];
++    int8_t v[REC_N];
+ } PIECES[EN_NPIECES] = {
+     {"Garden",       {60, 65, 45, 40, 40, 35, 25, 35, 45, 3, 65, 80, 40, 60, 50, 50, 0, 1, 72, 2, 1, 0, 0, 0, 20, 35, 0, 50, 20, 27, 25, 0}},
+     {"Departures",   {35, 75, 0, 0, 35, 30, 40, 0, 30, 3, 70, 85, 20, 55, 5, 40, 0, 1, 60, 1, 0, -1, 0, 0, 30, 25, 0, 40, 15, 16, 10, 5}},
+@@ -66,10 +108,13 @@ const char *en_piece_name(int i) { return PIECES[(unsigned)i < EN_NPIECES ? i :
+ void en_piece(int i, int16_t *par, uint16_t *pool)
+ {
+     int p;
++    const int8_t *r;
+     i = (unsigned)i < EN_NPIECES ? i : 0;
++    r = PIECES[i].v;
+     for (p = 0; p < P_NPARAMS; p++)
+-        par[p] = PIECES[i].v[p];
+-    *pool = EN_MODE_POOL[PIECES[i].v[P_MODE]];
++        par[p] = p < P_BELLPATCH ? r[p] : PARAMS[p].def;
++    en_mod_legacy(par, r[P_BELLPATCH], r[P_BELLPATCH + 1], r[P_BELLPATCH + 2], r[P_BELLPATCH + 3]);
++    *pool = EN_MODE_POOL[r[P_MODE]];
+ }
+ 
+ static const char *const ETIME_NAME[6] = {"1/4.", "1/2", "1/2.", "1 bar", "2 bars", "4 bars"};
+@@ -95,19 +140,45 @@ static char *itoa_s(int v, char *b)
+ 
+ static float drift_secs(int v) { return 20.0f * fm_exp2f((float)v * 0.039069f); }   /* 20 s .. 5 min */
+ static float mod_secs(int v) { return 60.0f * fm_exp2f((float)v * -0.09f); }         /* 60 s .. 0.12 s */
++static float fade_secs(int v) { return 8.0f * (float)(v * v) * 0.0001f; }            /* 0 .. 8 s */
++static float smooth_secs(int v) { return 0.002f + 0.498f * (float)(v * v) * 0.0001f; }   /* 2 ms .. 0.5 s */
++
++static int16_t par[P_NPARAMS];                  /* the engine's own copy (the render's) */
++
++static char *tenths(int ds, char *b)            /* tenths as "2.7", ten and over as "12" */
++{
++    b = itoa_s(ds / 10, b);
++    if (ds < 100) {
++        *b++ = '.';
++        *b++ = (char)('0' + ds % 10);
++    }
++    *b = 0;
++    return b;
++}
+ 
+ void en_param_text(int i, int v, char *b)
+ {
+     static const char *const ONOFF[2] = {"Off", "On"};
+     const char *s = 0;
++    int vv = i >= P_VOX ? (i - P_VOX) / VX_N : -1, vk = i >= P_VOX ? (i - P_VOX) % VX_N : -1;
+     if (i == P_ETIME)
+         s = ETIME_NAME[(unsigned)v < 6u ? v : 0];
+     else if (i == P_MIDI)
+         s = ONOFF[v ? 1 : 0];
+-    else if (i == P_PADTONE)
+-        s = v ? "Voices" : "Rhodes";
+-    else if (i == P_MDEST)
++    else if (i == P_PADTONE || i == P_BELLPATCH || i == P_BASSPATCH)
++        s = PATCH_NAME[i == P_PADTONE ? VOX_PAD : i == P_BELLPATCH ? VOX_BELLS : VOX_BASS][(unsigned)v < 6u ? v : 0];
++    else if (vk == VX_MDEST)
+         s = EN_MODDEST_NAME[(unsigned)v < EN_NMODDEST ? v : 0];
++    else if (vk == VX_MSHAPE)
++        s = EN_MODSHAPE_NAME[(unsigned)v < EN_NMODSHAPE ? v : 0];
++    else if (vk == VX_MSYNC)
++        s = SYNC_NAME[(unsigned)v < EN_NMODSYNC ? v : 0];
++    else if (vk == VX_RATIO)
++        s = RATIO_NAME[(unsigned)v < NRATIO ? v : 0];
++    else if (vk == VX_MRATE && par[P_VX(vv, VX_MSYNC)] == SYNC_TEMPO)
++        s = DIV_NAME[div_of(v < 0 ? 0 : v > 100 ? 100 : v)];
++    else if (vk == VX_MFADE && v == 0)
++        s = "Off";
+     else if (i == P_MODE)
+         s = EN_MODE_NAME[(unsigned)v < EN_NMODES ? v : 0];
+     else if (i == P_ROOT)
+@@ -136,26 +207,35 @@ void en_param_text(int i, int v, char *b)
+         }
+         return;
+     }
+-    if (i == P_MRATE) {                          /* a cycle: 60 s .. 0.12 s */
+-        int ds = (int)(mod_secs(v) * 10.0f + 0.5f);
+-        if (ds >= 100) {
+-            b = itoa_s(ds / 10, b);
+-        } else {
+-            b = itoa_s(ds / 10, b);
+-            *b++ = '.';
+-            *b++ = (char)('0' + ds % 10);
+-        }
++    if (vk == VX_MRATE || vk == VX_MFADE) {      /* a cycle: 60 s .. 0.12 s; the fade: to 8 s */
++        b = tenths((int)((vk == VX_MRATE ? mod_secs(v) : fade_secs(v)) * 10.0f + 0.5f), b);
++        *b++ = 's';
++        *b = 0;
++        return;
++    }
++    if (vk == VX_MSMOOTH) {                      /* 2 ms .. 500 ms */
++        b = itoa_s((int)(smooth_secs(v) * 1000.0f + 0.5f), b);
++        *b++ = 'm';
+         *b++ = 's';
+         *b = 0;
+         return;
+     }
++    if (vk == VX_INDEX) {
++        if (v > 0)
++            *b++ = '+';
++        b = itoa_s(v, b);
++        *b++ = 'd';
++        *b++ = 'B';
++        *b = 0;
++        return;
++    }
+     if (i == P_SWING) {                          /* as a swing percentage: 50% (straight) .. 75% */
+         b = itoa_s(50 + v / 4, b);
+         *b++ = '%';
+         *b = 0;
+         return;
+     }
+-    if ((i == P_TUNE || i == P_BOCT || i == P_BASSOCT) && v > 0)
++    if ((i == P_TUNE || i == P_BOCT || i == P_BASSOCT || (vk >= VX_FB && vk <= VX_REL)) && v > 0)
+         *b++ = '+';
+     itoa_s(v, b);
+ }
+@@ -301,7 +381,7 @@ const char *en_chord_name(const int *pcs, int n, char *buf)
+ 
+ /* ------------------------------------------------------------ commands --- */
+ enum { C_SET, C_POOL, C_PLAY, C_NEXT, C_FREEZE, C_SEED, C_PANIC, C_CLOCK, C_REGROW };
+-#define QN 64u
++#define QN 256u                               /* a piece (project_apply) posts every parameter at once */
+ static uint32_t q[QN];
+ static volatile uint32_t q_w, q_r;
+ static void post(uint32_t c, int a, int b)
+@@ -339,7 +419,6 @@ volatile uint8_t en_pulse_rest;
+ volatile uint8_t en_pad_note[EN_NPAD];
+ volatile float en_pad_amp[EN_NPAD];
+ 
+-static int16_t par[P_NPARAMS];
+ static uint32_t pool = 0xAADu;                  /* Ionian until told */
+ static int nsteps, steps[12];                   /* the scale */
+ static int deg;                                 /* the chord's scale degree */
+@@ -406,7 +485,7 @@ static float motion;                            /* 0..1: Motion */
+ /* Breathing voices, as the sung tape loops of Music for Airports' "2/1": each voice swells in, hangs
+  * and fades on its own cycle (unequal lengths, set by Swell), taking its note of the chord as it
+  * starts, so the chord forms and dissolves rather than sitting there. The timbre is an FM6 patch held
+- * down (the Rhodes or the Voices, fm_patches()); the breath is its amplitude, and Bright, the breath
++ * down (the pad's patch, pad_bank()); the breath is its amplitude, and Bright, the breath
+  * and the arc its modulators' level: it blooms brighter as it swells. */
+ typedef struct {
+     float note, target;                         /* MIDI: the note of this breath, the next one's */
+@@ -415,7 +494,7 @@ typedef struct {
+     float pan, gl, gr;                          /* its place; the gains it had last block (ramped from) */
+     float hf;                                   /* a handoff's fade: 1 normal */
+     uint8_t midi_note, hand;                    /* hand: 1 fading out of the old key, 2 into the new */
+-    uint8_t voices;                             /* this breath's colour: 0 Rhodes, 1 Voices */
++    uint8_t voices;                             /* this breath's patch (P_PADTONE): 0 Rhodes, 1 Voices, ... */
+ } pad_t;
+ static pad_t pad[EN_NPAD];
+ static float pad_gate, pad_gain, pad_vol, bright, swell;
+@@ -427,17 +506,19 @@ static float arcm;                              /* the slow arc, -1 sparse .. +1
+ /* ------------------------------------------------------------- FM6 voices --- */
+ /* Every voice is an fm6_note_t of a 155-byte patch (fm6_core.c FP_*), rendered a block of FM6_N (32) samples at
+  * a time into fm_buf, which the layers read sample by sample (fm_pull): a note starts at the next block, at most
+- * 0.7 ms late. The patches are AMB-1's own, made here (fm_patches): the pad's two colours, a bell for each loop,
+- * the bass. One carrier at full is 2^25 out of fm6_core: FM_SCALE makes it 1.0, AMB-1's level for a voice. */
++ * 0.7 ms late. The patches are AMB-1's own, made here: a bank for each voice (pad_bank, bell_bank, bass_bank), the
++ * one chosen built (pad_build, bell_patches: a bell for each loop, bass_build). One carrier at full is 2^25 out of
++ * fm6_core: FM_SCALE makes it 1.0, AMB-1's level for a voice. */
+ #define FM_SCALE (1.0f / 33554432.0f)
+ #define FM_DB (16777216.0f / 6.0206f)          /* a level offset of the modulators, Q24 log2 a dB */
+ enum { FB_PADL, FB_PADR, FB_BELLL, FB_BELLR, FB_BELLE, FB_BASSL, FB_BASSR, FB_N };
+ static float fm_buf[FB_N][FM6_N];
+ static uint32_t fm_pos = FM6_N;
+-static uint8_t pad_patch[2][FP_SIZE + 1];
+-static uint8_t pad_vp[EN_NPAD][FP_SIZE + 1];   /* each voice's copy, made at its breath (MOD's DECAY) */
++static uint8_t pad_patch[FP_SIZE + 1];          /* the pad's patch, as chosen */
++static uint8_t pad_vp[EN_NPAD][FP_SIZE + 1];   /* each voice's copy, made at its breath (the envelopes' edits,
++                                                * MOD's DECAY): a voice keeps its patch to the breath's end */
+ static fm6_note_t pad_fm[EN_NPAD];
+-static fm6_lfo_t pad_lfo[2];
++static fm6_lfo_t pad_lfo[EN_NPAD];             /* each voice's, of its copy (its phase runs on) */
+ static const int32_t FM_DT0[6];                /* no per-operator detune (MOD's METAL gives one) */
+ 
+ static int32_t fm_logfreq(float note)          /* log2 Hz, Q24, of a MIDI pitch (a fraction too) and Tune */
+@@ -478,6 +559,7 @@ static float breath(float t)                    /* rise, hang, fall, a short res
+ 
+ static void midi(uint32_t st, uint32_t d1, uint32_t d2);
+ static const uint8_t *mod_patch(int g, const uint8_t *src, uint8_t *dst);
++static void gen_note(int g);
+ static void pad_breathe(pad_t *v, int i)        /* a new breath: its length, its strength, its note */
+ {
+     float secs = (4.0f + 0.12f * swell) * BREATH[i] * (0.85f + 0.3f * frand());
+@@ -486,10 +568,12 @@ static void pad_breathe(pad_t *v, int i)        /* a new breath: its length, its
+     if (en_playing && v->midi_note)
+         midi(0x80, v->midi_note, 0);
+     v->note = v->target;
+-    v->voices = (uint8_t)(par[P_PADTONE] != 0);
++    v->voices = (uint8_t)par[P_PADTONE];
+     v->midi_note = (uint8_t)v->target;
+     /* the note struck anew (between breaths, or as a handoff fades in: from silence then, phases from 0) */
+-    fm6_note_init(&pad_fm[i], mod_patch(i, pad_patch[v->voices], pad_vp[i]), (int32_t)v->note, 100, v->amp < 0.01f);
++    gen_note(i);
++    fm6_note_init(&pad_fm[i], mod_patch(i, pad_patch, pad_vp[i]), (int32_t)v->note, 100, v->amp < 0.01f);
++    fm6_lfo_reset(&pad_lfo[i], pad_vp[i]);
+     if (en_playing)
+         midi(0x90, v->midi_note, (uint32_t)(50.0f + 40.0f * v->peak));
+ }
+@@ -503,7 +587,7 @@ static void pad_handoff(void)
+     int i;
+     for (i = 0; i < EN_NPAD; i++) {
+         pad_t *v = &pad[i];
+-        if (v->amp > 0.002f && ((float)v->midi_note != v->target || v->voices != (par[P_PADTONE] != 0)))
++        if (v->amp > 0.002f && ((float)v->midi_note != v->target || v->voices != par[P_PADTONE]))
+             v->hand = 1;
+         else if (!v->hand)
+             v->note = v->target;
+@@ -566,15 +650,24 @@ static struct {
+ } bass;
+ static float bass_vol, glide_k = 1.0f / (0.25f * EN_SR);      /* glide_k: 1 / the glide's time in samples */
+ static uint8_t bass_patch[FP_SIZE + 1];
++static uint8_t bass_vp[FP_SIZE + 1];            /* the note's copy (the envelopes' edits, MOD's DECAY) */
+ static float bass_gl = 1.0f, bass_gr = 1.0f;    /* the gains it had last block (SPACE, ramped from) */
+ static fm6_note_t bass_fm;
++/* the bass is one note held down, gliding: a new patch or envelope is struck anew, once the knob rests (BASS_RS
++ * blocks, 0.1 s), faded out and in over 10 ms (bass_xf) so the restart is not heard as a click */
++#define BASS_RS 138
++static int bass_rs;                             /* blocks to the restrike; 0 none */
++static uint8_t bass_xs;                         /* 1: fading out for it */
++static float bass_xf = 1.0f;
+ 
+ /* ----------------------------------------------------------------- bells --- */
+ /* FM6 bells, a patch for each loop (its shade); Bell tone sets the modulators' ratio and depth and the strike */
+ #define NBELL 6
+ typedef struct {
+     float vel, gl, gr, pl, pr;                  /* its loop's place; the gains it had last block (ramped from) */
++    float out, lv;                              /* its patch's level (as struck); MOD's LEVEL last block */
+     int32_t wait;                               /* samples until it rings (a human hand) */
++    int32_t held;                               /* samples until it is let go (a beat: then its release) */
+     uint8_t on, note, loop, rung;               /* rung: its note has started */
+ } bell_t;
+ static bell_t bell[NBELL];
+@@ -590,30 +683,45 @@ static const float LOOP_PAN[EN_NLOOP] = {-0.6f, 0.35f, 0.7f, -0.25f};
+ static const uint8_t RATIO_FC[5] = {1, 2, 3, 3, 4}, RATIO_FF[5] = {0, 0, 0, 17, 19};
+ 
+ /* ------------------------------------------------- the voices' modulation --- */
+-/* MOD (amb.h): a generator for each voice, stepped once an FM6 block (0.7 ms: the FM6 core ramps an operator's
+- * gain across its block, so the index moves without steps). Three shapes, CHAOS crossfading them:
+- *   wave    a sine, at the generator's own pace (RATE times its spread)
+- *   walk    a random value at each segment's end, glided to over the segment (a raised cosine)
+- *   chaos   the logistic map x' = r x (1 - x), r from 3.6 (bands) to 4.0 (chaos) with Chaos, a step a segment
+- *           (segments a quarter as long at 100), slewed a twentieth of a segment (8 .. 150 ms): a jump of the
+- *           index is heard as a jump, never as a click
+- * What reaches the voice is shaped for what it moves (mod_of): the index in dB (as the ear hears it), the ratio in
+- * harmonic steps upward (with hysteresis: a value sitting on a step's edge does not chatter) glided 15 ms, the
+- * feedback one-sided (more of it, from the patch's own), pitch and place slewed further (15 and 30 ms: a chaotic
+- * jump of pitch is a glitch, not a wobble). The arc deepens it when the garden is full and calms it when sparse. */
++/* MOD (amb.h): a generator for each sounding voice, stepped once an FM6 block (0.7 ms: the FM6 core ramps an
++ * operator's gain across its block, so the index moves without steps), set by its voice's block (vox_t): the pad's
++ * four, the bells' six, the bass's one. SHAPE what it makes:
++ *   sine, triangle, saw up, saw down, square   one a cycle, at the generator's own pace (RATE times its spread)
++ *   S&H     a random value a cycle, held
++ *   walk    a random value at each cycle's end, glided to over the cycle (a raised cosine)
++ *   chaos   the logistic map x' = r x (1 - x) at r 3.95, four steps a cycle, slewed a twentieth of a step (8 .. 150
++ *           ms): a jump of the index is heard as a jump, never as a click
++ *   env     from each note's start, 1 falling to 0 over a cycle (squared, as a decay), then 0
++ * Then SPREAD (each voice its own, or the layer's first for all: a crossfade), SMOOTH (a one-pole glide, 2 ms at
++ * least: a square's edge never clicks), FADE (from each note's start) and DEPTH. What reaches the voice is shaped for
++ * what it moves (mod_of): the index in dB (as the ear hears it), the ratio in harmonic steps upward (with hysteresis:
++ * a value sitting on a step's edge does not chatter) glided 15 ms, the feedback one-sided (more of it, from the
++ * patch's own), pitch and place slewed further (15 and 30 ms: a chaotic jump of pitch is a glitch, not a wobble), the
++ * level one-sided down. The arc deepens it when the garden is full and calms it when sparse. */
+ #define NGEN EN_NMOD
+ #define GEN_BELL EN_NPAD                        /* the bells' first generator; the bass's is the last */
+ _Static_assert(EN_NMOD == EN_NPAD + NBELL + 1, "a generator a voice");
+ volatile float en_mod[EN_NMOD];
+ static struct {
+-    float ph, seg, from, to, lx, ls;            /* the wave's phase; the segment 0..1, the walk's ends; the map */
+-    float spread;                               /* this generator's pace: 0.7 .. 1.3 of RATE */
++    float ph, seg, from, to, lx, ls, hold;      /* the cycle 0..1; the map's step 0..1; the walk's ends; the map; S&H */
++    float pace;                                 /* this generator's pace: 0.7 .. 1.3 of RATE */
++    float vs, fade;                             /* what it makes, smoothed; the fade since its note, 0..1 */
+     float pitch, pan, ratio;                    /* the slewed pitch (semitones), place, ratio (octaves) */
+     int8_t step;                                /* the ratio's step now (RATIO_STEP) */
+ } gen[NGEN];
+-static float mod_depth, mod_rate, mod_chaos;    /* 0..1, Hz (a cycle a second at spread 1), 0..1 */
+-static float mod_deff;                          /* the depth as the arc makes it, this block */
+-static uint8_t mod_dest;
++static uint8_t gen_vox[NGEN];                   /* each generator's voice (VOX_*) */
++static const uint8_t VOX_GEN0[EN_NVOX] = {0, GEN_BELL, NGEN - 1};   /* each voice's first generator */
++/* a voice's own: its MOD as set, its FM edits as set */
++typedef struct {
++    float depth, rate, deff;                    /* 0..1; Hz (a cycle a second at pace 1); the depth as the arc makes it */
++    float spread, fade_k, slew;                 /* 0..1; the fade's step a block (1: none); SMOOTH's coefficient */
++    uint8_t shape, dest, sync;
++    int32_t ratio;                              /* FM's Ratio: the modulators' pitch, Q24 log2 */
++    float index;                                /* FM's Index: dB on the modulators */
++    int32_t fb;                                 /* FM's Feedback: steps on the patch's own */
++    int8_t env[4];                              /* attack, decay, sustain, release: + slower, longer, higher */
++} vox_t;
++static vox_t vx[EN_NVOX];
+ static uint32_t mod_rng = 0x2545F491u;          /* its own: the garden's notes and chords stay as they were */
+ static float mrand(void)                        /* xorshift, as rnd() */
+ {
+@@ -628,56 +736,110 @@ static float mrand(void)                        /* xorshift, as rnd() */
+ #define RATIO_LO 0
+ #define RATIO_HI 4
+ static const float RATIO_LOG2[RATIO_HI - RATIO_LO + 1] = {0.0f, 1.0f, 1.5849625f, 2.0f, 2.3219281f};
++#define MOD_DT ((float)FM6_N / EN_SR)
+ 
+ static void mod_init(void)
+ {
+-    int i;
++    int i, v;
+     for (i = 0; i < NGEN; i++) {
+         float g = (float)i * 0.618034f;          /* the golden ratio: paces apart, none repeating another */
+-        gen[i].spread = 0.7f + 0.6f * (g - (float)(int)g);
++        gen[i].pace = 0.7f + 0.6f * (g - (float)(int)g);
+         gen[i].ph = mrand();
+         gen[i].seg = mrand();
+         gen[i].from = mrand() * 2.0f - 1.0f;
+         gen[i].to = mrand() * 2.0f - 1.0f;
++        gen[i].hold = mrand() * 2.0f - 1.0f;
+         gen[i].lx = 0.2f + 0.6f * mrand();
+-        gen[i].ls = gen[i].pitch = gen[i].pan = gen[i].ratio = 0.0f;
++        gen[i].ls = gen[i].pitch = gen[i].pan = gen[i].ratio = gen[i].vs = 0.0f;
++        gen[i].fade = 1.0f;
+         gen[i].step = 0;
++        gen_vox[i] = (uint8_t)(i < GEN_BELL ? VOX_PAD : i < NGEN - 1 ? VOX_BELLS : VOX_BASS);
+         en_mod[i] = 0.0f;
+     }
++    for (v = 0; v < EN_NVOX; v++)
++        vx[v].fade_k = vx[v].slew = 1.0f;
++}
++
++static void vox_rate(int v)                     /* RATE, by SYNC: free (60 s .. 0.12 s) or a note value at the tempo */
++{
++    int r = par[P_VX(v, VX_MRATE)];
++    vx[v].rate = par[P_VX(v, VX_MSYNC)] == SYNC_TEMPO ? (float)par[P_TEMPO] * (1.0f / 60.0f) / DIV_BEATS[div_of(r)]
++                                                      : 1.0f / mod_secs(r);
++}
++
++static void gen_note(int g)                     /* generator g's voice starts a note: the fade from 0; SYNC Note and
++                                                 * the envelope start the shape again */
++{
++    const vox_t *x = &vx[gen_vox[g]];
++    gen[g].fade = x->fade_k >= 1.0f ? 1.0f : 0.0f;
++    if (x->sync == SYNC_NOTE || x->shape == SHAPE_ENV) {
++        gen[g].ph = gen[g].seg = 0.0f;
++        gen[g].from = gen[g].vs;
++        gen[g].to = mrand() * 2.0f - 1.0f;
++        gen[g].hold = mrand() * 2.0f - 1.0f;
++    }
++}
++
++static float gen_shape(int i, const vox_t *x)   /* generator i's shape now, -1 .. 1 (the envelope 0 .. 1) */
++{
++    const float ph = gen[i].ph;
++    switch (x->shape) {
++    case SHAPE_TRI: return ph < 0.5f ? 4.0f * ph - 1.0f : 3.0f - 4.0f * ph;
++    case SHAPE_UP: return 2.0f * ph - 1.0f;
++    case SHAPE_DOWN: return 1.0f - 2.0f * ph;
++    case SHAPE_SQUARE: return ph < 0.5f ? 1.0f : -1.0f;
++    case SHAPE_SH: return gen[i].hold;
++    case SHAPE_WALK: return gen[i].from + (gen[i].to - gen[i].from) * (0.5f - 0.5f * fm_cosf(FM_PI * ph));
++    case SHAPE_CHAOS: return gen[i].ls;
++    case SHAPE_ENV: return (1.0f - ph) * (1.0f - ph);
++    default: return sine(ph);
++    }
+ }
+ 
+ static void mod_step(void)                      /* once an FM6 block */
+ {
+-    const float dt = (float)FM6_N / EN_SR, c = mod_chaos, hi = fm_maxf(c * 2.0f - 1.0f, 0.0f),
+-                seglen = 1.0f - 0.75f * hi, r = 3.6f + 0.4f * hi;
+-    int i;
+-    mod_deff = fm_clampf(mod_depth * (1.0f + 0.35f * arcm), 0.0f, 1.0f);
++    const float dt = MOD_DT;
++    float lead = 0.0f;
++    int i, v;
++    for (v = 0; v < EN_NVOX; v++)
++        vx[v].deff = fm_clampf(vx[v].depth * (1.0f + 0.35f * arcm), 0.0f, 1.0f);
+     for (i = 0; i < NGEN; i++) {
+-        float f = mod_rate * gen[i].spread, w, s, walk, v, d, q, tau;
+-        gen[i].ph += f * dt;
+-        if (gen[i].ph >= 1.0f)
+-            gen[i].ph -= 1.0f;
+-        gen[i].seg += f * dt / seglen;
+-        if (gen[i].seg >= 1.0f) {               /* a segment's end: the walk's next value, the map's next step */
+-            gen[i].seg -= 1.0f;
+-            gen[i].from = gen[i].to;
+-            gen[i].to = fm_clampf(gen[i].from * (1.0f - c) + (mrand() * 2.0f - 1.0f) * (0.6f + 0.4f * c), -1.0f, 1.0f);
+-            gen[i].lx = r * gen[i].lx * (1.0f - gen[i].lx);
+-            if (gen[i].lx < 0.001f || gen[i].lx > 0.999f)   /* (off the attractor: back on, somewhere) */
+-                gen[i].lx = 0.2f + 0.6f * mrand();
++        const vox_t *x = &vx[gen_vox[i]];
++        float f = x->rate * (x->sync == SYNC_TEMPO ? 1.0f : gen[i].pace), w, d, q, tau;
++        if (x->shape == SHAPE_ENV) {             /* once from each note, then held at its end */
++            gen[i].ph = fm_minf(gen[i].ph + f * dt, 1.0f);
++        } else {
++            gen[i].ph += f * dt;
++            if (gen[i].ph >= 1.0f) {             /* a cycle's end: S&H's next value, the walk's next end */
++                gen[i].ph -= 1.0f;
++                gen[i].hold = mrand() * 2.0f - 1.0f;
++                gen[i].from = gen[i].to;
++                gen[i].to = fm_clampf(gen[i].from * 0.5f + (mrand() * 2.0f - 1.0f) * 0.8f, -1.0f, 1.0f);
++            }
+         }
+-        tau = fm_clampf(seglen / (20.0f * f), 0.008f, 0.15f);         /* the map's slew: a twentieth of a segment */
+-        gen[i].ls += (gen[i].lx * 2.0f - 1.0f - gen[i].ls) * fm_minf(dt / tau, 1.0f);
+-        w = sine(gen[i].ph);
+-        s = 0.5f - 0.5f * fm_cosf(FM_PI * gen[i].seg);
+-        walk = gen[i].from + (gen[i].to - gen[i].from) * s;
+-        v = c < 0.5f ? w + (walk - w) * (c * 2.0f) : walk + (gen[i].ls - walk) * hi;
+-        d = fm_clampf(v, -1.0f, 1.0f) * mod_deff;
++        if (x->shape == SHAPE_CHAOS) {           /* the map: four steps a cycle */
++            gen[i].seg += 4.0f * f * dt;
++            if (gen[i].seg >= 1.0f) {
++                gen[i].seg -= 1.0f;
++                gen[i].lx = 3.95f * gen[i].lx * (1.0f - gen[i].lx);
++                if (gen[i].lx < 0.001f || gen[i].lx > 0.999f)   /* (off the attractor: back on, somewhere) */
++                    gen[i].lx = 0.2f + 0.6f * mrand();
++            }
++            tau = fm_clampf(0.25f / (20.0f * f), 0.008f, 0.15f);   /* a twentieth of a step */
++            gen[i].ls += (gen[i].lx * 2.0f - 1.0f - gen[i].ls) * fm_minf(dt / tau, 1.0f);
++        }
++        w = gen_shape(i, x);
++        if (i == VOX_GEN0[gen_vox[i]])           /* the layer's first: what SPREAD 0 gives all of them */
++            lead = w;
++        w = lead + (w - lead) * x->spread;
++        gen[i].vs += (w - gen[i].vs) * x->slew;                    /* SMOOTH */
++        gen[i].fade = fm_minf(gen[i].fade + x->fade_k, 1.0f);      /* FADE */
++        d = fm_clampf(gen[i].vs, -1.0f, 1.0f) * x->deff * gen[i].fade;
+         en_mod[i] = d;
+         gen[i].pitch += (0.3f * d - gen[i].pitch) * (dt / 0.015f);   /* +-30 cents, 15 ms: a vibrato at the top
+                                                                          * RATE (8.5 Hz) loses 1 dB, a jump rounds */
+         gen[i].pan += (0.8f * d - gen[i].pan) * (dt / 0.03f);        /* 30 ms */
+-        q = (d + mod_deff) * 2.0f;               /* one-sided, as FEEDBACK: x1 at the bottom, x5 at full depth */
++        q = (d + x->deff) * 2.0f;                /* one-sided, as FEEDBACK: x1 at the bottom, x5 at full depth */
+         if (q > (float)gen[i].step + 0.65f && gen[i].step < RATIO_HI)              /* hysteresis: 0.15 past the edge */
+             gen[i].step++;
+         else if (q < (float)gen[i].step - 0.65f && gen[i].step > RATIO_LO)
+@@ -686,25 +848,32 @@ static void mod_step(void)                      /* once an FM6 block */
+     }
+ }
+ 
+-/* what generator g does to its voice now (mod_of): dB on the modulators, the feedback added (1/256 steps), a pitch
+- * offset (semitones), a pan offset; and the modulators' pitch (Q24 log2, by operator) into dt, which it returns */
++/* what generator g and its voice's FM edits do to the voice now (mod_of): dB on the modulators, the feedback added
++ * (1/256 steps), a pitch offset (semitones), a pan offset, a gain (LEVEL); and the modulators' pitch (Q24 log2, by
++ * operator) into dt, which it returns */
+ typedef struct {
+-    float bloom, pitch, pan;
++    float bloom, pitch, pan, lvl;
+     int32_t fb;
+ } mod_t;
+-static int mod_on(int dest) { return mod_dest == dest || (mod_dest == MOD_ALL && dest != MOD_RATIO); }
++static int mod_on(const vox_t *x, int dest)
++{
++    return x->dest == dest || (x->dest == MOD_ALL && dest != MOD_RATIO && dest != MOD_LEVEL);
++}
+ static const int32_t *mod_of(int g, const uint8_t *p, mod_t *m, int32_t *dt)
+ {
+-    const float d = en_mod[g], k = mod_dest == MOD_ALL ? 0.7f : 1.0f;
++    const vox_t *x = &vx[gen_vox[g]];
++    const float d = en_mod[g], k = x->dest == MOD_ALL ? 0.7f : 1.0f;
+     uint32_t car, j, nm = 0;
+     int32_t metal, ratio;
+-    m->bloom = mod_on(MOD_TIMBRE) ? 12.0f * k * d : 0.0f;
+-    m->pitch = mod_on(MOD_PITCH) ? k * gen[g].pitch : 0.0f;
+-    m->pan = mod_on(MOD_SPACE) ? k * gen[g].pan : 0.0f;
+-    m->fb = mod_on(MOD_FEEDBACK) ? (int32_t)((d + mod_deff) * 0.5f * k * 9.0f * 256.0f) : 0;   /* one-sided, up to
+-                                                  * 9 steps: as loud as the operator itself (fm6_core.c) */
+-    metal = mod_on(MOD_METAL) ? (int32_t)(80.0f * k * d * 13981.0f) : 0;   /* 13981: a cent, Q24 log2 */
+-    ratio = mod_on(MOD_RATIO) ? (int32_t)(gen[g].ratio * 16777216.0f) : 0;
++    m->bloom = x->index + (mod_on(x, MOD_TIMBRE) ? 12.0f * k * d : 0.0f);
++    m->pitch = mod_on(x, MOD_PITCH) ? k * gen[g].pitch : 0.0f;
++    m->pan = mod_on(x, MOD_SPACE) ? k * gen[g].pan : 0.0f;
++    m->lvl = mod_on(x, MOD_LEVEL) ? 1.0f - 0.34f * (d + x->deff) : 1.0f;   /* to 0.32: -10 dB at full depth */
++    m->fb = x->fb * 256 + (mod_on(x, MOD_FEEDBACK) ? (int32_t)((d + x->deff) * 0.5f * k * 9.0f * 256.0f) : 0);
++                                                  /* one-sided, up to 9 steps: as loud as the operator itself
++                                                   * (fm6_core.c) */
++    metal = mod_on(x, MOD_METAL) ? (int32_t)(80.0f * k * d * 13981.0f) : 0;   /* 13981: a cent, Q24 log2 */
++    ratio = x->ratio + (mod_on(x, MOD_RATIO) ? (int32_t)(gen[g].ratio * 16777216.0f) : 0);
+     if (!metal && !ratio)
+         return FM_DT0;
+     car = fm6_carriers(p[FP_ALG] & 31u);
+@@ -714,18 +883,30 @@ static const int32_t *mod_of(int g, const uint8_t *p, mod_t *m, int32_t *dt)
+     return dt;
+ }
+ 
+-/* DECAY: a note's own copy of its patch, its envelopes moved by generator g as it starts: the modulators' decay
+- * rate +-20 (positive: the brightness fades sooner), the carriers' +-6 (the ring) */
++/* a note's own copy of its patch, as it starts: its voice's envelope edits (every operator: attack R1, decay R2 and
++ * R3, sustain L3, release R4; + slower, longer, higher), then MOD's DECAY, its envelopes moved by generator g: the
++ * modulators' decay rate +-20 (positive: the brightness fades sooner), the carriers' +-6 (the ring) */
++static int clamp99(int v, int lo) { return v < lo ? lo : v > 99 ? 99 : v; }
+ static const uint8_t *mod_patch(int g, const uint8_t *src, uint8_t *dst)
+ {
++    const vox_t *x = &vx[gen_vox[g]];
+     uint32_t car, j;
+     int dm, dc;
+     for (j = 0; j < FP_SIZE + 1u; j++)
+         dst[j] = src[j];
+-    if (!mod_on(MOD_DECAY) || en_mod[g] == 0.0f)
++    if (x->env[0] || x->env[1] || x->env[2] || x->env[3])
++        for (j = 0; j < 6u; j++) {
++            uint8_t *o = dst + j * FP_OP;
++            o[FP_R1] = (uint8_t)clamp99(o[FP_R1] - x->env[0], 1);
++            o[FP_R1 + 1] = (uint8_t)clamp99(o[FP_R1 + 1] - x->env[1], 1);
++            o[FP_R1 + 2] = (uint8_t)clamp99(o[FP_R1 + 2] - x->env[1], 1);
++            o[FP_L1 + 2] = (uint8_t)clamp99(o[FP_L1 + 2] + x->env[2], 0);
++            o[FP_R1 + 3] = (uint8_t)clamp99(o[FP_R1 + 3] - x->env[3], 1);
++        }
++    if (!mod_on(x, MOD_DECAY) || en_mod[g] == 0.0f)
+         return dst;
+-    dm = (int)(20.0f * (mod_dest == MOD_ALL ? 0.7f : 1.0f) * en_mod[g]);
+-    dc = (int)(6.0f * (mod_dest == MOD_ALL ? 0.7f : 1.0f) * en_mod[g]);
++    dm = (int)(20.0f * (x->dest == MOD_ALL ? 0.7f : 1.0f) * en_mod[g]);
++    dc = (int)(6.0f * (x->dest == MOD_ALL ? 0.7f : 1.0f) * en_mod[g]);
+     car = fm6_carriers(src[FP_ALG] & 31u);
+     for (j = 0; j < 6u; j++) {
+         uint8_t *o = dst + j * FP_OP + FP_R1 + 1;  /* R2: the decay */
+@@ -735,6 +916,43 @@ static const uint8_t *mod_patch(int g, const uint8_t *src, uint8_t *dst)
+     return dst;
+ }
+ 
++/* a voice's block (amb.h VX_*) into the engine */
++static void bass_restrike(void);
++static void vox_apply(int v, int k, int val)
++{
++    vox_t *x = &vx[v];
++    float s;
++    int i;
++    switch (k) {
++    case VX_RATIO: x->ratio = (int32_t)(RATIO_MUL[val] * 16777216.0f); break;
++    case VX_INDEX: x->index = (float)val; break;
++    case VX_FB: x->fb = val; break;
++    case VX_ATK: case VX_DEC: case VX_SUS: case VX_REL:
++        x->env[k - VX_ATK] = (int8_t)val;
++        if (v == VOX_BASS)                       /* the held bass: struck anew to be heard */
++            bass_restrike();
++        break;
++    case VX_MDEPTH: x->depth = (float)val * 0.01f; break;
++    case VX_MRATE: case VX_MSYNC:
++        x->sync = (uint8_t)par[P_VX(v, VX_MSYNC)];
++        vox_rate(v);
++        break;
++    case VX_MSHAPE: x->shape = (uint8_t)val; break;
++    case VX_MDEST: x->dest = (uint8_t)val; break;
++    case VX_MSPREAD: x->spread = (float)val * 0.01f; break;
++    case VX_MFADE:
++        s = fade_secs(val);
++        x->fade_k = s > 0.0f ? MOD_DT / s : 1.0f;
++        if (x->fade_k >= 1.0f)                   /* off: at once, not at the next note */
++            for (i = 0; i < NGEN; i++)
++                if (gen_vox[i] == v)
++                    gen[i].fade = 1.0f;
++        break;
++    case VX_MSMOOTH: x->slew = fm_minf(MOD_DT / smooth_secs(val), 1.0f); break;
++    default: break;
++    }
++}
++
+ /* ----------------------------------------------------------------- pulse --- */
+ typedef struct {
+     float ph, inc, inc_end, amp, adec, idx, x1, x2, att, mph[4], pend;
+@@ -797,6 +1015,8 @@ static void bass_to(int pc)
+         midi(0x82, bass.midi_note, 0);
+         midi(0x92, (uint32_t)n, 80);
+     }
++    if (bass.midi_note != n)                     /* a new note for MOD (its fade, SYNC Note, the envelope) */
++        gen_note(NGEN - 1);
+     bass.midi_note = (uint8_t)n;
+ }
+ 
+@@ -969,68 +1189,225 @@ static void fm_voice_par(uint8_t *p, int alg, int fb, int lfs, int lfd, int lpmd
+     p[FP_SIZE] = 0;
+ }
+ 
+-/* the pad's two colours and the bass: algorithm 5 (three pairs, the sixth operator with feedback), held down */
+-static void fm_patches(void)
++static void fm_off(uint8_t *p, int op) { fm_op(p, op, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0); }   /* silent */
++
++/* the pad's bank, held down (the breath is its amplitude): algorithm 5 (three pairs, the sixth operator with
++ * feedback for MOD), the carriers 1, 3 and 5. Each a level of its own (PAD_GAIN, measured: analysis/patchlev.c) */
++static void pad_bank(int sel, uint8_t *p)
+ {
+-    uint8_t *p = pad_patch[0];                   /* the Rhodes: a modulator at the carrier's pitch (the sixth, with
++    switch (sel) {
++    case 1:                                      /* Voices: two carriers ~2.4 cents apart, one fed back (a soft saw),
++                                                  * the third harmonic's region a little (the vowel), vibrato */
++        fm_op(p, 1, 60, 30, 25, 50, 99, 97, 95, 0, 94, 1, 0, 5, 0, 1);
++        fm_op(p, 2, 60, 30, 25, 50, 99, 92, 90, 0, 70, 1, 0, 7, 2, 1);
++        fm_op(p, 3, 55, 30, 25, 50, 99, 95, 92, 0, 80, 3, 0, 7, 0, 1);
++        fm_op(p, 4, 55, 30, 25, 50, 99, 90, 85, 0, 58, 1, 0, 7, 2, 1);
++        fm_op(p, 5, 60, 30, 25, 50, 99, 97, 95, 0, 94, 1, 0, 9, 0, 1);
++        fm_op(p, 6, 60, 30, 25, 50, 99, 92, 90, 0, 68, 1, 0, 9, 1, 1);
++        fm_voice_par(p, 5, 6, 33, 50, 5, 4, 3, "AMB VOICES");
++        break;
++    case 2:                                      /* Glass: the fundamental under an inharmonic 3.5, an octave and a
++                                                  * seventh harmonic a little, two carriers apart (a slow chorus) */
++        fm_op(p, 1, 60, 30, 25, 50, 99, 95, 92, 0, 86, 1, 0, 9, 0, 1);
++        fm_op(p, 2, 60, 30, 25, 50, 99, 85, 80, 0, 52, 1, 0, 7, 1, 1);
++        fm_op(p, 3, 60, 30, 25, 50, 99, 95, 92, 0, 72, 2, 0, 5, 0, 1);
++        fm_op(p, 4, 60, 30, 25, 50, 99, 85, 80, 0, 50, 7, 0, 9, 1, 1);
++        fm_op(p, 5, 60, 30, 25, 50, 99, 97, 95, 0, 96, 1, 0, 7, 0, 1);
++        fm_op(p, 6, 60, 30, 25, 50, 99, 80, 70, 0, 62, 3, 50, 7, 2, 1);
++        fm_voice_par(p, 5, 1, 30, 50, 3, 4, 3, "AMB GLASS");
++        break;
++    case 3:                                      /* Strings: three detuned pairs at the unison, fed back (saws), an
++                                                  * octave above, vibrato */
++        fm_op(p, 1, 50, 30, 25, 50, 99, 97, 95, 0, 70, 2, 0, 7, 0, 1);
++        fm_op(p, 2, 50, 30, 25, 50, 99, 92, 90, 0, 48, 2, 0, 7, 1, 1);
++        fm_op(p, 3, 50, 30, 25, 50, 99, 97, 95, 0, 92, 1, 0, 9, 0, 1);
++        fm_op(p, 4, 50, 30, 25, 50, 99, 92, 90, 0, 70, 1, 0, 9, 1, 1);
++        fm_op(p, 5, 50, 30, 25, 50, 99, 97, 95, 0, 96, 1, 0, 5, 0, 1);
++        fm_op(p, 6, 50, 30, 25, 50, 99, 92, 90, 0, 78, 1, 0, 5, 1, 1);
++        fm_voice_par(p, 5, 6, 35, 60, 5, 4, 3, "AMB STRING");
++        break;
++    case 4:                                      /* Warm: the fundamental, its sub-octave and octave, barely modulated */
++        fm_op(p, 1, 60, 30, 25, 50, 99, 97, 95, 0, 66, 2, 0, 7, 0, 1);
++        fm_op(p, 2, 60, 30, 25, 50, 99, 90, 88, 0, 40, 2, 0, 7, 1, 1);
++        fm_op(p, 3, 60, 30, 25, 50, 99, 97, 95, 0, 84, 0, 0, 7, 0, 1);
++        fm_op(p, 4, 60, 30, 25, 50, 99, 90, 88, 0, 50, 1, 0, 7, 1, 1);
++        fm_op(p, 5, 60, 30, 25, 50, 99, 97, 95, 0, 97, 1, 0, 7, 0, 1);
++        fm_op(p, 6, 60, 30, 25, 50, 99, 90, 88, 0, 60, 1, 0, 7, 1, 1);
++        fm_voice_par(p, 5, 1, 0, 0, 0, 4, 0, "AMB WARM");
++        break;
++    case 5:                                      /* Halo: the fundamental by 1.41, its octave by 2.76, a high fourth
++                                                  * harmonic by 5: a shimmer of inharmonic sidebands */
++        fm_op(p, 1, 55, 30, 25, 50, 99, 95, 92, 0, 56, 4, 0, 9, 0, 1);
++        fm_op(p, 2, 55, 30, 25, 50, 99, 85, 80, 0, 40, 5, 0, 7, 1, 1);
++        fm_op(p, 3, 55, 30, 25, 50, 99, 95, 92, 0, 74, 2, 0, 5, 0, 1);
++        fm_op(p, 4, 55, 30, 25, 50, 99, 85, 80, 0, 55, 2, 38, 7, 1, 1);
++        fm_op(p, 5, 55, 30, 25, 50, 99, 97, 95, 0, 96, 1, 0, 7, 0, 1);
++        fm_op(p, 6, 55, 30, 25, 50, 99, 85, 80, 0, 68, 1, 41, 7, 1, 1);
++        fm_voice_par(p, 5, 0, 20, 40, 2, 4, 3, "AMB HALO");
++        break;
++    default:                                     /* Rhodes: a modulator at the carrier's pitch (the sixth, with
+                                                   * feedback for MOD), its octave a little */
+-    fm_op(p, 1, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
+-    fm_op(p, 2, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
+-    fm_op(p, 3, 80, 45, 30, 60, 99, 94, 90, 0, 74, 2, 0, 7, 0, 1);
+-    fm_op(p, 4, 85, 40, 30, 60, 99, 85, 80, 0, 40, 1, 0, 7, 2, 1);
+-    fm_op(p, 5, 80, 40, 30, 60, 99, 96, 94, 0, 99, 1, 0, 7, 0, 1);
+-    fm_op(p, 6, 85, 35, 25, 60, 99, 90, 85, 0, 68, 1, 0, 7, 2, 1);
+-    fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB RHODES");
+-    fm6_lfo_reset(&pad_lfo[0], p);
+-    p = pad_patch[1];                            /* the Voices: two carriers ~2.4 cents apart, one fed back (a soft
+-                                                  * saw), the third harmonic's region a little (the vowel), vibrato */
+-    fm_op(p, 1, 60, 30, 25, 50, 99, 97, 95, 0, 94, 1, 0, 5, 0, 1);
+-    fm_op(p, 2, 60, 30, 25, 50, 99, 92, 90, 0, 70, 1, 0, 7, 2, 1);
+-    fm_op(p, 3, 55, 30, 25, 50, 99, 95, 92, 0, 80, 3, 0, 7, 0, 1);
+-    fm_op(p, 4, 55, 30, 25, 50, 99, 90, 85, 0, 58, 1, 0, 7, 2, 1);
+-    fm_op(p, 5, 60, 30, 25, 50, 99, 97, 95, 0, 94, 1, 0, 9, 0, 1);
+-    fm_op(p, 6, 60, 30, 25, 50, 99, 92, 90, 0, 68, 1, 0, 9, 1, 1);
+-    fm_voice_par(p, 5, 6, 33, 50, 5, 4, 3, "AMB VOICES");
+-    fm6_lfo_reset(&pad_lfo[1], p);
+-    p = bass_patch;                              /* the sine, its sub-octave (-4.4 dB), the second harmonic (-16 dB) */
+-    fm_op(p, 1, 70, 99, 99, 50, 99, 99, 99, 0, 78, 2, 0, 7, 0, 0);
+-    fm_op(p, 2, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
+-    fm_op(p, 3, 70, 99, 99, 50, 99, 99, 99, 0, 93, 0, 0, 7, 0, 0);
+-    fm_op(p, 4, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
+-    fm_op(p, 5, 70, 99, 99, 50, 99, 99, 99, 0, 99, 1, 0, 7, 0, 0);
+-    fm_op(p, 6, 70, 99, 99, 50, 99, 99, 99, 0, 45, 1, 0, 7, 0, 0);
+-    fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB BASS");
++        fm_off(p, 1);
++        fm_off(p, 2);
++        fm_op(p, 3, 80, 45, 30, 60, 99, 94, 90, 0, 74, 2, 0, 7, 0, 1);
++        fm_op(p, 4, 85, 40, 30, 60, 99, 85, 80, 0, 40, 1, 0, 7, 2, 1);
++        fm_op(p, 5, 80, 40, 30, 60, 99, 96, 94, 0, 99, 1, 0, 7, 0, 1);
++        fm_op(p, 6, 85, 35, 25, 60, 99, 90, 85, 0, 68, 1, 0, 7, 2, 1);
++        fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB RHODES");
++        break;
++    }
++}
++static const float PAD_GAIN[EN_PADPATCHES] = {1.48f, 1.55f, 1.74f, 1.76f, 1.66f, 1.72f};
++
++/* the bass's bank, held down, every carrier sustained (the bass is one note, gliding): algorithm 5 */
++static void bass_bank(int sel, uint8_t *p)
++{
++    fm_off(p, 1);
++    fm_off(p, 2);
++    fm_off(p, 4);
++    switch (sel) {
++    case 1:                                      /* Round: the sine fattened by its own pitch, the sub-octave */
++        fm_op(p, 3, 70, 99, 99, 50, 99, 99, 99, 0, 86, 0, 0, 7, 0, 0);
++        fm_op(p, 5, 70, 99, 99, 50, 99, 99, 99, 0, 99, 1, 0, 7, 0, 0);
++        fm_op(p, 6, 70, 99, 99, 50, 99, 99, 99, 0, 62, 1, 0, 7, 0, 0);
++        fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB ROUND");
++        break;
++    case 2:                                      /* Pick: fed back, its brightness falling from the strike */
++        fm_op(p, 3, 70, 99, 99, 50, 99, 99, 99, 0, 82, 0, 0, 7, 0, 0);
++        fm_op(p, 4, 99, 60, 40, 50, 99, 60, 55, 0, 50, 1, 0, 7, 0, 0);
++        fm_op(p, 5, 70, 99, 99, 50, 99, 99, 99, 0, 99, 1, 0, 7, 0, 0);
++        fm_op(p, 6, 99, 50, 40, 50, 99, 75, 70, 0, 74, 1, 0, 7, 0, 0);
++        fm_voice_par(p, 5, 5, 0, 0, 0, 4, 0, "AMB PICK");
++        break;
++    case 3:                                      /* Sub: the sub-octave first, the fundamental under it, a breath */
++        fm_op(p, 3, 70, 99, 99, 50, 99, 99, 99, 0, 78, 1, 0, 7, 0, 0);
++        fm_op(p, 5, 70, 99, 99, 50, 99, 99, 99, 0, 99, 0, 0, 7, 0, 0);
++        fm_op(p, 6, 70, 99, 99, 50, 99, 99, 99, 0, 35, 1, 0, 7, 0, 0);
++        fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB SUB");
++        break;
++    case 4:                                      /* Reed: modulated an octave up and fed back: hollow */
++        fm_op(p, 3, 70, 99, 99, 50, 99, 99, 99, 0, 76, 0, 0, 7, 0, 0);
++        fm_op(p, 4, 70, 99, 99, 50, 99, 99, 99, 0, 42, 1, 0, 7, 0, 0);
++        fm_op(p, 5, 70, 99, 99, 50, 99, 99, 99, 0, 99, 1, 0, 7, 0, 0);
++        fm_op(p, 6, 70, 99, 99, 50, 99, 99, 99, 0, 70, 2, 0, 7, 0, 0);
++        fm_voice_par(p, 5, 3, 0, 0, 0, 4, 0, "AMB REED");
++        break;
++    case 5:                                      /* Fretless: the modulator swelling in after the note */
++        fm_op(p, 3, 60, 99, 99, 50, 99, 99, 99, 0, 80, 0, 0, 7, 0, 0);
++        fm_op(p, 5, 60, 99, 99, 50, 99, 99, 99, 0, 99, 1, 0, 7, 0, 0);
++        fm_op(p, 6, 40, 60, 99, 50, 99, 85, 85, 0, 66, 1, 0, 7, 0, 0);
++        fm_voice_par(p, 5, 1, 0, 0, 0, 4, 0, "AMB FRETLS");
++        break;
++    default:                                     /* the sine, its sub-octave (-4.4 dB), the second harmonic (-16 dB) */
++        fm_op(p, 1, 70, 99, 99, 50, 99, 99, 99, 0, 78, 2, 0, 7, 0, 0);
++        fm_op(p, 3, 70, 99, 99, 50, 99, 99, 99, 0, 93, 0, 0, 7, 0, 0);
++        fm_op(p, 5, 70, 99, 99, 50, 99, 99, 99, 0, 99, 1, 0, 7, 0, 0);
++        fm_op(p, 6, 70, 99, 99, 50, 99, 99, 99, 0, 45, 1, 0, 7, 0, 0);
++        fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB BASS");
++        break;
++    }
+ }
++static const float BASS_GAIN[EN_BASSPATCHES] = {1.0f, 1.175f, 1.148f, 1.148f, 0.923f, 1.161f};
++
++static void pad_build(void) { pad_bank(par[P_PADTONE], pad_patch); }
++static void bass_build(void) { bass_bank(par[P_BASSPATCH], bass_patch); }
+ 
+ /* each loop its own bell: index, decay and ratio a little apart, so the four can be told apart */
+ static const float LOOP_IDX[EN_NLOOP] = {1.0f, 0.55f, 1.5f, 0.8f};
+ static const int8_t LOOP_RAT[EN_NLOOP] = {0, 0, 1, -1};
+ static const int8_t LOOP_R2[EN_NLOOP] = {31, 28, 34, 27};      /* the decay (t60 ~4.2 s at C4 x 1, 1.35, 0.75, 1.6) */
++static const int8_t LOOP_OL[EN_NLOOP] = {0, -7, 5, -3};        /* LOOP_IDX in output level steps (0.75 dB) */
++
++/* the bells' bank past the first (bell_patches makes that one from Bell tone): struck and ringing out, algorithm 5,
++ * every envelope 99 0 0 0 (R3 99: at silence the note ends at once); the first pair silent */
++static void bell_bank(int sel, uint8_t *p)
++{
++    fm_off(p, 1);
++    fm_off(p, 2);
++    switch (sel) {
++    case 1:                                      /* Vibes: a soft fourth harmonic, a second carrier apart, warm */
++        fm_op(p, 3, 90, 29, 99, 30, 99, 0, 0, 0, 80, 1, 0, 9, 0, 2);
++        fm_op(p, 4, 99, 33, 99, 30, 99, 0, 0, 0, 52, 1, 0, 7, 2, 2);
++        fm_op(p, 5, 90, 31, 99, 30, 99, 0, 0, 0, 99, 1, 0, 7, 0, 2);
++        fm_op(p, 6, 99, 40, 99, 30, 99, 0, 0, 0, 62, 4, 0, 7, 3, 2);
++        fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB VIBES");
++        break;
++    case 2:                                      /* Marimba: wood, short: the fourth harmonic's knock, fast decays */
++        fm_off(p, 4);
++        fm_op(p, 3, 99, 50, 99, 40, 99, 0, 0, 0, 62, 4, 0, 7, 0, 2);
++        fm_op(p, 5, 99, 42, 99, 40, 99, 0, 0, 0, 99, 1, 0, 7, 0, 2);
++        fm_op(p, 6, 99, 62, 99, 40, 99, 0, 0, 0, 74, 4, 0, 7, 3, 2);
++        fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB MARIMB");
++        break;
++    case 3:                                      /* Tubular: 3.5 and a 2.76 partial, long */
++        fm_op(p, 3, 85, 22, 99, 25, 99, 0, 0, 0, 72, 2, 38, 7, 0, 2);
++        fm_op(p, 4, 99, 26, 99, 25, 99, 0, 0, 0, 45, 1, 0, 7, 2, 2);
++        fm_op(p, 5, 85, 24, 99, 25, 99, 0, 0, 0, 99, 1, 0, 7, 0, 2);
++        fm_op(p, 6, 99, 26, 99, 25, 99, 0, 0, 0, 70, 3, 50, 7, 3, 2);
++        fm_voice_par(p, 5, 2, 0, 0, 0, 4, 0, "AMB TUBE");
++        break;
++    case 4:                                      /* Kalimba: a tine, plucked: a high seventh, a sixth partial, short */
++        fm_off(p, 4);
++        fm_op(p, 3, 99, 58, 99, 40, 99, 0, 0, 0, 56, 6, 0, 7, 0, 2);
++        fm_op(p, 5, 99, 40, 99, 35, 99, 0, 0, 0, 99, 1, 0, 7, 0, 2);
++        fm_op(p, 6, 99, 56, 99, 35, 99, 0, 0, 0, 66, 7, 0, 7, 3, 2);
++        fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB KALIMB");
++        break;
++    default:                                     /* Celesta: at the unison, fed back (a bright edge), a fourth harmonic */
++        fm_op(p, 3, 95, 45, 99, 30, 99, 0, 0, 0, 52, 4, 0, 7, 0, 2);
++        fm_op(p, 4, 99, 45, 99, 30, 99, 0, 0, 0, 40, 1, 0, 7, 2, 2);
++        fm_op(p, 5, 95, 35, 99, 30, 99, 0, 0, 0, 99, 1, 0, 7, 0, 2);
++        fm_op(p, 6, 99, 45, 99, 30, 99, 0, 0, 0, 68, 1, 0, 7, 3, 2);
++        fm_voice_par(p, 5, 4, 0, 0, 0, 4, 0, "AMB CELEST");
++        break;
++    }
++}
++static const float BELL_GAIN[EN_BELLPATCHES] = {1.0f, 0.88f, 1.10f, 0.79f, 1.16f, 0.92f};   /* between rms and peak: struck */
+ 
+-/* the four bells, from Bell tone: 0 a round, nearly pure tone; 100 a long metallic clang. Algorithm 5: the bell
+- * (6 -> 5: the modulator with feedback, for MOD), a faint inharmonic partial (2.76, 3), the first pair silent. The modulator's level is the index
+- * (0.15 + 6.5 tone^2 radians, as AMB-1's 2-operator bell: full output is 4 pi, an output level step 0.75 dB), its
+- * decay as the index's (0.35 .. 2.95 s), the strike from soft (~50 ms) to hard (~4 ms) by half way; the low bells
+- * ring longer (rate scaling), velocity brightens them (the modulators' sensitivity). R3 99: at silence the note
+- * ends at once (a slower R3 holds a stage that does not move, msfa's ACCURATE_ENVELOPE, for seconds) */
++/* the four bells. The first patch, from Bell tone: 0 a round, nearly pure tone; 100 a long metallic clang. Algorithm
++ * 5: the bell (6 -> 5: the modulator with feedback, for MOD), a faint inharmonic partial (2.76, 3), the first pair
++ * silent. The modulator's level is the index (0.15 + 6.5 tone^2 radians, as AMB-1's 2-operator bell: full output is
++ * 4 pi, an output level step 0.75 dB), its decay as the index's (0.35 .. 2.95 s), the strike from soft (~50 ms) to
++ * hard (~4 ms) by half way; the low bells ring longer (rate scaling), velocity brightens them (the modulators'
++ * sensitivity). R3 99: at silence the note ends at once (a slower R3 holds a stage that does not move, msfa's
++ * ACCURATE_ENVELOPE, for seconds). The others, the bank's (bell_bank), each loop shaded as the first is: the
++ * modulators' level by LOOP_IDX and Bell tone (+-9 dB), the carriers' decay by LOOP_R2 */
+ static void bell_patches(void)
+ {
+-    int l;
++    int l, sel = par[P_BELLPATCH];
+     for (l = 0; l < EN_NLOOP; l++) {
+         uint8_t *p = bell_patch[l];
+-        float idx = (0.15f + 6.5f * btone * btone) * LOOP_IDX[l];
+-        int ri = par[P_BTONE] * 5 / 101 + LOOP_RAT[l], mol, r1, mr2;
+-        ri = ri < 0 ? 0 : ri > 4 ? 4 : ri;
+-        mol = 99 - (int)(20.0f * 0.30103f * fm_log2f(4.0f * FM_PI / idx) / 0.75f + 0.5f);
+-        r1 = 53 + (int)(36.0f * fm_minf(btone * 2.0f, 1.0f));
+-        mr2 = 53 - (int)(19.0f * btone);
+-        fm_op(p, 1, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
+-        fm_op(p, 2, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
+-        fm_op(p, 3, r1, LOOP_R2[l] + 8, 99, 30, 99, 0, 0, 0, 62, 2, 38, 7, 0, 2);
+-        fm_op(p, 4, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0);
+-        fm_op(p, 5, r1, LOOP_R2[l], 99, 30, 99, 0, 0, 0, 99, 1, 0, 7, 0, 2);
+-        fm_op(p, 6, 99, mr2, 99, 30, 99, 0, 0, 0, mol, RATIO_FC[ri], RATIO_FF[ri], 7, 3, 2);
+-        fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB BELL");
++        if (sel) {
++            uint32_t car, j;
++            int tol = (int)((btone - 0.5f) * 24.0f);
++            bell_bank(sel, p);
++            car = fm6_carriers(p[FP_ALG] & 31u);
++            for (j = 0; j < 6u; j++) {
++                uint8_t *o = p + j * FP_OP;
++                if (!o[FP_OL])
++                    continue;
++                if (car >> j & 1u)
++                    o[FP_R1 + 1] = (uint8_t)clamp99(o[FP_R1 + 1] + LOOP_R2[l] - 31, 1);
++                else
++                    o[FP_OL] = (uint8_t)clamp99(o[FP_OL] + LOOP_OL[l] + tol, 0);
++            }
++            continue;
++        }
++        {
++            float idx = (0.15f + 6.5f * btone * btone) * LOOP_IDX[l];
++            int ri = par[P_BTONE] * 5 / 101 + LOOP_RAT[l], mol, r1, mr2;
++            ri = ri < 0 ? 0 : ri > 4 ? 4 : ri;
++            mol = 99 - (int)(20.0f * 0.30103f * fm_log2f(4.0f * FM_PI / idx) / 0.75f + 0.5f);
++            r1 = 53 + (int)(36.0f * fm_minf(btone * 2.0f, 1.0f));
++            mr2 = 53 - (int)(19.0f * btone);
++            fm_off(p, 1);
++            fm_off(p, 2);
++            fm_op(p, 3, r1, LOOP_R2[l] + 8, 99, 30, 99, 0, 0, 0, 62, 2, 38, 7, 0, 2);
++            fm_off(p, 4);
++            fm_op(p, 5, r1, LOOP_R2[l], 99, 30, 99, 0, 0, 0, 99, 1, 0, 7, 0, 2);
++            fm_op(p, 6, 99, mr2, 99, 30, 99, 0, 0, 0, mol, RATIO_FC[ri], RATIO_FF[ri], 7, 3, 2);
++            fm_voice_par(p, 5, 0, 0, 0, 0, 4, 0, "AMB BELL");
++        }
+     }
+ }
+ 
+@@ -1454,9 +1831,12 @@ static uint32_t ext_age;
+ 
+ static void tempo_set(void) { step_len = EN_SR * 60.0f / ((float)par[P_TEMPO] * 4.0f); }
+ 
++static void bass_restrike(void) { bass_rs = BASS_RS; }   /* once the knob rests (fm_block) */
++
+ static void apply(int p, int v)
+ {
+     const en_param_t *pi = &PARAMS[p];
++    int k;
+     if (v < pi->lo)
+         v = pi->lo;
+     if (v > pi->hi)
+@@ -1499,13 +1879,17 @@ static void apply(int p, int v)
+         btone = (float)v * 0.01f;
+         bell_patches();
+         break;
+-    case P_PADTONE: pad_handoff(); break;        /* the voices cross over as they did for a new key */
++    case P_PADTONE:                              /* the voices cross over as they did for a new key */
++        pad_build();
++        pad_handoff();
++        break;
++    case P_BELLPATCH: bell_patches(); break;     /* from the next strike */
++    case P_BASSPATCH:
++        bass_build();
++        bass_restrike();
++        break;
+     case P_MOTION: motion = (float)v * 0.01f; break;
+-    case P_MDEPTH: mod_depth = (float)v * 0.01f; break;
+-    case P_MRATE: mod_rate = 1.0f / mod_secs(v); break;
+-    case P_MCHAOS: mod_chaos = (float)v * 0.01f; break;
+-    case P_MDEST: mod_dest = (uint8_t)v; break;
+-    case P_BOCT:                                 /* let it be heard now: a bell from the first loop */
++    case P_BOCT:                                /* let it be heard now: a bell from the first loop */
+         if (en_playing && nsteps) {
+             int l, k;
+             for (l = 0; l < EN_NLOOP; l++)
+@@ -1520,6 +1904,8 @@ static void apply(int p, int v)
+     case P_TEMPO:
+         tempo_set();
+         echo_time();
++        for (k = 0; k < EN_NVOX; k++)            /* SYNC Tempo's rates */
++            vox_rate(k);
+         break;
+     case P_ROOT:
+         if (nsteps) {
+@@ -1532,7 +1918,10 @@ static void apply(int p, int v)
+         if (!v)
+             en_midi_out(0xB0, 123, 0);
+         break;
+-    default: break;
++    default:
++        if (p >= P_VOX)                          /* a voice's own (FM, its envelopes, MOD) */
++            vox_apply((p - P_VOX) / VX_N, (p - P_VOX) % VX_N, v);
++        break;
+     }
+ }
+ 
+@@ -1595,7 +1984,8 @@ void en_init(void)
+     int i;
+     for (i = 0; i <= SN; i++)
+         sint[i] = fm_sinf((float)i * (FM_TWO_PI / (float)SN));
+-    fm_patches();
++    for (i = 0; i < NBELL; i++)                  /* (an init again: no bell of before rings on) */
++        bell[i].on = 0;
+     fm_pos = FM6_N;
+     mod_init();
+     plate_init();
+@@ -1623,15 +2013,20 @@ void en_init(void)
+     }
+     arcm = 0.0f;
+     pad_gain = 0.0f;
+-    for (i = 0; i < P_NPARAMS; i++)
++    for (i = 0; i < P_NPARAMS; i++)              /* (the patches built as their parameters arrive) */
+         apply(i, PARAMS[i].def);
+     pool_set(EN_MODE_POOL[par[P_MODE]]);
+     for (i = 0; i < EN_NPAD; i++) {
+         pad[i].note = pad[i].target;
+-        fm6_note_init(&pad_fm[i], mod_patch(i, pad_patch[0], pad_vp[i]), (int32_t)pad[i].note, 100, 1);
++        pad[i].voices = (uint8_t)par[P_PADTONE];
++        fm6_note_init(&pad_fm[i], mod_patch(i, pad_patch, pad_vp[i]), (int32_t)pad[i].note, 100, 1);
++        fm6_lfo_reset(&pad_lfo[i], pad_vp[i]);
+     }
+     bass.note = bass.target;
+-    fm6_note_init(&bass_fm, bass_patch, (int32_t)bass.note, 100, 1);
++    fm6_note_init(&bass_fm, mod_patch(NGEN - 1, bass_patch, bass_vp), (int32_t)bass.note, 100, 1);
++    bass_rs = 0;
++    bass_xs = 0;
++    bass_xf = 1.0f;
+     for (i = 0; i < EN_NLOOP; i++) {
+         loop_pos[i] = 0;
+         loop_regrow(i);
+@@ -1776,18 +2171,15 @@ static void pad_bus(uint32_t n)
+         plp[j] = fm_flush(plp[j]);
+ }
+ 
+-/* the pad's level out of its patch, measured (each layer alone, dry: the original AMB-1's level, within 0.2 dB) */
+-static const float PAD_OUT[2] = {1.48f, 1.55f};
+-
+ /* one FM6 block of every voice into fm_buf: the pad's breaths and bloom, the bells as their loops strike them,
+- * the bass gliding */
++ * the bass gliding; each with its voice's FM edits and its generator's MOD (mod_of) */
+ static void fm_block(void)
+ {
+     float x[FM6_N], lvl = 0.0f;
+-    int32_t lv[2], ld[2], dtb[6];
++    int32_t dtb[6];
+     const int32_t *dt;
+     mod_t m;
+-    int i, k;
++    int i;
+     uint32_t j;
+     for (i = 0; i < FB_N; i++)
+         for (j = 0; j < FM6_N; j++)
+@@ -1795,27 +2187,25 @@ static void fm_block(void)
+     mod_step();
+ 
+     pad_gain += (pad_gate - pad_gain) * fm_minf((float)FM6_N / ((pad_gate > 0.0f ? 2.0f : 5.0f) * EN_SR), 1.0f);
+-    for (k = 0; k < 2; k++) {
+-        lv[k] = fm6_lfo_sample(&pad_lfo[k]);
+-        ld[k] = fm6_lfo_delay(&pad_lfo[k]);
+-    }
+     for (i = 0; i < EN_NPAD; i++) {
+         pad_t *v = &pad[i];
+         float amp = v->amp, g, gl, gr, pn;
++        int32_t lv, ld;
+         if (amp < 1e-5f && pad_gain < 1e-4f) {
+             v->amp = 0.0f;
+             en_pad_amp[i] = 0.0f;
+             continue;
+         }
+         pad_coefs(v, i);
+-        k = v->voices;
++        lv = fm6_lfo_sample(&pad_lfo[i]);
++        ld = fm6_lfo_delay(&pad_lfo[i]);
+         dt = mod_of(i, pad_vp[i], &m, dtb);
+-        g = pad_vol * 0.5f * PAD_OUT[k];
++        g = pad_vol * 0.5f * PAD_GAIN[v->voices] * m.lvl;   /* (LEVEL ramped with the place, below) */
+         pn = fm_clampf(v->pan + 0.35f * motion * mod[(i + 3) % NMOD_PAD].v + m.pan, -1.0f, 1.0f);
+         gl = fm_cosf((pn + 1.0f) * (FM_PI / 4.0f)) * g;
+         gr = fm_sinf((pn + 1.0f) * (FM_PI / 4.0f)) * g;
+-        if (fm_voice(&pad_fm[i], pad_vp[i], v->note + 0.08f * motion * mod[i].v + m.pitch, lv[k], ld[k],
+-                     v->bloom + m.bloom, m.fb, dt, x)) {
++        if (fm_voice(&pad_fm[i], pad_vp[i], v->note + 0.08f * motion * mod[i].v + m.pitch, lv, ld, v->bloom + m.bloom,
++                     m.fb, dt, x)) {
+             const float dl = (gl - v->gl) * (1.0f / FM6_N), dr = (gr - v->gr) * (1.0f / FM6_N);
+             float pl = v->gl, pr = v->gr;         /* the place ramped across the block (no zipper as it moves) */
+             for (j = 0; j < FM6_N; j++) {        /* a slow drift of pitch above, as tape */
+@@ -1841,7 +2231,6 @@ static void fm_block(void)
+     for (i = 0; i < NBELL; i++) {
+         bell_t *v = &bell[i];
+         const uint8_t *p = bell_vp[i];
+-        float g = bell_vol * 0.53f * v->vel;   /* (AMB-1's bells' level, measured) */
+         if (!v->on)
+             continue;
+         if (v->wait > 0) {                      /* (to the block: up to 0.7 ms off a hand's 0..60 ms) */
+@@ -1850,15 +2239,30 @@ static void fm_block(void)
+                 continue;
+             v->wait = 0;
+         }
+-        if (!v->rung) {                         /* the strike: its own copy of its loop's bell (DECAY) */
++        if (!v->rung) {                         /* the strike: its own copy of its loop's bell (the envelopes'
++                                                 * edits, DECAY), its patch's level */
++            gen_note(GEN_BELL + i);
+             mod_patch(GEN_BELL + i, bell_patch[v->loop], bell_vp[i]);
+             v->pl = v->gl;
+             v->pr = v->gr;
++            v->out = BELL_GAIN[par[P_BELLPATCH]];
++            v->lv = 1.0f;
++            {                                   /* a bell held at a sustain (Env's): let go after a beat */
++                uint32_t car = fm6_carriers(p[FP_ALG] & 31u), j2, sus = 0;
++                for (j2 = 0; j2 < 6u; j2++)
++                    sus |= (car >> j2 & 1u) && p[j2 * FP_OP + FP_L1 + 2] && p[j2 * FP_OP + FP_OL];
++                v->held = sus ? (int32_t)(step_len * 4.0f) : 0;
++            }
+             fm6_note_init(&bell_fm[i], p, v->note, (int32_t)(v->vel * 127.0f), 1);
+             v->rung = 1;
++        } else if (v->held > 0) {
++            v->held -= FM6_N;
++            if (v->held <= 0)
++                fm6_note_key(&bell_fm[i], p, 0);
+         }
+         dt = mod_of(GEN_BELL + i, p, &m, dtb);
+         if (fm_voice(&bell_fm[i], p, (float)v->note + m.pitch, 1 << 23, 0, m.bloom, m.fb, dt, x)) {
++            const float g = bell_vol * 0.53f * v->vel * v->out;   /* (AMB-1's bells' level, measured) */
+             float gl = v->gl, gr = v->gr;
+             if (m.pan != 0.0f) {                 /* SPACE: the bell wanders from its loop's place */
+                 float a = (fm_clampf(LOOP_PAN[v->loop] + m.pan, -1.0f, 1.0f) + 1.0f) * (FM_PI / 4.0f);
+@@ -1866,10 +2270,13 @@ static void fm_block(void)
+                 gr = fm_sinf(a);
+             }
+             {
+-                const float dl = (gl - v->pl) * (1.0f / FM6_N), dr = (gr - v->pr) * (1.0f / FM6_N);
+-                float pl = v->pl, pr = v->pr;
++                const float dl = (gl - v->pl) * (1.0f / FM6_N), dr = (gr - v->pr) * (1.0f / FM6_N),
++                            dv = (m.lvl - v->lv) * (1.0f / FM6_N);
++                float pl = v->pl, pr = v->pr, lg = v->lv;
+                 for (j = 0; j < FM6_N; j++) {
+-                    float s = x[j] * g;
++                    float s;
++                    lg += dv;
++                    s = x[j] * g * lg;
+                     pl += dl;
+                     pr += dr;
+                     fm_buf[FB_BELLL][j] += s * pl;
+@@ -1879,6 +2286,7 @@ static void fm_block(void)
+             }
+             v->pl = gl;
+             v->pr = gr;
++            v->lv = m.lvl;
+         }
+         if (fm6_note_done(&bell_fm[i], p, p[FP_ALG] & 31u)) {   /* rung out */
+             v->on = 0;
+@@ -1886,31 +2294,41 @@ static void fm_block(void)
+         }
+     }
+ 
++    if (bass_rs > 0 && --bass_rs == 0)          /* a new patch or envelope, the knob at rest: out, struck, in */
++        bass_xs = 1;
++    if (bass_xs && (bass_xf <= 0.0f || bass.amp < 1e-4f)) {
++        fm6_note_init(&bass_fm, mod_patch(NGEN - 1, bass_patch, bass_vp), (int32_t)bass.note, 100, 1);
++        bass_xs = 0;
++    }
+     if (bass.amp < 1e-5f && !en_playing) {
+         bass.amp = 0.0f;
+     } else {
+-        const float g = bass_vol * 0.42f * 0.75f, tgt = en_playing && !bass.rest ? 1.0f : 0.0f,
+-                    rate = tgt > 0.0f ? 1.0f / (2.5f * EN_SR) : 1.0f / (4.0f * EN_SR);
+-        float amp = bass.amp, gl, gr;
++        const float g = bass_vol * 0.42f * 0.75f * BASS_GAIN[par[P_BASSPATCH]], tgt = en_playing && !bass.rest ? 1.0f : 0.0f,
++                    rate = tgt > 0.0f ? 1.0f / (2.5f * EN_SR) : 1.0f / (4.0f * EN_SR),
++                    xt = bass_xs ? 0.0f : 1.0f;
++        float amp = bass.amp, gl, gr, xf = bass_xf;
+         bass.note += (bass.target - bass.note) * fm_minf((float)FM6_N * glide_k, 1.0f);   /* Glide */
+-        dt = mod_of(NGEN - 1, bass_patch, &m, dtb);
+-        gl = 1.0f - fm_maxf(m.pan, 0.0f) * 0.5f;     /* SPACE: the bass leans a little, never far */
+-        gr = 1.0f + fm_minf(m.pan, 0.0f) * 0.5f;
+-        if (fm_voice(&bass_fm, bass_patch, bass.note + m.pitch, 1 << 23, 0, m.bloom, m.fb, dt, x)) {
++        dt = mod_of(NGEN - 1, bass_vp, &m, dtb);
++        gl = (1.0f - fm_maxf(m.pan, 0.0f) * 0.5f) * m.lvl;   /* SPACE: the bass leans a little, never far */
++        gr = (1.0f + fm_minf(m.pan, 0.0f) * 0.5f) * m.lvl;
++        if (fm_voice(&bass_fm, bass_vp, bass.note + m.pitch, 1 << 23, 0, m.bloom, m.fb, dt, x)) {
+             const float dl = (gl - bass_gl) * (1.0f / FM6_N), dr = (gr - bass_gr) * (1.0f / FM6_N);
+             float pl = bass_gl, pr = bass_gr;
+             for (j = 0; j < FM6_N; j++) {
+                 amp += (tgt - amp) * rate;
++                xf = fm_clampf(xf + (xt > xf ? 1.0f : -1.0f) * (1.0f / 441.0f), 0.0f, 1.0f);   /* 10 ms */
+                 pl += dl;
+                 pr += dr;
+-                fm_buf[FB_BASSL][j] = x[j] * amp * g * pl;
+-                fm_buf[FB_BASSR][j] = x[j] * amp * g * pr;
++                fm_buf[FB_BASSL][j] = x[j] * amp * xf * g * pl;
++                fm_buf[FB_BASSR][j] = x[j] * amp * xf * g * pr;
+             }
+         } else {
+             for (j = 0; j < FM6_N; j++)
+                 amp += (tgt - amp) * rate;
++            xf = xt;
+         }
+         bass.amp = amp;
++        bass_xf = xf;
+         bass_gl = gl;
+         bass_gr = gr;
+     }
+diff --git a/app/dsp/amb.h b/app/dsp/amb.h
+index 4b4f8b4..292f1de 100644
+--- a/app/dsp/amb.h
++++ b/app/dsp/amb.h
+@@ -52,12 +52,27 @@ enum {
+     P_ECHO, P_ETIME, P_REVERB, P_SIZE,                /* space */
+     P_BRIGHT, P_SWELL, P_BTONE, P_MOTION,             /* tone */
+     P_TUNE, P_MIDI, P_TEMPO, P_ROOT, P_MODE, P_BOCT,  /* setup, panel encoders, bell octave */
+-    P_PADTONE,                                        /* the pad's colour, set by the piece: Rhodes, Voices */
++    P_PADTONE,                                        /* the pad's patch (its colour): Rhodes, Voices, ... EN_PADPATCHES */
+     P_BASSOCT, P_GLIDE, P_FIFTH,                      /* bass: its octave, its glide, how often it leans on the fifth */
+     P_SWING, P_HATS,                                  /* pulse: swing, the hats' colour */
+-    P_MDEPTH, P_MRATE, P_MCHAOS, P_MDEST,             /* the voices' modulation: depth, rate, chaos, target */
+-    P_NPARAMS
++    P_BELLPATCH, P_BASSPATCH,                         /* the bells' and the bass's patches */
++    P_VOX,                                            /* then each voice's own: EN_NVOX blocks of VX_N (P_VX) */
++    P_NPARAMS = P_VOX + 3 * 15
+ };
++/* the three FM6 voices, each with its own FM edits and its own modulation */
++enum { VOX_PAD, VOX_BELLS, VOX_BASS, EN_NVOX };
++/* a voice's block: FM (ratio, index, feedback: heard at once), its envelopes (attack, decay, sustain, release: from
++ * the next note), MOD (depth, rate, shape, target) and MOD 2 (spread, fade, sync, smooth) */
++enum { VX_RATIO, VX_INDEX, VX_FB, VX_ATK, VX_DEC, VX_SUS, VX_REL, VX_MDEPTH, VX_MRATE, VX_MSHAPE, VX_MDEST, VX_MSPREAD,
++       VX_MFADE, VX_MSYNC, VX_MSMOOTH, VX_N };
++#define P_VX(v, k) (P_VOX + (v) * VX_N + (k))
++_Static_assert(P_NPARAMS == P_VOX + EN_NVOX * VX_N, "a block a voice");
++extern const uint8_t EN_VOX_PATCH[EN_NVOX];       /* each voice's patch parameter */
++#define EN_PADPATCHES 6
++#define EN_BELLPATCHES 6
++#define EN_BASSPATCHES 6
++/* the old global MOD (format 5 and the recipes: depth, rate, chaos, target) as every voice's own */
++void en_mod_legacy(int16_t *par, int depth, int rate, int chaos, int dest);
+ typedef struct {
+     const char *name;
+     int16_t lo, hi, def;
+@@ -104,12 +119,20 @@ extern volatile uint8_t en_pulse_rest;         /* the pulse is sitting a few bar
+ extern volatile uint8_t en_pad_note[EN_NPAD];  /* the note each voice sings now (MIDI) */
+ extern volatile float en_pad_amp[EN_NPAD];     /* and how loud */
+ 
+-/* MOD: the voices' generative modulation. Each voice (the four pad voices, the six bells, the bass) has a generator
+- * of its own, at its own pace around RATE (60 s .. 0.12 s a cycle), so the voices never move together. CHAOS blends
+- * what it makes: 0 a slow wave, 50 a random walk (glides between random values), 100 the logistic map at the edge
+- * of chaos (jumps). DEPTH how far it goes (the arc deepens and calms it); TARGET what it moves, the FM6 voice's own
+- * parameters first: */
+-enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD_SPACE, MOD_ALL, EN_NMODDEST };
++/* MOD: the voices' generative modulation, each of the three voices (pad, bells, bass) set on its own. Each sounding
++ * voice (the four pad voices, the six bells, the bass) has a generator of its own, at its own pace around RATE
++ * (60 s .. 0.12 s a cycle, or with SYNC Tempo a note value, 8 bars .. 1/16). SHAPE what it makes (EN_MODSHAPE_NAME):
++ * the periodic waves, sample and hold, a random walk (glides between random values), the logistic map at the edge
++ * of chaos (jumps), or an envelope that falls from each note's start. DEPTH how far it goes (the arc deepens and calms
++ * it); SPREAD how far each voice goes its own way (0: the layer's voices move as one); FADE the modulation coming in
++ * after each note (0 .. 8 s); SYNC Free, Note (each note starts the shape again) or Tempo; SMOOTH a glide on what it
++ * makes (2 ms .. 0.5 s: a square softened). TARGET what it moves, the FM6 voice's own parameters first: */
++enum { SHAPE_SINE, SHAPE_TRI, SHAPE_UP, SHAPE_DOWN, SHAPE_SQUARE, SHAPE_SH, SHAPE_WALK, SHAPE_CHAOS, SHAPE_ENV,
++       EN_NMODSHAPE };
++extern const char *const EN_MODSHAPE_NAME[EN_NMODSHAPE];
++enum { SYNC_FREE, SYNC_NOTE, SYNC_TEMPO, EN_NMODSYNC };
++enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD_SPACE, MOD_ALL, MOD_LEVEL,
++       EN_NMODDEST };
+ /*   TIMBRE    the modulators' output level (+-12 dB): the FM index, brighter and darker
+  *   RATIO     the modulators' frequency ratio, in harmonic steps up (x1, x2, x3, x4, x5), gliding 15 ms
+  *   METAL     the modulators' ratio pulled apart (+-80 cents, one up, the next down): inharmonic sidebands
+@@ -118,7 +141,8 @@ enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD
+  *             the carriers' (the ring) +-6
+  *   PITCH     the voice's pitch (+-30 cents, slewed 15 ms): tape wow, a choir's drift, at the top a vibrato
+  *   SPACE     the voice's place in the stereo field (slewed 30 ms, ramped across a block)
+- *   ALL       timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio: its steps) */
++ *   ALL       timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio: its steps)
++ *   LEVEL     the voice's loudness, down to -10 dB (one-sided: a tremolo, a swell, never louder than the voice) */
+ extern const char *const EN_MODDEST_NAME[EN_NMODDEST];
+ #define EN_NMOD (EN_NPAD + 6 + 1)               /* the generators: pad voices, bells, bass */
+ extern volatile float en_mod[EN_NMOD];         /* each generator's value now, -1 .. 1 (times the depth) */
+diff --git a/app/host.c b/app/host.c
+index 484f3f8..9213275 100644
+--- a/app/host.c
++++ b/app/host.c
+@@ -4,8 +4,9 @@
+  * "expect", its command, a reboot and the screen reader's dump.
+  *
+  * AMB-1's checks: playing frozen view piece pool dirty sixteenths ext pad_level bass_level chordroot chordN loopnotes
+- * parN (fm1-base's own: store_writes clocks_out midi_out peak_db_max peak_db_min). Its command: storev3 N (the
+- * project as AMB-1 0.9 before the layer pages wrote it, format 3, the playing piece's Pad at N). */
++ * parN (fm1-base's own: store_writes clocks_out midi_out peak_db_max peak_db_min). Its commands: storev3 N (the
++ * project as AMB-1 0.9 before the layer pages wrote it, format 3, the playing piece's Pad at N); storev5 N (as the
++ * first FM6 build wrote it, format 5: one MOD for all three voices, its depth N, chaos 90, target Feedback). */
+ 
+ int app_expect(const char *what, int *got)
+ {
+@@ -72,6 +73,29 @@ int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, c
+         plat_store_save(OBJ_PROJ, &o, sizeof o);
+         return 1;
+     }
++    if (!strcmp(cmd, "storev5")) {               /* format 5, one MOD for all: depth N, rate 31, chaos 90, Feedback */
++        static project_v5_t o;
++        int i, k;
++        memset(&o, 0, sizeof o);
++        o.magic = PROJ_MAGIC;
++        o.format = 5u;
++        for (k = 0; k < P_BELLPATCH; k++)
++            o.par[k] = proj.par[k];
++        o.par[P_HATS + 1] = (int16_t)atoi(a);
++        o.par[P_HATS + 2] = 31;
++        o.par[P_HATS + 3] = 90;
++        o.par[P_HATS + 4] = MOD_FEEDBACK;
++        o.pool = proj.pool;
++        o.leds = proj.leds;
++        o.piece = proj.piece;
++        for (i = 0; i < NPIECES; i++) {
++            for (k = 0; k < V5_NPARAMS; k++)
++                o.slot[i].par[k] = k < P_BELLPATCH ? proj.slot[i].par[k] : o.par[k];
++            o.slot[i].pool = proj.slot[i].pool;
++        }
++        plat_store_save(OBJ_PROJ, &o, sizeof o);
++        return 1;
++    }
+     return 0;
+ }
+ 
+diff --git a/app/project.c b/app/project.c
+index 6ef4829..c48e7cb 100644
+--- a/app/project.c
++++ b/app/project.c
+@@ -76,11 +76,21 @@ static int project_valid(void)                  /* an older format: the recipes
+     return 1;
+ }
+ 
+-/* older formats: fewer settings a piece (format 3, 0.9 before the layer pages: 23; format 4, before MOD: 28).
+- * Carried over: each piece's own, the new ones from its recipe */
++/* older formats: fewer settings a piece (format 3, 0.9 before the layer pages: 23; format 4, before MOD: 28; format
++ * 5, one MOD for all three voices: 32). Carried over: each piece's own, the new ones from its recipe; format 5's MOD
++ * as every voice's own (en_mod_legacy), the patches and FM edits as they were (the defaults) */
+ #define V3_NPARAMS (P_PADTONE + 1)
+ #define V4_NPARAMS (P_HATS + 1)
+-#define OLD_PROJECT(T, N)                                                                                          \
++#define V5_NPARAMS (P_HATS + 5)
++static void fix_none(int16_t *par, const int16_t *o) { (void)par, (void)o; }
++static void fix_v5(int16_t *par, const int16_t *o)
++{
++    int p;
++    for (p = P_BELLPATCH; p < P_NPARAMS; p++)
++        par[p] = en_param_info(p)->def;
++    en_mod_legacy(par, o[P_HATS + 1], o[P_HATS + 2], o[P_HATS + 3], o[P_HATS + 4]);
++}
++#define OLD_PROJECT(T, N, K, FIX)                                                                                  \
+     typedef struct {                                                                                               \
+         int16_t par[N];                                                                                            \
+         uint16_t pool;                                                                                             \
+@@ -105,15 +115,18 @@ static int project_valid(void)                  /* an older format: the recipes
+         for (i = 0; i < NPIECES; i++) {                                                                            \
+             recipe(i, &r);                                                                                         \
+             for (p = 0; p < P_NPARAMS; p++)                                                                        \
+-                proj.slot[i].par[p] = p < (N) ? o->slot[i].par[p] : r.par[p];                                      \
++                proj.slot[i].par[p] = p < (K) ? o->slot[i].par[p] : r.par[p];                                      \
++            FIX(proj.slot[i].par, o->slot[i].par);                                                                 \
+             proj.slot[i].pool = o->slot[i].pool;                                                                   \
+         }                                                                                                          \
+         recipe(proj.piece, &r);                                                                                    \
+         for (p = 0; p < P_NPARAMS; p++)                                                                            \
+-            proj.par[p] = p < (N) ? o->par[p] : r.par[p];                                                          \
++            proj.par[p] = p < (K) ? o->par[p] : r.par[p];                                                          \
++        FIX(proj.par, o->par);                                                                                     \
+     }
+-OLD_PROJECT(project_v3, V3_NPARAMS)
+-OLD_PROJECT(project_v4, V4_NPARAMS)
++OLD_PROJECT(project_v3, V3_NPARAMS, V3_NPARAMS, fix_none)
++OLD_PROJECT(project_v4, V4_NPARAMS, V4_NPARAMS, fix_none)
++OLD_PROJECT(project_v5, V5_NPARAMS, P_BELLPATCH, fix_v5)
+ 
+ int project_load(void)
+ {
+@@ -121,6 +134,7 @@ int project_load(void)
+         project_t now;
+         project_v3_t v3;
+         project_v4_t v4;
++        project_v5_t v5;
+     } buf;
+     int n;
+     memset(&buf, 0, sizeof buf);
+@@ -129,6 +143,8 @@ int project_load(void)
+         from_project_v3(&buf.v3);
+     else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 4u)
+         from_project_v4(&buf.v4);
++    else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 5u)
++        from_project_v5(&buf.v5);
+     else
+         proj = buf.now;
+     if (n >= 8 && project_valid())
+diff --git a/app/ui.c b/app/ui.c
+index 1b3a6ca..75db370 100644
+--- a/app/ui.c
++++ b/app/ui.c
+@@ -9,19 +9,43 @@
+  *   ENV            the pad's colour: Rhodes / Voices (lit: Voices), kept with the piece
+  *   SELECT tempo   ALGORITHM mode (loads a pool)   PRESETS the piece (Root is on the Setup page)
+  *   HOME SEQ FX SEL GLO   the pages: LAYERS, MOTION, SPACE, TONE, SETUP (EDIT steps through them)
+- *   ENV ARP LFO again     MOD: the voices' generative modulation (depth, rate, chaos, target); also after SETUP
++ *   ENV ARP LFO again     that voice's FM (patch, ratio, index, feedback), again its envelopes (attack, decay,
++ *                  sustain, release), MOD (depth, rate, shape, target), MOD 2 (spread, fade, sync, smooth), then
++ *                  back; SELECT reaches them after SETUP
+  *   KNOB 1-4       the page's four values
+  *   SAVE           saves (it also saves by itself a few seconds after a change, while resting);
+  *                  held 1.5 s: the piece back to its recipe */
+ #include "fastmath.h"
+ 
+-/* the pages, one a layer (a button each); SELECT steps through them in this order. MOD has no button of its own:
+- * a voice's page button pressed again on its page opens it (and it lights the three) */
+-enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_MOD, NVIEWS };
+-static const char *const VIEW_NAME[NVIEWS] = {"Garden", "Pad", "Bells", "Bass", "Pulse", "Space", "Setup", "Mod"};
+-static const uint8_t VIEW_BTN[NVIEWS] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO, NB};
++/* the pages, one a layer (a button each); SELECT steps through them in this order. Each voice (the pad, the bells,
++ * the bass) has four more, with no button of their own: its page's button pressed again steps through them (FM, Env,
++ * Mod, Mod 2) and back to the layer's page; the voice's button stays lit on them */
++enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_MAIN,
++       V_PADFM = V_MAIN, V_PADENV, V_PADMOD, V_PADMOD2, V_BELLFM, V_BELLENV, V_BELLMOD, V_BELLMOD2,
++       V_BASSFM, V_BASSENV, V_BASSMOD, V_BASSMOD2, NVIEWS };
++#define NSUB 4                                   /* a voice's pages past its layer's */
++static const char *const VIEW_NAME[NVIEWS] = {"Garden", "Pad", "Bells", "Bass", "Pulse", "Space", "Setup",
++                                              "Pad FM", "Pad Env", "Pad Mod", "Pad Mod 2",
++                                              "Bells FM", "Bells Env", "Bells Mod", "Bells Mod 2",
++                                              "Bass FM", "Bass Env", "Bass Mod", "Bass Mod 2"};
++static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO};
++static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
++static int view_vox(int v)                     /* the voice a page is of (its layer's or its own); -1 none */
++{
++    return v >= V_MAIN ? (v - V_MAIN) / NSUB : v >= V_PAD && v <= V_BASS ? v - V_PAD : -1;
++}
++static int view_main(int v) { return v >= V_MAIN ? VOX_VIEW[view_vox(v)] : v; }   /* its dot */
+ /* the four knobs of each page: a parameter, or one of these; and what the knob is called there */
+ enum { K_LEDS = 100, K_CPU, K_NONE };
++_Static_assert(P_NPARAMS < K_LEDS, "the knobs' own after the parameters");
++#define VOX_KNOBS(v)                                                                                               \
++    {EN_VOX_PATCH_##v, P_VX(v, VX_RATIO), P_VX(v, VX_INDEX), P_VX(v, VX_FB)},                                     \
++    {P_VX(v, VX_ATK), P_VX(v, VX_DEC), P_VX(v, VX_SUS), P_VX(v, VX_REL)},                                          \
++    {P_VX(v, VX_MDEPTH), P_VX(v, VX_MRATE), P_VX(v, VX_MSHAPE), P_VX(v, VX_MDEST)},                                \
++    {P_VX(v, VX_MSPREAD), P_VX(v, VX_MFADE), P_VX(v, VX_MSYNC), P_VX(v, VX_MSMOOTH)}
++#define EN_VOX_PATCH_0 P_PADTONE
++#define EN_VOX_PATCH_1 P_BELLPATCH
++#define EN_VOX_PATCH_2 P_BASSPATCH
+ static const uint8_t VIEW_KNOB[NVIEWS][4] = {
+     {P_TEMPO, P_EVOLVE, P_MOTION, P_DRIFT},
+     {P_PAD, P_SWELL, P_BRIGHT, P_PADTONE},
+@@ -30,8 +54,11 @@ static const uint8_t VIEW_KNOB[NVIEWS][4] = {
+     {P_PULSE, P_HITS, P_SWING, P_HATS},
+     {P_ECHO, P_ETIME, P_REVERB, P_SIZE},
+     {P_ROOT, P_TUNE, P_MIDI, K_LEDS},
+-    {P_MDEPTH, P_MRATE, P_MCHAOS, P_MDEST},
++    VOX_KNOBS(0), VOX_KNOBS(1), VOX_KNOBS(2),
+ };
++#define VOX_LABELS                                                                                                 \
++    {"Patch", "Ratio", "Index", "Feedback"}, {"Attack", "Decay", "Sustain", "Release"},                           \
++    {"Depth", "Rate", "Shape", "Target"}, {"Spread", "Fade", "Sync", "Smooth"}
+ static const char *const KNOB_LABEL[NVIEWS][4] = {
+     {"Tempo", "Evolve", "Motion", "Drift"},
+     {"Level", "Swell", "Bright", "Colour"},
+@@ -40,8 +67,10 @@ static const char *const KNOB_LABEL[NVIEWS][4] = {
+     {"Level", "Hits", "Swing", "Hats"},
+     {"Echo", "Echo time", "Reverb", "Size"},
+     {"Root", "Tune", "MIDI out", "Lights"},
+-    {"Depth", "Rate", "Chaos", "Target"},
++    VOX_LABELS, VOX_LABELS, VOX_LABELS,
+ };
++#undef VOX_KNOBS
++#undef VOX_LABELS
+ 
+ /* the screen's colours: the cover of Ambient 1: Music for Airports (1978), as the web app and the site.
+  * The map's paper, its ink; the land's greens for the pad (the chord) and the scale, its rivers for the
+@@ -305,9 +334,13 @@ static void set_view(int v)
+ static void button(int b)
+ {
+     int v;
+-    for (v = 0; v < NVIEWS; v++)                 /* a page's button: its page; a voice's again: MOD */
++    for (v = 0; v < V_MAIN; v++)                 /* a page's button: its page; a voice's again: its next page */
+         if (VIEW_BTN[v] == b) {
+-            set_view(ui.view == v && (v == V_PAD || v == V_BELLS || v == V_BASS) ? V_MOD : v);
++            int x = view_vox(v), sub = ui.view >= V_MAIN ? (ui.view - V_MAIN) % NSUB + 1 : 0;
++            if (x >= 0 && view_vox(ui.view) == x)
++                set_view(sub == NSUB ? v : V_MAIN + x * NSUB + sub);
++            else
++                set_view(v);
+             return;
+         }
+     switch (b) {
+@@ -814,9 +847,9 @@ static int help_lines(int b, const char *l[HELP_LINES])
+ #define L(t) (l[n++] = (t))
+     switch (b) {
+     case B_HOME: L("THE GARDEN"); L("TEMPO, EVOLVE, MOTION, DRIFT"); L("+ SELECT: TEMPO"); break;
+-    case B_ENV: L("THE PAD"); L("LEVEL, SWELL, BRIGHT,"); L("COLOUR"); L("AGAIN: MOD"); break;
+-    case B_ARP: L("THE BELLS"); L("LEVEL, DENSITY, TONE,"); L("OCTAVE"); L("AGAIN: MOD"); break;
+-    case B_LFO: L("THE BASS"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: MOD, THE VOICES MOVE"); break;
++    case B_ENV: L("THE PAD"); L("LEVEL, SWELL, BRIGHT,"); L(" COLOUR"); L("AGAIN: FM, ENV, MOD, MOD 2"); break;
++    case B_ARP: L("THE BELLS"); L("LEVEL, DENSITY, TONE,"); L(" OCTAVE"); L("AGAIN: FM, ENV, MOD, MOD 2"); break;
++    case B_LFO: L("THE BASS"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: FM, ENV, MOD, MOD 2"); break;
+     case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); break;
+     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
+     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
+@@ -905,16 +938,16 @@ static void draw_knobs(void)
+         return;
+     ui.sig[2] = h;
+     cv_begin(240, KNB_H, K_BG);
+-    {   /* the rule; at its right end, where you are: the page, then the dots */
+-        char t[12];
++    {   /* the rule; at its right end, where you are: the page, then the dots (a voice's own pages on its dot) */
++        char t[16];
+         int k;
+-        int32_t xd = 237 - NVIEWS * 6, xt;
++        int32_t xd = 237 - V_MAIN * 6, xt;
+         caps(t, VIEW_NAME[ui.view], sizeof t);
+         xt = xd - 5 - text_w(&FONT_XS, t);
+         cv_rect(4, 5, xt - 9, 1, K_LINE);
+         cv_text(xt, -1, &FONT_XS, t, K_ACC);
+-        for (k = 0; k < NVIEWS; k++)
+-            cv_round(xd + k * 6, 3, 4, 4, 2, k == ui.view ? K_ACC : K_LINE);
++        for (k = 0; k < V_MAIN; k++)
++            cv_round(xd + k * 6, 3, 4, 4, 2, k == view_main(ui.view) ? K_ACC : K_LINE);
+     }
+     for (i = 0; i < 4; i++) {
+         int k = VIEW_KNOB[ui.view][i], lo, hi, v, hot = now_touch && ui.touched == (int)i;
+@@ -947,10 +980,7 @@ static void draw_knobs(void)
+ static void leds(void)
+ {
+     uint32_t b = 0, k = 0, i, ap = pool_abs();
+-    if (ui.view == V_MOD)
+-        b |= 1u << B_ENV | 1u << B_ARP | 1u << B_LFO;
+-    else
+-        b |= 1u << VIEW_BTN[ui.view];
++    b |= 1u << VIEW_BTN[view_main(ui.view)];
+     if (en_playing)
+         b |= 1u << B_PLAY;
+     if (en_frozen)
+@@ -1046,14 +1076,28 @@ static void sp_value(int k)
+         sp_cat(s == 1u ? " second" : " seconds");
+         return;
+     }
+-    if (k == P_MRATE) {                          /* "2.7s": 2.7 seconds a cycle */
+-        uint32_t i;
+-        for (i = 0; t[i] && t[i] != 's'; i++)
+-            ;
+-        t[i] = 0;
+-        sp_cat(t);
+-        sp_cat(" seconds");
+-        return;
++    if (k >= P_VOX) {                            /* a voice's: "2.7s" 2.7 seconds, "40ms" 40 milliseconds, "+6dB" */
++        uint32_t i = 0;
++        while (t[i])
++            i++;
++        if (i >= 2 && t[i - 1] == 's' && t[i - 2] >= '0' && t[i - 2] <= '9') {
++            t[i - 1] = 0;
++            sp_cat(t);
++            sp_cat(" seconds");
++            return;
++        }
++        if (i >= 3 && t[i - 1] == 's' && t[i - 2] == 'm') {
++            t[i - 2] = 0;
++            sp_cat(t);
++            sp_cat(" milliseconds");
++            return;
++        }
++        if (i >= 3 && t[i - 1] == 'B' && t[i - 2] == 'd') {
++            t[i - 2] = 0;
++            sp_cat(t);
++            sp_cat(" dB");
++            return;
++        }
+     }
+     sp_cat(t);
+ }
+diff --git a/docs/MANUAL.md b/docs/MANUAL.md
+index 0ef65ba..b268377 100644
+--- a/docs/MANUAL.md
++++ b/docs/MANUAL.md
+@@ -94,7 +94,7 @@ The drawing at the top shows them all; here they are in more detail.
+ | REC | **Freeze**: the chord holds and the reverb rings on forever, while the bells and pulse go on dry above it. Press again to thaw. Lit while frozen. |
+ | EDIT | The next chord, at the start of the next bar (at once while resting). |
+ | HOME | The Garden page: the whole garden. |
+-| ENV · ARP · LFO · SEQ | The layers' pages: Pad, Bells, Bass, Pulse. ENV, ARP or LFO again: Mod, the voices' modulation. |
++| ENV · ARP · LFO · SEQ | The layers' pages: Pad, Bells, Bass, Pulse. ENV, ARP or LFO again: that voice's FM, Env, Mod and Mod 2 pages. |
+ | FX · GLO | The Space and Setup pages. The lit button shows the page. |
+ | SELECT | The previous or next page. Hold HOME and turn it for the tempo, from any page. |
+ | ALGORITHM | Mode: Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, pentatonic major and minor. Loads the mode's scale; editing it with the keys makes it Custom. |
+@@ -194,8 +194,9 @@ the same for all.
+ ## 7. The pages
+ 
+ One page a layer, each on its own button, with four values on KNOB 1–4. A layer's level is
+-always KNOB 1. SELECT steps through them in this order. The voices' modulation (MOD) comes last: press
+-ENV, ARP or LFO again on its own page.
++always KNOB 1. SELECT steps through them in this order. Each voice (the pad, the bells, the bass) has four
++pages more, its own: press ENV, ARP or LFO again on its page for FM, again for Env, Mod and Mod 2, and once
++more to come back. SELECT reaches them after Setup.
+ 
+ ### HOME: Garden
+ 
+@@ -218,7 +219,8 @@ ENV, ARP or LFO again on its own page.
+ - **Swell:** how long the voices breathe, from a few seconds to about half a minute.
+ - **Bright:** opens the pad's filter and turns up its FM modulators: the voices bloom brighter as
+   they swell.
+-- **Colour:** Rhodes or Voices. Each piece keeps its own.
++- **Colour:** the pad's patch, the same as on its FM page: Rhodes, Voices, Glass, Strings, Warm or Halo.
++  Each piece keeps its own.
+ 
+ ### ARP: Bells
+ 
+@@ -272,18 +274,42 @@ ENV, ARP or LFO again on its own page.
+ 
+ The top right of this page shows how much of the FM-1's time the sound takes (CPU).
+ 
+-### ENV, ARP or LFO again: Mod
++### ENV, ARP or LFO again: the voice's own pages
+ 
+-The voices' generative modulation. Every voice (the four pad voices, the six bells, the bass) has a
+-generator of its own, each at its own pace around Rate, so the voices never move together; the arc
+-deepens it when the garden is full and calms it when sparse. The three voice buttons light on this page.
+-SELECT reaches it after Setup.
++Each voice has four pages of its own, the same for the pad, the bells and the bass, and each piece keeps
++them. The voice's button stays lit on them; the dot under its page shows where you are.
+ 
+-- **Depth:** how far it goes. 0: the voices as they are.
+-- **Rate:** how long a cycle takes, from 60 seconds to an eighth of a second, a vibrato's speed (each
+-  voice a little faster or slower).
+-- **Chaos:** what it makes. 0: slow waves; 50: a random walk, gliding between random values; 100: the
+-  logistic map at the edge of chaos, jumping.
++**FM.** The voice's sound.
++
++- **Patch:** which FM6 patch it plays. The pad: Rhodes, Voices, Glass, Strings, Warm, Halo. The bells: Bell
++  (shaped by Tone), Vibes, Marimba, Tubular, Kalimba, Celesta. The bass: Sine, Round, Pick, Sub, Reed,
++  Fretless. Each as loud as the voice's first. The pad's voices cross over to a new patch as they do for a new
++  key; the bells take it at their next strike; the bass is struck anew once the knob rests.
++- **Ratio:** the modulators' frequency times ×1 (the patch's own), ×2, ×3, ×4, ×5, ×7, or the inharmonic
++  ×1.41, ×2.76, ×3.5 (a bell's partials).
++- **Index:** the modulators' level, ±24 dB: the FM index, darker or brighter.
++- **Feedback:** more or less feedback on the operator that has it, ±7 steps.
++
++Ratio, Index and Feedback are heard at once.
++
++**Env.** Every operator's envelope, from the next note (the bass: struck anew once the knob rests).
++
++- **Attack:** + slower, − quicker.
++- **Decay:** + longer, − shorter.
++- **Sustain:** + higher, − lower. A bell held up at a sustain is let go after a beat.
++- **Release:** + longer, − shorter.
++
++**Mod.** The voice's generative modulation. Every sounding voice (the four pad voices, the six bells, the
++bass) has a generator of its own, each at its own pace around Rate; the arc deepens it when the garden is full
++and calms it when sparse.
++
++- **Depth:** how far it goes. 0: the voice as it is.
++- **Rate:** how long a cycle takes, from 60 seconds to an eighth of a second, a vibrato's speed (each voice a
++  little faster or slower). With Sync at Tempo: a note value, 8 bars to a sixteenth.
++- **Shape:** what it makes. Sine, Triangle, Saw up, Saw down, Square: a wave a cycle. S&H: a random value a
++  cycle, held. Walk: gliding between random values. Chaos: the logistic map at the edge of chaos, jumping.
++  Env: from each note's start, falling from the top to nothing over a cycle (a pluck of brightness, a pitch
++  drop).
+ - **Target:** what it moves, the FM voice's own parameters first:
+   - **Timbre:** the modulators' level, ±12 dB: the FM index, brighter and darker.
+   - **Ratio:** the modulators' frequency ratio in harmonic steps, ×1 to ×5, gliding: the voice jumps
+@@ -294,10 +320,18 @@ SELECT reaches it after Setup.
+     works on struck notes, the bells; the pad and the bass are held and barely decay.
+   - **Pitch:** the voice's pitch, ±30 cents: tape wow, a choir's drift, at the fastest a vibrato.
+   - **Space:** the voice's place in the stereo field.
+-  - **All:** timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio).
++  - **All:** timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio, not level).
++  - **Level:** the voice's loudness, down to −10 dB: a tremolo, a swell. Never louder than the voice.
++
++**Mod 2.** How the generators move together and in time.
++
++- **Spread:** 100: each voice its own way. 0: the layer's voices move as one.
++- **Fade:** the modulation coming in after each note, from at once (Off) to 8 seconds.
++- **Sync:** Free. Note: each note starts the shape again. Tempo: Rate is a note value at the tempo.
++- **Smooth:** a glide on the shape, 2 ms (a square's edge never clicks) to half a second.
+ 
+-Ratio, Metal and Feedback work where there is modulation to change: the bells and the pad. The bass is
+-nearly a pure sine on purpose and stays put.
++Ratio, Metal and Feedback as targets work where there is modulation to change: the bells and the pad. The
++bass's first patch is nearly a pure sine on purpose and stays put; its other patches move.
+ 
+ ---
+ 
+@@ -423,10 +457,19 @@ The defaults are Garden's; each piece has its own.
+ | Setup | Tune | −50 – +50 cents | 0 |
+ | Setup | MIDI out | Off, On | On |
+ | Setup | Lights | Off, On, Keys | On |
+-| Mod | Depth | 0–100 | 20 |
+-| Mod | Rate | 0–100 (60 s – 0.12 s a cycle) | 27 (11 s) |
+-| Mod | Chaos | 0–100 | 25 |
+-| Mod | Target | Timbre, Ratio, Metal, Feedback, Decay, Pitch, Space, All | Timbre |
++| Each voice's FM | Patch | the voice's six | Rhodes, Bell, Sine |
++| Each voice's FM | Ratio | ×1, ×2, ×3, ×4, ×5, ×7, ×1.41, ×2.76, ×3.5 | ×1 |
++| Each voice's FM | Index | −24 – +24 dB | 0 dB |
++| Each voice's FM | Feedback | −7 – +7 | 0 |
++| Each voice's Env | Attack, Decay, Sustain, Release | −50 – +50 | 0 |
++| Each voice's Mod | Depth | 0–100 | 20 |
++| Each voice's Mod | Rate | 0–100 (60 s – 0.12 s a cycle; Tempo: 8 bars – 1/16) | 27 (11 s) |
++| Each voice's Mod | Shape | Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos, Env | Sine |
++| Each voice's Mod | Target | Timbre, Ratio, Metal, Feedback, Decay, Pitch, Space, All, Level | Timbre |
++| Each voice's Mod 2 | Spread | 0–100 | 100 |
++| Each voice's Mod 2 | Fade | Off – 8 s | Off |
++| Each voice's Mod 2 | Sync | Free, Note, Tempo | Free |
++| Each voice's Mod 2 | Smooth | 2 ms – 500 ms | 2 ms |
+ | ALGORITHM | Mode | 8 modes, or Custom | Dorian |
+ 
+ ---
+diff --git a/tests/host/amb_test.c b/tests/host/amb_test.c
+index 57330e7..f34f1f4 100644
+--- a/tests/host/amb_test.c
++++ b/tests/host/amb_test.c
+@@ -67,6 +67,13 @@ static void run(float secs)
+     }
+ }
+ 
++static void vox_all(int k, int v)               /* a voice block's setting, the same for all three voices */
++{
++    int x;
++    for (x = 0; x < EN_NVOX; x++)
++        en_set(P_VX(x, k), v);
++}
++
+ int main(void)
+ {
+     int pcs[4], n, i;
+@@ -299,17 +306,17 @@ int main(void)
+     }
+ 
+     /* MOD: silent at depth 0; at depth 100 every generator moves, each its own way, inside -1..1, every target and
+-     * chaos at its ends bounded and never NaN */
++     * shape bounded and never NaN */
+     {
+         int k, g, d, moved = 0, apart = 0, out = 0;
+         float lo[EN_NMOD], hi[EN_NMOD];
+-        en_set(P_MDEPTH, 0);
++        vox_all(VX_MDEPTH, 0);
+         run(1.0f);
+         for (g = 0; g < EN_NMOD; g++)
+             CHECK(en_mod[g] == 0.0f, "MOD at depth 0: generator %d at %f", g, (double)en_mod[g]);
+-        en_set(P_MDEPTH, 100);
+-        en_set(P_MRATE, 80);
+-        en_set(P_MCHAOS, 50);
++        vox_all(VX_MDEPTH, 100);
++        vox_all(VX_MRATE, 80);
++        vox_all(VX_MSHAPE, SHAPE_WALK);
+         for (g = 0; g < EN_NMOD; g++)
+             lo[g] = hi[g] = en_mod[g];
+         for (k = 0; k < 40; k++) {
+@@ -327,36 +334,109 @@ int main(void)
+         CHECK(moved == EN_NMOD, "MOD: %d of %d generators moved", moved, EN_NMOD);
+         CHECK(apart > 30, "MOD: the pad's first two voices together (%d of 40 apart)", apart);
+         for (d = 0; d < EN_NMODDEST; d++)
+-            for (k = 0; k <= 100; k += 100) {
+-                en_set(P_MDEST, d);
+-                en_set(P_MCHAOS, k);
++            for (k = 0; k < 2; k++) {
++                vox_all(VX_MDEST, d);
++                vox_all(VX_MSHAPE, k ? SHAPE_CHAOS : SHAPE_SINE);
+                 peak = 0.0f;
+                 run(3.0f);
+-                CHECK(!bad && peak < 1.0f, "MOD target %d chaos %d: peak %f", d, k, (double)peak);
++                CHECK(!bad && peak < 1.0f, "MOD target %d shape %d: peak %f", d, k, (double)peak);
++            }
++        /* every shape: bounded, and (but the envelope, which waits for notes) moving */
++        vox_all(VX_MDEST, MOD_ALL);
++        for (k = 0; k < EN_NMODSHAPE; k++) {
++            float l0 = 9.0f, h0 = -9.0f;
++            int j;
++            vox_all(VX_MSHAPE, k);
++            out = 0;
++            peak = 0.0f;
++            for (j = 0; j < 30; j++) {
++                run(0.1f);
++                l0 = en_mod[0] < l0 ? en_mod[0] : l0;
++                h0 = en_mod[0] > h0 ? en_mod[0] : h0;
++                for (g = 0; g < EN_NMOD; g++)
++                    out += en_mod[g] < -1.0f || en_mod[g] > 1.0f || en_mod[g] != en_mod[g];
++            }
++            CHECK(!out && !bad && peak < 1.0f, "MOD shape %d: out %d, peak %f", k, out, (double)peak);
++            CHECK(k == SHAPE_ENV || h0 - l0 > 0.3f, "MOD shape %d: moved only %f", k, (double)(h0 - l0));
++        }
++        /* SPREAD 0: the pad's four as one; 100: apart */
++        vox_all(VX_MSHAPE, SHAPE_SINE);
++        vox_all(VX_MSPREAD, 0);
++        run(1.0f);
++        CHECK(fabsf(en_mod[0] - en_mod[1]) < 1e-3f && fabsf(en_mod[0] - en_mod[3]) < 1e-3f,
++              "MOD spread 0: the pad's voices apart (%f %f %f)", (double)en_mod[0], (double)en_mod[1], (double)en_mod[3]);
++        vox_all(VX_MSPREAD, 100);
++        /* SYNC Tempo: a square at 1/4, tempo 120: two cycles a second, four sign changes */
++        {
++            int flips = 0, j, s0;
++            char t[16];
++            en_set(P_TEMPO, 120);
++            vox_all(VX_MSYNC, SYNC_TEMPO);
++            vox_all(VX_MRATE, 60);                 /* 60 * 12 / 101: the eighth division, 1/4 */
++            vox_all(VX_MSHAPE, SHAPE_SQUARE);
++            run(0.5f);
++            en_param_text(P_VX(VOX_PAD, VX_MRATE), 60, t);
++            CHECK(!strcmp(t, "1/4"), "MOD sync tempo: rate shows %s", t);
++            s0 = en_mod[0] > 0.0f;
++            for (j = 0; j < 861; j++) {          /* 5 s, a block (5.8 ms) at a time */
++                run(0.006f);
++                if ((en_mod[0] > 0.0f) != s0) {
++                    s0 = !s0;
++                    flips++;
++                }
+             }
+-        en_set(P_MDEPTH, 0);
++            CHECK(flips >= 18 && flips <= 22, "MOD sync tempo 1/4 at 120: %d sign changes in 5 s (20)", flips);
++            vox_all(VX_MSYNC, SYNC_FREE);
++            en_set(P_TEMPO, 72);
++        }
++        /* FADE and SMOOTH at their ends, NOTE sync, the envelope: bounded */
++        vox_all(VX_MFADE, 100);
++        vox_all(VX_MSMOOTH, 100);
++        vox_all(VX_MSYNC, SYNC_NOTE);
++        vox_all(VX_MSHAPE, SHAPE_ENV);
++        peak = 0.0f;
++        run(10.0f);
++        CHECK(!bad && peak < 1.0f, "MOD fade, smooth, note sync, env: peak %f", (double)peak);
++        vox_all(VX_MFADE, 0);
++        vox_all(VX_MSMOOTH, 0);
++        vox_all(VX_MSYNC, SYNC_FREE);
++        vox_all(VX_MSHAPE, SHAPE_SINE);
++        vox_all(VX_MDEPTH, 0);
+     }
+ 
+-    /* MOD's FM targets are heard: RATIO (harmonic steps up) and FEEDBACK (more of it) are one-sided, so at full
+-     * depth the bells alone are brighter (zero crossings) than without */
++    /* MOD's FM targets and the FM edits are heard on the bells alone (zero crossings: brighter): RATIO (harmonic
++     * steps up) and FEEDBACK (more of it) one-sided at full depth; FM's Index +24 dB and Ratio x4. And LEVEL quieter,
++     * on the pad alone (the bells' level wanders 2 dB from one garden to the next) */
+     {
+         static const int DEST[3] = {-1, MOD_RATIO, MOD_FEEDBACK};
+-        float zc[3];
++        float zc[7], rms[2];
+         int k;
+-        for (k = 0; k < 3; k++) {
++        for (k = 0; k < 7; k++) {
+             int b2, j;
+             long z = 0;
++            double s2 = 0.0;
+             float prev = 0.0f;
+             en_init();
+-            en_set(P_PAD, 0);
++            en_set(P_PAD, k >= 5 ? 70 : 0);
++            en_set(P_BELLS, k >= 5 ? 0 : 65);
+             en_set(P_BASS, 0);
+             en_set(P_PULSE, 0);
+             en_set(P_ECHO, 0);
+             en_set(P_REVERB, 0);
+             en_set(P_DENSITY, 100);
+-            en_set(P_MDEPTH, DEST[k] < 0 ? 0 : 100);
+-            en_set(P_MDEST, DEST[k] < 0 ? 0 : DEST[k]);
+-            en_set(P_MRATE, 60);
++            if (k < 3) {
++                en_set(P_VX(VOX_BELLS, VX_MDEPTH), DEST[k] < 0 ? 0 : 100);
++                en_set(P_VX(VOX_BELLS, VX_MDEST), DEST[k] < 0 ? 0 : DEST[k]);
++                en_set(P_VX(VOX_BELLS, VX_MRATE), 60);
++            } else if (k == 3) {
++                en_set(P_VX(VOX_BELLS, VX_INDEX), 24);
++            } else if (k == 4) {
++                en_set(P_VX(VOX_BELLS, VX_RATIO), 3);
++            } else if (k == 6) {
++                en_set(P_VX(VOX_PAD, VX_MDEPTH), 100);
++                en_set(P_VX(VOX_PAD, VX_MDEST), MOD_LEVEL);
++                en_set(P_VX(VOX_PAD, VX_MRATE), 80);   /* (fast: its mean, -3 dB, over the 20 s) */
++            }
+             en_play(1);
+             for (b2 = 0; b2 < 20 * 44100 / 256; b2++) {
+                 en_render(buf, 256, 2048);
+@@ -364,14 +444,57 @@ int main(void)
+                     float x = (float)buf[2 * j];
+                     z += (x > 0.0f) != (prev > 0.0f);
+                     prev = x;
++                    s2 += (double)x * (double)x;
+                 }
+             }
+             zc[k] = (float)z;
++            if (k >= 5)
++                rms[k - 5] = (float)s2;
+         }
+         CHECK(zc[1] > 1.15f * zc[0], "MOD Ratio not brighter: %.0f vs %.0f", (double)zc[1], (double)zc[0]);
+         CHECK(zc[2] > 1.15f * zc[0], "MOD Feedback not brighter: %.0f vs %.0f", (double)zc[2], (double)zc[0]);
+-        printf("  MOD on the bells, zero crossings: off %.0f, ratio %.0f, feedback %.0f\n", (double)zc[0], (double)zc[1],
+-               (double)zc[2]);
++        CHECK(zc[3] > 1.3f * zc[0], "FM Index +24 not brighter: %.0f vs %.0f", (double)zc[3], (double)zc[0]);
++        CHECK(zc[4] > 1.3f * zc[0], "FM Ratio x4 not brighter: %.0f vs %.0f", (double)zc[4], (double)zc[0]);
++        CHECK(rms[1] < 0.7f * rms[0], "MOD Level not quieter: %g vs %g", (double)rms[1], (double)rms[0]);
++        printf("  the bells, zero crossings: off %.0f, MOD ratio %.0f, MOD feedback %.0f, FM index +24 %.0f, "
++               "FM ratio x4 %.0f\n", (double)zc[0], (double)zc[1], (double)zc[2], (double)zc[3], (double)zc[4]);
++        en_init();
++        en_play(1);
++    }
++
++    /* every voice's every patch, alone: heard, bounded; changed while it sounds (the pad crossing over, the bass
++     * struck anew): bounded */
++    {
++        static const int LAYER[EN_NVOX] = {P_PAD, P_BELLS, P_BASS};
++        static const int NP[EN_NVOX] = {EN_PADPATCHES, EN_BELLPATCHES, EN_BASSPATCHES};
++        int v, p, k;
++        for (v = 0; v < EN_NVOX; v++)
++            for (p = 0; p < NP[v]; p++) {
++                en_init();
++                for (k = 0; k < EN_NVOX; k++)
++                    en_set(LAYER[k], k == v ? 100 : 0);
++                en_set(P_PULSE, 0);
++                en_set(P_DENSITY, 100);
++                en_set(EN_VOX_PATCH[v], p);
++                en_play(1);
++                peak = 0.0f;
++                run(8.0f);
++                CHECK(!bad && peak < 1.0f && peak > 0.02f, "voice %d patch %d: peak %f", v, p, (double)peak);
++            }
++        en_init();
++        en_play(1);
++        run(3.0f);
++        peak = 0.0f;
++        for (k = 0; k < 30; k++) {
++            for (v = 0; v < EN_NVOX; v++) {
++                en_set(EN_VOX_PATCH[v], k % NP[v]);
++                en_set(P_VX(v, VX_ATK), (k * 37) % 101 - 50);
++                en_set(P_VX(v, VX_SUS), (k * 53) % 101 - 50);
++            }
++            run(0.2f);
++        }
++        run(3.0f);
++        CHECK(!bad && peak < 1.0f, "patches and envelopes changed while playing: peak %f", (double)peak);
+         en_init();
+         en_play(1);
+     }
+diff --git a/tests/scenarios/migrate.amb b/tests/scenarios/migrate.amb
+index f8746c7..87b5835 100644
+--- a/tests/scenarios/migrate.amb
++++ b/tests/scenarios/migrate.amb
+@@ -18,3 +18,24 @@ reboot
+ wait 300
+ expect par0 33
+ expect par26 30
++# (each voice's MOD from Night Bus's recipe: depth 35, a walk, Metal)
++expect par37 35
++expect par39 6
++expect par40 2
++expect par67 35
++# a project of the first FM6 build (format 5: one MOD for all three voices) loads with it as each voice's own;
++# the patches and FM edits as they were
++storev5 55
++reboot
++wait 300
++expect piece 4
++expect par0 33
++expect par37 55
++expect par52 55
++expect par67 55
++expect par39 7
++expect par40 3
++expect par70 3
++expect par28 0
++expect par30 0
++expect par38 31
+diff --git a/tests/scenarios/mod.amb b/tests/scenarios/mod.amb
+index ac503fa..1f09a43 100644
+--- a/tests/scenarios/mod.amb
++++ b/tests/scenarios/mod.amb
+@@ -1,5 +1,6 @@
+-# MOD, the voices' generative modulation: a voice's page button pressed again opens it (from the pad, the bells and
+-# the bass, never from the other pages); SELECT reaches it after Setup; its knobs, kept with the piece
++# each voice's own pages: its page button pressed again steps through FM, Env, Mod and Mod 2 and back (from the
++# pad, the bells and the bass, never from the other pages); SELECT reaches them after Setup; their knobs, each voice's
++# own (parN: amb.h, P_VOX 30, a block of 15 a voice), kept with the piece
+ wait 300
+ tap ENV
+ wait 100
+@@ -7,21 +8,54 @@ expect view 1
+ tap ENV
+ wait 100
+ expect view 7
++shot pad_fm.png
++tap ENV
++wait 100
++expect view 8
++tap ENV
++wait 100
++expect view 9
+ shot mod.png
++# the pad's Depth: Garden's recipe 20, the bells' and the bass's untouched
+ turn K1 3 10
+-expect par28 23
++expect par37 23
++expect par52 20
++expect par67 20
++# its Shape: Garden's a sine; Square
++turn K3 4 10
++expect par39 4
++tap ENV
++wait 100
++expect view 10
++shot mod2.png
++# Sync: Tempo
++turn K3 2 10
++expect par43 2
++tap ENV
++wait 100
++expect view 1
++# the bells: their FM page, the patch (Vibes)
+ tap ARP
+ wait 100
+ expect view 2
+ tap ARP
+ wait 100
+-expect view 7
++expect view 11
++turn K1 1 10
++expect par28 1
++# the bass: its FM page, Index +2 dB
+ tap LFO
+ wait 100
+ expect view 3
+ tap LFO
+ wait 100
+-expect view 7
++expect view 15
++turn K3 2 10
++expect par61 2
++# another voice's button from a voice's page: that voice's own first page
++tap ARP
++wait 100
++expect view 2
+ tap SEQ
+ wait 100
+ tap SEQ
+@@ -36,9 +70,15 @@ tap GLO
+ wait 100
+ turn SELECT 1 100
+ expect view 7
+-turn K4 4 10
+-expect par31 4
++# the pad's Feedback, on its FM page
++turn K4 2 10
++expect par32 2
+ wav mod.wav
+ wait 20000
+ wavstop
+ expect peak_db_max -0.5
++# kept with the piece
++turn PRESET 1
++turn PRESET -1
++expect par28 1
++expect par37 23
+diff --git a/web/app/index.html b/web/app/index.html
+index 9ddebda..58f12b2 100644
+--- a/web/app/index.html
++++ b/web/app/index.html
+@@ -78,7 +78,7 @@ td.v { width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
+   <button id="play" hidden>Rest</button>
+   <button id="freeze" aria-pressed="false">Freeze</button>
+   <button id="next">Next chord</button>
+-  <label for="colour">Pad</label> <select id="colour"><option value="0">Rhodes</option><option value="1">Voices</option></select>
++  <label for="colour">Pad</label> <select id="colour"><option value="0">Rhodes</option><option value="1">Voices</option><option value="2">Glass</option><option value="3">Strings</option><option value="4">Warm</option><option value="5">Halo</option></select>
+   <span role="group" aria-labelledby="octName">
+     <span id="octName">Bells octave</span> <button id="octDn" aria-label="Bells an octave down">&minus;</button>
+     <span id="octVal">0</span> <button id="octUp" aria-label="Bells an octave up">+</button></span>
+@@ -111,10 +111,14 @@ td.v { width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
+ // ------------------------------------------------------------------ the engine's names (amb.h)
+ const P = { PAD: 0, BELLS: 1, BASS: 2, PULSE: 3, DENSITY: 4, EVOLVE: 5, DRIFT: 6, HITS: 7, ECHO: 8, ETIME: 9, REVERB: 10, SIZE: 11,
+             BRIGHT: 12, SWELL: 13, BTONE: 14, MOTION: 15, TUNE: 16, MIDI: 17, TEMPO: 18, ROOT: 19, MODE: 20, BOCT: 21, PADTONE: 22,
+-            BASSOCT: 23, GLIDE: 24, FIFTH: 25, SWING: 26, HATS: 27,
+-            MDEPTH: 28, MRATE: 29, MCHAOS: 30, MDEST: 31 };
++            BASSOCT: 23, GLIDE: 24, FIFTH: 25, SWING: 26, HATS: 27, BELLPATCH: 28, BASSPATCH: 29 };
++// each voice's own block (amb.h P_VX): FM, its envelopes, MOD, MOD 2
++const VOX = 30, VXN = 15, VX = { RATIO: 0, INDEX: 1, FB: 2, ATK: 3, DEC: 4, SUS: 5, REL: 6, MDEPTH: 7, MRATE: 8, MSHAPE: 9,
++                                 MDEST: 10, MSPREAD: 11, MFADE: 12, MSYNC: 13, MSMOOTH: 14 };
++const vx = (v, k) => VOX + v * VXN + k;
++const VOICES = [["Pad", P.PADTONE], ["Bells", P.BELLPATCH], ["Bass", P.BASSPATCH]];
+ const NLOOP = 4, LOOP_MAX = 29;
+-const STORE = "eno-app-1";
++const STORE = "eno-app-2";               // 2: each voice its own patch, FM and MOD (format 6)
+ // the layers, as the FM-1's pages: [parameter, its name there]
+ const GROUPS = [
+   ["Garden", [[P.EVOLVE, "Evolve"], [P.MOTION, "Motion"], [P.DRIFT, "Drift"]]],
+@@ -123,7 +127,12 @@ const GROUPS = [
+   ["Bass", [[P.BASS, "Level"], [P.BASSOCT, "Octave"], [P.GLIDE, "Glide"], [P.FIFTH, "Fifth"]]],
+   ["Pulse", [[P.PULSE, "Level"], [P.HITS, "Hits"], [P.SWING, "Swing"], [P.HATS, "Hats"]]],
+   ["Space", [[P.ECHO, "Echo"], [P.ETIME, "Echo time"], [P.REVERB, "Reverb"], [P.SIZE, "Size"]]],
+-  ["Mod", [[P.MDEPTH, "Depth"], [P.MRATE, "Rate"], [P.MCHAOS, "Chaos"], [P.MDEST, "Target"]]],
++  ...VOICES.flatMap(([n, patch], v) => [
++    [`${n} FM`, [[patch, "Patch"], [vx(v, VX.RATIO), "Ratio"], [vx(v, VX.INDEX), "Index"], [vx(v, VX.FB), "Feedback"]]],
++    [`${n} Env`, [[vx(v, VX.ATK), "Attack"], [vx(v, VX.DEC), "Decay"], [vx(v, VX.SUS), "Sustain"], [vx(v, VX.REL), "Release"]]],
++    [`${n} Mod`, [[vx(v, VX.MDEPTH), "Depth"], [vx(v, VX.MRATE), "Rate"], [vx(v, VX.MSHAPE), "Shape"], [vx(v, VX.MDEST), "Target"]]],
++    [`${n} Mod 2`, [[vx(v, VX.MSPREAD), "Spread"], [vx(v, VX.MFADE), "Fade"], [vx(v, VX.MSYNC), "Sync"], [vx(v, VX.MSMOOTH), "Smooth"]]],
++  ]),
+ ];
+ const TIP = { [P.DENSITY]: "notes per bell loop", [P.EVOLVE]: "how often things change and rest", [P.DRIFT]: "how long a chord lasts",
+               [P.HITS]: "pulse hits", [P.ECHO]: "tape echo send", [P.ETIME]: "tape loop length", [P.REVERB]: "plate send",
+@@ -131,8 +140,19 @@ const TIP = { [P.DENSITY]: "notes per bell loop", [P.EVOLVE]: "how often things
+               [P.BTONE]: "round to metallic", [P.MOTION]: "how far it drifts and swells", [P.BASSOCT]: "the bass an octave down or up",
+               [P.GLIDE]: "how slowly the bass slides to its note", [P.FIFTH]: "how often the bass leans on the fifth",
+               [P.SWING]: "the off sixteenths late", [P.HATS]: "dark and long to bright and crisp",
+-              [P.MDEPTH]: "how far each voice's modulation goes", [P.MRATE]: "a modulation cycle, 60 s to an eighth of a second",
+-              [P.MCHAOS]: "slow waves, a random walk, then chaos", [P.MDEST]: "what moves: the FM index, ratio, metal, feedback, decay, pitch, space or all" };
++              [P.PADTONE]: "the pad's FM6 patch", [P.BELLPATCH]: "the bells' FM6 patch", [P.BASSPATCH]: "the bass's FM6 patch" };
++for (let v = 0; v < VOICES.length; v++)
++  Object.assign(TIP, {
++    [vx(v, VX.RATIO)]: "the modulators' frequency ratio", [vx(v, VX.INDEX)]: "the modulators' level: the FM index, in dB",
++    [vx(v, VX.FB)]: "the feedback operator's feedback", [vx(v, VX.ATK)]: "every operator's attack: + slower",
++    [vx(v, VX.DEC)]: "every operator's decay: + longer", [vx(v, VX.SUS)]: "every operator's sustain level: + higher",
++    [vx(v, VX.REL)]: "every operator's release: + longer",
++    [vx(v, VX.MDEPTH)]: "how far the modulation goes", [vx(v, VX.MRATE)]: "a cycle, 60 s to an eighth of a second, or a note value",
++    [vx(v, VX.MSHAPE)]: "waves, sample and hold, a random walk, chaos, or an envelope from each note",
++    [vx(v, VX.MDEST)]: "what moves: the FM index, ratio, metal, feedback, decay, pitch, space, all or level",
++    [vx(v, VX.MSPREAD)]: "0: the voices move as one; 100: each its own way", [vx(v, VX.MFADE)]: "the modulation coming in after each note",
++    [vx(v, VX.MSYNC)]: "free, again from each note, or at the tempo", [vx(v, VX.MSMOOTH)]: "a glide on the shape",
++  });
+ const $ = (id) => document.getElementById(id);
+ // names in words, as the FM-1's screen reader says them (ui.c CHORD_Q, firmware/words.tsv)
+ const SPOKEN_NOTE = { "C#": "C sharp", "Eb": "E flat", "F#": "F sharp", "Ab": "A flat", "Bb": "B flat" };
+-- 
+2.53.0
+

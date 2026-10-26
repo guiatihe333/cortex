@@ -21,10 +21,47 @@ eco de fita, Echoplex e o plate de Dattorro. Os controles também: **Bright** e 
 moduladores FM6 (o pad fica mais brilhante quando cresce), **Bell tone** reconstrói os patches dos sinos, **Pad tone**
 alterna entre Rhodes e Voices, **Tune** chega ao FM6.
 
-## Motor de modulação generativa (página MOD)
+## Cada voz com suas páginas: patch, FM, envelopes e modulação (1.3.91-fm6)
 
-Uma seção nova nos parâmetros das vozes. **Como chegar:** aperte de novo o botão da página de uma voz (ENV no Pad,
-ARP nos Bells, LFO no Bass) ou gire o SELECT depois de Setup. Na página MOD, os três botões das vozes ficam acesos.
+Pad, Bells e Bass têm, cada um, **quatro páginas próprias**, guardadas com a peça. **Como chegar:** aperte de novo o
+botão da página da voz (ENV no Pad, ARP nos Bells, LFO no Bass): FM → Env → Mod → Mod 2 → volta à página da voz. O
+SELECT também chega nelas depois de Setup. O botão da voz fica aceso, e o ponto da voz mostra onde você está.
+
+| Página | Knob 1 | Knob 2 | Knob 3 | Knob 4 |
+| --- | --- | --- | --- | --- |
+| **FM** | **Patch** (6 por voz) | **Ratio**: ×1 (do patch), ×2, ×3, ×4, ×5, ×7, ×1,41, ×2,76, ×3,5 | **Index**: ±24 dB nos moduladores | **Feedback**: ±7 passos |
+| **Env** | **Attack** ±50 | **Decay** ±50 | **Sustain** ±50 | **Release** ±50 |
+| **Mod** | **Depth** 0–100 | **Rate**: 60 s a 0,12 s, ou valor de nota com Sync Tempo | **Shape** (forma de onda) | **Target** |
+| **Mod 2** | **Spread** 0–100 | **Fade** Off a 8 s | **Sync**: Free, Note, Tempo | **Smooth** 2 a 500 ms |
+
+**Patches** (escritos do zero; o volume de cada um igualado ao primeiro da voz com `analysis/patchlev.c`):
+
+| Voz | Patches |
+| --- | --- |
+| Pad | Rhodes, Voices, Glass, Strings, Warm, Halo (o knob Colour da página Pad é o mesmo parâmetro) |
+| Bells | Bell (o original, moldado por Tone), Vibes, Marimba, Tubular, Kalimba, Celesta |
+| Bass | Sine (o original), Round, Pick, Sub, Reed, Fretless |
+
+Quando cada edição é ouvida: **Ratio, Index e Feedback na hora**. O envelope e o patch entram na próxima nota: no
+pad, a próxima respiração (troca de patch faz o crossfade de troca de tom); nos sinos, o próximo toque. O baixo é uma
+nota só sustentada: ele é tocado de novo quando o knob para (0,1 s), com fade de 10 ms para não estalar. Um sino com
+Sustain acima de 0 é solto depois de uma batida.
+
+**Formas de onda (Shape):** Sine, Triangle, Saw up, Saw down, Square, S&H (valor aleatório segurado por ciclo), Walk
+(desliza entre valores aleatórios), Chaos (mapa logístico, r 3,95, saltos suavizados) e **Env** (de cada nota, cai de
+1 a 0 em um ciclo: um "pluck" de brilho, uma queda de afinação).
+
+**Mod 2:**
+- **Spread**: 100 cada voz do layer anda do seu jeito; 0 as vozes do layer se movem juntas.
+- **Fade**: a modulação entra devagar depois de cada nota.
+- **Sync**: Free; Note (cada nota recomeça a forma); Tempo (o Rate vira valor de nota: 8 compassos a 1/16).
+- **Smooth**: glide na forma (2 ms no mínimo: a borda do Square nunca estala).
+
+**Target Level (novo):** volume da voz, até −10 dB, só para baixo (tremolo, swell; nunca mais alto que a voz).
+
+## Motor de modulação generativa: como era na 1.3.90 (uma página MOD para as três vozes)
+
+A versão anterior tinha uma página MOD só, compartilhada:
 
 | Knob | Parâmetro | O que faz |
 | --- | --- | --- |
@@ -32,6 +69,8 @@ ARP nos Bells, LFO no Bass) ou gire o SELECT depois de Setup. Na página MOD, os
 | 2 | **Rate** (0–100) | Duração de um ciclo, de 60 s a 0,12 s (até 8,5 Hz, velocidade de vibrato). Cada voz anda um pouco mais rápido ou mais devagar. |
 | 3 | **Chaos** (0–100) | Forma do movimento: 0 é uma onda lenta; 50 é um passeio aleatório, deslizando entre valores sorteados; 100 é o mapa logístico na borda do caos, com saltos suavizados por 1/20 do segmento (8 a 150 ms). |
 | 4 | **Target** | O que se move; veja a tabela abaixo. |
+
+Na 1.3.91 esses quatro valores viram os de cada voz (Chaos abaixo de 30 vira Sine, até 85 Walk, acima Chaos).
 
 ### Os targets: os parâmetros FM primeiro
 
@@ -53,9 +92,12 @@ Como funciona:
 - **Gerador aleatório próprio**: notas, loops e acordes continuam exatamente como antes.
 - **Receitas das peças**: cada peça ganhou a sua. Garden usa Timbre, Glass usa Ratio, Night Bus usa Metal, Voices
   usa Feedback, Shoreline usa Decay, Departures usa Pitch, Afternoon usa Space e Tides usa All.
-- **Projetos salvos**: o formato do projeto foi para o 5. Projetos salvos nos formatos 4 (AMB-1 atual) e 3 (0.9) são
-  migrados, e os parâmetros novos vêm da receita da peça.
-- **Também incluídos**: o leitor de tela fala a página nova, o app web ganhou o grupo "Mod" e o manual foi atualizado.
+- **Projetos salvos**: o formato do projeto foi para o 6. Projetos salvos no formato 5 (1.3.90-fm6) viram o MOD de
+  cada voz; nos formatos 4 (AMB-1 atual) e 3 (0.9) os parâmetros novos vêm da receita da peça.
+- **Também incluídos**: o leitor de tela fala as páginas novas, o app web ganhou os grupos de cada voz (e guarda o
+  estado numa chave nova) e o manual foi atualizado.
+- **Fila de comandos**: foi de 64 para 256. Com 75 parâmetros, trocar de peça manda todos de uma vez, e a fila
+  antiga perderia parte deles (inclusive no aparelho).
 
 Arquivos (em `files/`, os mesmos que o patch cria ou altera):
 
@@ -73,8 +115,12 @@ Arquivos (em `files/`, os mesmos que o patch cria ou altera):
   `P_MDEST`), `ui.c` (página e leitor de tela), `project.c` e `app.h` (formato 5 com migração), `web/app/index.html`,
   `docs/MANUAL.md`, `tests/host/amb_test.c` (checagens do motor) e `tests/scenarios/mod.amb` (navegação).
 
-`amb1-fm6.patch` traz tudo de uma vez. Em `patches/` estão os quatro passos separados (vozes FM6, página MOD,
-targets FM, correção do Metal), para `git am`.
+- Páginas por voz (1.3.91): bancos de patches (`pad_bank`, `bell_bank`, `bass_bank`), edições de FM e envelope,
+  formas e funções do MOD (`vox_t`, `vox_apply`, `gen_shape`, `gen_note`) em `amb.c`; `amb.h` (blocos `P_VX`),
+  `ui.c` (12 páginas, navegação), `project.c` e `app.h` (formato 6), `host.c` (`storev5`), testes e cenários.
+
+`amb1-fm6.patch` traz tudo de uma vez. Em `patches/` estão os cinco passos separados (vozes FM6, página MOD,
+targets FM, correção do Metal, páginas por voz), para `git am`.
 
 ## A modulação é adequada para síntese FM? O que foi medido
 
@@ -137,12 +183,12 @@ no Mac, `xcode-select --install`.
 
 **Windows:** o toolchain da JieLi só roda em Linux, e o WSL não enxerga o USB-MIDI. Então:
 1. No **WSL (Ubuntu)**: clone como acima e rode `sh build_release.sh`. O pacote sai em
-   `work/fm1-amb/app/build/amb-1.3.90-fm6.fwsc`.
+   `work/fm1-amb/app/build/amb-1.3.91-fm6.fwsc`.
 2. No **PowerShell do Windows**, com Python instalado:
    ```powershell
    py -m pip install mido python-rtmidi
    cd \\wsl$\Ubuntu\home\<seu-usuario>\lostgear\fm1-amb-fm6\work\fm1-amb
-   py base\tools\fm1_install.py app\build\amb-1.3.90-fm6.fwsc
+   py base\tools\fm1_install.py app\build\amb-1.3.91-fm6.fwsc
    ```
 
 Feche outros programas que usem MIDI (DAW, editores web) antes de instalar. Não desligue o FM-1 enquanto grava. Se
@@ -153,7 +199,7 @@ uma instalação for interrompida, o FM-1 fica no modo de atualização: rode o 
 Num Linux x86-64 ou num Mac (com Docker), com acesso a `github.com`, `pkgman.jieliapp.com` e `gitee.com`:
 
 ```sh
-sh build_release.sh               # versão padrão 1.3.90-fm6
+sh build_release.sh               # versão padrão 1.3.91-fm6
 ```
 
 O script faz tudo, em `./work`:
@@ -161,21 +207,21 @@ O script faz tudo, em `./work`:
 2. Baixa o toolchain da JieLi (clang 4.0.1 para pi32v2).
 3. Baixa o SDK AC79 e confere os hashes dos três arquivos que entram no pacote.
 4. Roda os testes.
-5. Gera o `amb-1.3.90-fm6.fwsc` e roda os testes de novo, agora incluindo o caminho de atualização.
+5. Gera o `amb-1.3.91-fm6.fwsc` e roda os testes de novo, agora incluindo o caminho de atualização.
 6. Se houver `emcc`, gera o emulador e o site com o **instalador web**, em `work/site/`.
 
 Para instalar, com o FM-1 no USB:
 
 ```sh
 pip3 install mido python-rtmidi
-python3 work/fm1-amb/base/tools/fm1_install.py work/fm1-amb/app/build/amb-1.3.90-fm6.fwsc
+python3 work/fm1-amb/base/tools/fm1_install.py work/fm1-amb/app/build/amb-1.3.91-fm6.fwsc
 ```
 
 Ou sirva `work/site` (`python3 -m http.server`) e abra `install/` no Chrome ou Edge (Web MIDI). Se o FM-1 não
 responder, segure OCT- e OCT+ por 5 s para o modo de atualização. Instalar firmware é por sua conta e risco; o
 instalador web consegue devolver o firmware de fábrica da M-VAVE.
 
-**Versão 1.3.90-fm6:** a identidade do pacote fica `FM-1_7010390`, longe das versões oficiais do AMB-1 (1.3 hoje).
+**Versão 1.3.91-fm6:** a identidade do pacote fica `FM-1_7010391`, longe das versões oficiais do AMB-1 (1.3 hoje).
 O fork mantém o prefixo de identidade e o lugar de gravação do AMB-1. Isso é de propósito: instalado sobre o
 AMB-1, ele herda as peças salvas (o projeto formato 4 é migrado para o 5).
 

@@ -9,19 +9,43 @@
  *   ENV            the pad's colour: Rhodes / Voices (lit: Voices), kept with the piece
  *   SELECT tempo   ALGORITHM mode (loads a pool)   PRESETS the piece (Root is on the Setup page)
  *   HOME SEQ FX SEL GLO   the pages: LAYERS, MOTION, SPACE, TONE, SETUP (EDIT steps through them)
- *   ENV ARP LFO again     MOD: the voices' generative modulation (depth, rate, chaos, target); also after SETUP
+ *   ENV ARP LFO again     that voice's FM (patch, ratio, index, feedback), again its envelopes (attack, decay,
+ *                  sustain, release), MOD (depth, rate, shape, target), MOD 2 (spread, fade, sync, smooth), then
+ *                  back; SELECT reaches them after SETUP
  *   KNOB 1-4       the page's four values
  *   SAVE           saves (it also saves by itself a few seconds after a change, while resting);
  *                  held 1.5 s: the piece back to its recipe */
 #include "fastmath.h"
 
-/* the pages, one a layer (a button each); SELECT steps through them in this order. MOD has no button of its own:
- * a voice's page button pressed again on its page opens it (and it lights the three) */
-enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_MOD, NVIEWS };
-static const char *const VIEW_NAME[NVIEWS] = {"Garden", "Pad", "Bells", "Bass", "Pulse", "Space", "Setup", "Mod"};
-static const uint8_t VIEW_BTN[NVIEWS] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO, NB};
+/* the pages, one a layer (a button each); SELECT steps through them in this order. Each voice (the pad, the bells,
+ * the bass) has four more, with no button of their own: its page's button pressed again steps through them (FM, Env,
+ * Mod, Mod 2) and back to the layer's page; the voice's button stays lit on them */
+enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_MAIN,
+       V_PADFM = V_MAIN, V_PADENV, V_PADMOD, V_PADMOD2, V_BELLFM, V_BELLENV, V_BELLMOD, V_BELLMOD2,
+       V_BASSFM, V_BASSENV, V_BASSMOD, V_BASSMOD2, NVIEWS };
+#define NSUB 4                                   /* a voice's pages past its layer's */
+static const char *const VIEW_NAME[NVIEWS] = {"Garden", "Pad", "Bells", "Bass", "Pulse", "Space", "Setup",
+                                              "Pad FM", "Pad Env", "Pad Mod", "Pad Mod 2",
+                                              "Bells FM", "Bells Env", "Bells Mod", "Bells Mod 2",
+                                              "Bass FM", "Bass Env", "Bass Mod", "Bass Mod 2"};
+static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO};
+static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
+static int view_vox(int v)                     /* the voice a page is of (its layer's or its own); -1 none */
+{
+    return v >= V_MAIN ? (v - V_MAIN) / NSUB : v >= V_PAD && v <= V_BASS ? v - V_PAD : -1;
+}
+static int view_main(int v) { return v >= V_MAIN ? VOX_VIEW[view_vox(v)] : v; }   /* its dot */
 /* the four knobs of each page: a parameter, or one of these; and what the knob is called there */
 enum { K_LEDS = 100, K_CPU, K_NONE };
+_Static_assert(P_NPARAMS < K_LEDS, "the knobs' own after the parameters");
+#define VOX_KNOBS(v)                                                                                               \
+    {EN_VOX_PATCH_##v, P_VX(v, VX_RATIO), P_VX(v, VX_INDEX), P_VX(v, VX_FB)},                                     \
+    {P_VX(v, VX_ATK), P_VX(v, VX_DEC), P_VX(v, VX_SUS), P_VX(v, VX_REL)},                                          \
+    {P_VX(v, VX_MDEPTH), P_VX(v, VX_MRATE), P_VX(v, VX_MSHAPE), P_VX(v, VX_MDEST)},                                \
+    {P_VX(v, VX_MSPREAD), P_VX(v, VX_MFADE), P_VX(v, VX_MSYNC), P_VX(v, VX_MSMOOTH)}
+#define EN_VOX_PATCH_0 P_PADTONE
+#define EN_VOX_PATCH_1 P_BELLPATCH
+#define EN_VOX_PATCH_2 P_BASSPATCH
 static const uint8_t VIEW_KNOB[NVIEWS][4] = {
     {P_TEMPO, P_EVOLVE, P_MOTION, P_DRIFT},
     {P_PAD, P_SWELL, P_BRIGHT, P_PADTONE},
@@ -30,8 +54,11 @@ static const uint8_t VIEW_KNOB[NVIEWS][4] = {
     {P_PULSE, P_HITS, P_SWING, P_HATS},
     {P_ECHO, P_ETIME, P_REVERB, P_SIZE},
     {P_ROOT, P_TUNE, P_MIDI, K_LEDS},
-    {P_MDEPTH, P_MRATE, P_MCHAOS, P_MDEST},
+    VOX_KNOBS(0), VOX_KNOBS(1), VOX_KNOBS(2),
 };
+#define VOX_LABELS                                                                                                 \
+    {"Patch", "Ratio", "Index", "Feedback"}, {"Attack", "Decay", "Sustain", "Release"},                           \
+    {"Depth", "Rate", "Shape", "Target"}, {"Spread", "Fade", "Sync", "Smooth"}
 static const char *const KNOB_LABEL[NVIEWS][4] = {
     {"Tempo", "Evolve", "Motion", "Drift"},
     {"Level", "Swell", "Bright", "Colour"},
@@ -40,8 +67,10 @@ static const char *const KNOB_LABEL[NVIEWS][4] = {
     {"Level", "Hits", "Swing", "Hats"},
     {"Echo", "Echo time", "Reverb", "Size"},
     {"Root", "Tune", "MIDI out", "Lights"},
-    {"Depth", "Rate", "Chaos", "Target"},
+    VOX_LABELS, VOX_LABELS, VOX_LABELS,
 };
+#undef VOX_KNOBS
+#undef VOX_LABELS
 
 /* the screen's colours: the cover of Ambient 1: Music for Airports (1978), as the web app and the site.
  * The map's paper, its ink; the land's greens for the pad (the chord) and the scale, its rivers for the
@@ -305,9 +334,13 @@ static void set_view(int v)
 static void button(int b)
 {
     int v;
-    for (v = 0; v < NVIEWS; v++)                 /* a page's button: its page; a voice's again: MOD */
+    for (v = 0; v < V_MAIN; v++)                 /* a page's button: its page; a voice's again: its next page */
         if (VIEW_BTN[v] == b) {
-            set_view(ui.view == v && (v == V_PAD || v == V_BELLS || v == V_BASS) ? V_MOD : v);
+            int x = view_vox(v), sub = ui.view >= V_MAIN ? (ui.view - V_MAIN) % NSUB + 1 : 0;
+            if (x >= 0 && view_vox(ui.view) == x)
+                set_view(sub == NSUB ? v : V_MAIN + x * NSUB + sub);
+            else
+                set_view(v);
             return;
         }
     switch (b) {
@@ -814,9 +847,9 @@ static int help_lines(int b, const char *l[HELP_LINES])
 #define L(t) (l[n++] = (t))
     switch (b) {
     case B_HOME: L("THE GARDEN"); L("TEMPO, EVOLVE, MOTION, DRIFT"); L("+ SELECT: TEMPO"); break;
-    case B_ENV: L("THE PAD"); L("LEVEL, SWELL, BRIGHT,"); L("COLOUR"); L("AGAIN: MOD"); break;
-    case B_ARP: L("THE BELLS"); L("LEVEL, DENSITY, TONE,"); L("OCTAVE"); L("AGAIN: MOD"); break;
-    case B_LFO: L("THE BASS"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: MOD, THE VOICES MOVE"); break;
+    case B_ENV: L("THE PAD"); L("LEVEL, SWELL, BRIGHT,"); L(" COLOUR"); L("AGAIN: FM, ENV, MOD, MOD 2"); break;
+    case B_ARP: L("THE BELLS"); L("LEVEL, DENSITY, TONE,"); L(" OCTAVE"); L("AGAIN: FM, ENV, MOD, MOD 2"); break;
+    case B_LFO: L("THE BASS"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: FM, ENV, MOD, MOD 2"); break;
     case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); break;
     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
@@ -905,16 +938,16 @@ static void draw_knobs(void)
         return;
     ui.sig[2] = h;
     cv_begin(240, KNB_H, K_BG);
-    {   /* the rule; at its right end, where you are: the page, then the dots */
-        char t[12];
+    {   /* the rule; at its right end, where you are: the page, then the dots (a voice's own pages on its dot) */
+        char t[16];
         int k;
-        int32_t xd = 237 - NVIEWS * 6, xt;
+        int32_t xd = 237 - V_MAIN * 6, xt;
         caps(t, VIEW_NAME[ui.view], sizeof t);
         xt = xd - 5 - text_w(&FONT_XS, t);
         cv_rect(4, 5, xt - 9, 1, K_LINE);
         cv_text(xt, -1, &FONT_XS, t, K_ACC);
-        for (k = 0; k < NVIEWS; k++)
-            cv_round(xd + k * 6, 3, 4, 4, 2, k == ui.view ? K_ACC : K_LINE);
+        for (k = 0; k < V_MAIN; k++)
+            cv_round(xd + k * 6, 3, 4, 4, 2, k == view_main(ui.view) ? K_ACC : K_LINE);
     }
     for (i = 0; i < 4; i++) {
         int k = VIEW_KNOB[ui.view][i], lo, hi, v, hot = now_touch && ui.touched == (int)i;
@@ -947,10 +980,7 @@ static void draw_knobs(void)
 static void leds(void)
 {
     uint32_t b = 0, k = 0, i, ap = pool_abs();
-    if (ui.view == V_MOD)
-        b |= 1u << B_ENV | 1u << B_ARP | 1u << B_LFO;
-    else
-        b |= 1u << VIEW_BTN[ui.view];
+    b |= 1u << VIEW_BTN[view_main(ui.view)];
     if (en_playing)
         b |= 1u << B_PLAY;
     if (en_frozen)
@@ -1046,14 +1076,28 @@ static void sp_value(int k)
         sp_cat(s == 1u ? " second" : " seconds");
         return;
     }
-    if (k == P_MRATE) {                          /* "2.7s": 2.7 seconds a cycle */
-        uint32_t i;
-        for (i = 0; t[i] && t[i] != 's'; i++)
-            ;
-        t[i] = 0;
-        sp_cat(t);
-        sp_cat(" seconds");
-        return;
+    if (k >= P_VOX) {                            /* a voice's: "2.7s" 2.7 seconds, "40ms" 40 milliseconds, "+6dB" */
+        uint32_t i = 0;
+        while (t[i])
+            i++;
+        if (i >= 2 && t[i - 1] == 's' && t[i - 2] >= '0' && t[i - 2] <= '9') {
+            t[i - 1] = 0;
+            sp_cat(t);
+            sp_cat(" seconds");
+            return;
+        }
+        if (i >= 3 && t[i - 1] == 's' && t[i - 2] == 'm') {
+            t[i - 2] = 0;
+            sp_cat(t);
+            sp_cat(" milliseconds");
+            return;
+        }
+        if (i >= 3 && t[i - 1] == 'B' && t[i - 2] == 'd') {
+            t[i - 2] = 0;
+            sp_cat(t);
+            sp_cat(" dB");
+            return;
+        }
     }
     sp_cat(t);
 }

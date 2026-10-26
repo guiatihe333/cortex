@@ -52,12 +52,27 @@ enum {
     P_ECHO, P_ETIME, P_REVERB, P_SIZE,                /* space */
     P_BRIGHT, P_SWELL, P_BTONE, P_MOTION,             /* tone */
     P_TUNE, P_MIDI, P_TEMPO, P_ROOT, P_MODE, P_BOCT,  /* setup, panel encoders, bell octave */
-    P_PADTONE,                                        /* the pad's colour, set by the piece: Rhodes, Voices */
+    P_PADTONE,                                        /* the pad's patch (its colour): Rhodes, Voices, ... EN_PADPATCHES */
     P_BASSOCT, P_GLIDE, P_FIFTH,                      /* bass: its octave, its glide, how often it leans on the fifth */
     P_SWING, P_HATS,                                  /* pulse: swing, the hats' colour */
-    P_MDEPTH, P_MRATE, P_MCHAOS, P_MDEST,             /* the voices' modulation: depth, rate, chaos, target */
-    P_NPARAMS
+    P_BELLPATCH, P_BASSPATCH,                         /* the bells' and the bass's patches */
+    P_VOX,                                            /* then each voice's own: EN_NVOX blocks of VX_N (P_VX) */
+    P_NPARAMS = P_VOX + 3 * 15
 };
+/* the three FM6 voices, each with its own FM edits and its own modulation */
+enum { VOX_PAD, VOX_BELLS, VOX_BASS, EN_NVOX };
+/* a voice's block: FM (ratio, index, feedback: heard at once), its envelopes (attack, decay, sustain, release: from
+ * the next note), MOD (depth, rate, shape, target) and MOD 2 (spread, fade, sync, smooth) */
+enum { VX_RATIO, VX_INDEX, VX_FB, VX_ATK, VX_DEC, VX_SUS, VX_REL, VX_MDEPTH, VX_MRATE, VX_MSHAPE, VX_MDEST, VX_MSPREAD,
+       VX_MFADE, VX_MSYNC, VX_MSMOOTH, VX_N };
+#define P_VX(v, k) (P_VOX + (v) * VX_N + (k))
+_Static_assert(P_NPARAMS == P_VOX + EN_NVOX * VX_N, "a block a voice");
+extern const uint8_t EN_VOX_PATCH[EN_NVOX];       /* each voice's patch parameter */
+#define EN_PADPATCHES 6
+#define EN_BELLPATCHES 6
+#define EN_BASSPATCHES 6
+/* the old global MOD (format 5 and the recipes: depth, rate, chaos, target) as every voice's own */
+void en_mod_legacy(int16_t *par, int depth, int rate, int chaos, int dest);
 typedef struct {
     const char *name;
     int16_t lo, hi, def;
@@ -104,12 +119,20 @@ extern volatile uint8_t en_pulse_rest;         /* the pulse is sitting a few bar
 extern volatile uint8_t en_pad_note[EN_NPAD];  /* the note each voice sings now (MIDI) */
 extern volatile float en_pad_amp[EN_NPAD];     /* and how loud */
 
-/* MOD: the voices' generative modulation. Each voice (the four pad voices, the six bells, the bass) has a generator
- * of its own, at its own pace around RATE (60 s .. 0.12 s a cycle), so the voices never move together. CHAOS blends
- * what it makes: 0 a slow wave, 50 a random walk (glides between random values), 100 the logistic map at the edge
- * of chaos (jumps). DEPTH how far it goes (the arc deepens and calms it); TARGET what it moves, the FM6 voice's own
- * parameters first: */
-enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD_SPACE, MOD_ALL, EN_NMODDEST };
+/* MOD: the voices' generative modulation, each of the three voices (pad, bells, bass) set on its own. Each sounding
+ * voice (the four pad voices, the six bells, the bass) has a generator of its own, at its own pace around RATE
+ * (60 s .. 0.12 s a cycle, or with SYNC Tempo a note value, 8 bars .. 1/16). SHAPE what it makes (EN_MODSHAPE_NAME):
+ * the periodic waves, sample and hold, a random walk (glides between random values), the logistic map at the edge
+ * of chaos (jumps), or an envelope that falls from each note's start. DEPTH how far it goes (the arc deepens and calms
+ * it); SPREAD how far each voice goes its own way (0: the layer's voices move as one); FADE the modulation coming in
+ * after each note (0 .. 8 s); SYNC Free, Note (each note starts the shape again) or Tempo; SMOOTH a glide on what it
+ * makes (2 ms .. 0.5 s: a square softened). TARGET what it moves, the FM6 voice's own parameters first: */
+enum { SHAPE_SINE, SHAPE_TRI, SHAPE_UP, SHAPE_DOWN, SHAPE_SQUARE, SHAPE_SH, SHAPE_WALK, SHAPE_CHAOS, SHAPE_ENV,
+       EN_NMODSHAPE };
+extern const char *const EN_MODSHAPE_NAME[EN_NMODSHAPE];
+enum { SYNC_FREE, SYNC_NOTE, SYNC_TEMPO, EN_NMODSYNC };
+enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD_SPACE, MOD_ALL, MOD_LEVEL,
+       EN_NMODDEST };
 /*   TIMBRE    the modulators' output level (+-12 dB): the FM index, brighter and darker
  *   RATIO     the modulators' frequency ratio, in harmonic steps up (x1, x2, x3, x4, x5), gliding 15 ms
  *   METAL     the modulators' ratio pulled apart (+-80 cents, one up, the next down): inharmonic sidebands
@@ -118,7 +141,8 @@ enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD
  *             the carriers' (the ring) +-6
  *   PITCH     the voice's pitch (+-30 cents, slewed 15 ms): tape wow, a choir's drift, at the top a vibrato
  *   SPACE     the voice's place in the stereo field (slewed 30 ms, ramped across a block)
- *   ALL       timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio: its steps) */
+ *   ALL       timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio: its steps)
+ *   LEVEL     the voice's loudness, down to -10 dB (one-sided: a tremolo, a swell, never louder than the voice) */
 extern const char *const EN_MODDEST_NAME[EN_NMODDEST];
 #define EN_NMOD (EN_NPAD + 6 + 1)               /* the generators: pad voices, bells, bass */
 extern volatile float en_mod[EN_NMOD];         /* each generator's value now, -1 .. 1 (times the depth) */
