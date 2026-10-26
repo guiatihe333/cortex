@@ -1,7 +1,7 @@
 From 24d57710967d7a4baed2d9f20a9436aa23e66dda Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 04:28:26 +0000
-Subject: [PATCH 1/6] Voices on JIANT FM's FM6 engine: pad, bells and bass as
+Subject: [PATCH 1/7] Voices on JIANT FM's FM6 engine: pad, bells and bass as
  6-operator FM (msfa)
 
 ---
@@ -1911,7 +1911,7 @@ index 0000000..a25fcf6
 From 4ea9e9a121d75a369e25838a3fc13839bf207582 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 04:36:48 +0000
-Subject: [PATCH 2/6] MOD: generative modulation of the voices (depth, rate,
+Subject: [PATCH 2/7] MOD: generative modulation of the voices (depth, rate,
  chaos, target), a generator a voice
 
 ---
@@ -2717,7 +2717,7 @@ index 0713a37..ef94667 100644
 From e6e98ea437d92f8390a894222ca85b8aea2b1292 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 05:00:53 +0000
-Subject: [PATCH 3/6] MOD: FM targets (ratio, feedback, decay), continuous FM6
+Subject: [PATCH 3/7] MOD: FM targets (ratio, feedback, decay), continuous FM6
  feedback, shaped modulation, levels measured
 
 ---
@@ -3474,7 +3474,7 @@ index ef94667..9ddebda 100644
 From fc67b6d38c04b5b8f155d7b56e9b4672a935527f Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 05:26:48 +0000
-Subject: [PATCH 4/6] MOD Metal: the modulators apart by count (algorithm 5's
+Subject: [PATCH 4/7] MOD Metal: the modulators apart by count (algorithm 5's
  are all even operators)
 
 ---
@@ -3513,7 +3513,7 @@ index b495e78..44d0338 100644
 From 582a1081317953ebf2179313caa08167a5a3f18a Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 04:12:31 -0300
-Subject: [PATCH 5/6] Each voice its own: a bank of FM6 patches, FM edits,
+Subject: [PATCH 5/7] Each voice its own: a bank of FM6 patches, FM edits,
  envelopes and modulation
 
 The pad, the bells and the bass each get four pages (FM, Env, Mod, Mod 2), reached by pressing the voice's page
@@ -5677,7 +5677,7 @@ index 9ddebda..58f12b2 100644
 From 051d7189e84deea2b0bab90c3dba6a480942ac7e Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 17:31:38 -0300
-Subject: [PATCH 6/6] Each voice's patch edited operator by operator, DX7 banks
+Subject: [PATCH 6/7] Each voice's patch edited operator by operator, DX7 banks
  over SysEx, five modulators a voice, MIDI CC
 
 - VOICE, OPERATOR and MOD groups of pages for the pad, the bells and the bass: algorithm, feedback, LFO, pitch
@@ -9694,6 +9694,125 @@ index 58f12b2..d41d32c 100644
  const $ = (id) => document.getElementById(id);
  // names in words, as the FM-1's screen reader says them (ui.c CHORD_Q, firmware/words.tsv)
  const SPOKEN_NOTE = { "C#": "C sharp", "Eb": "E flat", "F#": "F sharp", "Ab": "A flat", "Bb": "B flat" };
+-- 
+2.53.0
+
+
+From 68b21d952b04dad178934289ed29ab35b5485c26 Mon Sep 17 00:00:00 2001
+From: AMB-1 FM6 <noreply@anthropic.com>
+Date: Mon, 26 Oct 2026 19:07:23 -0300
+Subject: [PATCH 7/7] amb_syx.py: old banks' out-of-range values held to the
+ DX7's ranges, a lost answer's chunk sent again
+
+The FM-1 refuses a voice with a value past the DX7's range; banks from the 80s have stray 127s (ROM3A's TIMPANI,
+ROM3B's E.GRAND 1, ...), which a DX7 and Dexed just clamp. The script now clamps them (and a name's control
+characters) before sending, and resends a chunk whose answer the USB lost.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ tools/amb_syx.py | 62 ++++++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 57 insertions(+), 5 deletions(-)
+
+diff --git a/tools/amb_syx.py b/tools/amb_syx.py
+index 8986a5c..996075c 100644
+--- a/tools/amb_syx.py
++++ b/tools/amb_syx.py
+@@ -79,6 +79,50 @@ def pack_single(s):
+     return bytes(m)
+ 
+ 
++def unpack_single(m):
++    """pack_single's reverse: a packed voice (128 bytes) -> VCED (155)"""
++    s = []
++    for o in range(6):
++        p = m[o * 17:o * 17 + 17]
++        s += list(p[0:11]) + [p[11] & 3, p[11] >> 2 & 3, p[12] & 7, p[13] & 3, p[13] >> 2 & 7, p[14], p[15] & 1,
++                              p[15] >> 1 & 31, p[16], p[12] >> 3 & 15]
++    s += list(m[102:110]) + [m[110] & 31, m[111] & 7, m[111] >> 3 & 1] + list(m[112:116])
++    s += [m[116] & 1, m[116] >> 1 & 7, m[116] >> 4 & 7, m[117]] + list(m[118:128])
++    return s
++
++
++OPMAX = [99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 3, 3, 7, 3, 7, 99, 1, 31, 99, 14]
++VMAX = [99, 99, 99, 99, 99, 99, 99, 99, 31, 7, 1, 99, 99, 99, 99, 1, 5, 7, 48]
++
++
++def clamp(s):
++    """a voice's values held to the DX7's ranges, as a DX7 (and Dexed) plays them: old banks have stray 127s, which
++    the FM-1 would refuse the voice for; a name's control characters as spaces. Returns (VCED, how many changed)"""
++    s = [x & 0x7F for x in s[:155]]
++    top = OPMAX * 6 + VMAX
++    n = 0
++    for k, t in enumerate(top):
++        if s[k] > t:
++            s[k], n = t, n + 1
++    if any(s):
++        for k in range(145, 155):
++            if s[k] < 32:
++                s[k], n = 32, n + 1
++    return s, n
++
++
++def clamp_bank(vmem):
++    """each of a bank's 32 voices clamped; prints the ones changed"""
++    out = bytearray()
++    for v in range(32):
++        m = vmem[v * 128:(v + 1) * 128]
++        s, n = clamp(unpack_single(m))
++        if n:
++            print(f"voice {v + 1:2} {bytes(s[145:155]).decode('latin-1')}: {n} value(s) held to the DX7's range")
++        out += pack_single(s) if n else m
++    return bytes(out)
++
++
+ class Link:
+     def __init__(self, port):
+         import mido
+@@ -99,7 +143,7 @@ class Link:
+     def send(self, data):
+         self.out.send(self.mido.Message("sysex", data=list(data)))
+ 
+-    def answer(self, cmd, secs=3.0):
++    def answer(self, cmd, secs=3.0, quiet=False):
+         t = time.time() + secs
+         while time.time() < t:
+             while self.q:
+@@ -107,6 +151,8 @@ class Link:
+                 if m.type == "sysex" and list(m.data[:4]) == TAG + [cmd]:
+                     return list(m.data[4:])
+             time.sleep(0.005)
++        if quiet:
++            raise SystemExit(4)
+         print("no answer from the FM-1 (is AMB-1 FM6 1.3.92 or later on it?)", file=sys.stderr)
+         raise SystemExit(4)
+ 
+@@ -146,16 +192,22 @@ def main(argv=None):
+             r = link.answer(0x04)
+             print(f"bank {a.erase}: " + ("erased" if r[1] == 0 else "NOT erased"))
+         if vmem is not None:
+-            vmem = bytes(x & 0x7F for x in vmem[:4096]).ljust(4096, b"\x00")
++            vmem = clamp_bank(bytes(x & 0x7F for x in vmem[:4096]).ljust(4096, b"\x00"))
+             for c in range(16):
+-                link.send(TAG + [0x01, a.bank - 1, c] + list(vmem[c * 256:(c + 1) * 256]))
+-                r = link.answer(0x02)
++                for tries in range(3):                     # an answer lost on the USB: the chunk again
++                    link.send(TAG + [0x01, a.bank - 1, c] + list(vmem[c * 256:(c + 1) * 256]))
++                    try:
++                        r = link.answer(0x02, quiet=tries < 2)
++                        break
++                    except SystemExit:
++                        if tries == 2:
++                            raise
+                 if r[2]:
+                     raise SystemExit(f"bank {a.bank}: chunk {c} not written")
+                 print(f"\rbank {a.bank}: {(c + 1) * 100 // 16:3}%", end="", flush=True)
+             print(f"\rbank {a.bank}: sent. On the FM-1, a voice's VOICE page: Patch past its own six")
+         if single is not None:
+-            s = [x & 0x7F for x in single[:155]]
++            s = clamp(single)[0]
+             cs = (128 - sum(s) % 128) % 128
+             link.send([0x43, 0x00, 0x00, 0x01, 0x1B] + s + [cs])
+             name = bytes(single[145:155]).decode("latin-1").strip()
 -- 
 2.53.0
 
