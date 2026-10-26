@@ -29,7 +29,9 @@ Abra a sessão do Claude Code nesta pasta (`lostgear/fm1-amb-fm6`) e cole o prom
 **Atualização (26/10/2026, no PC com Windows):** o FM-1 voltou do V16 ao V15 (arquivo oficial, hash conferido), o
 pacote foi compilado no WSL e o 1.3.90-fm6 foi instalado e ouvido. Depois veio o 1.3.91-fm6 (patch 0005): cada voz
 com seus seis patches, FM (Ratio, Index, Feedback), envelopes e o próprio MOD, com formas de onda, Spread, Fade,
-Sync e Smooth. Veja o README.
+Sync e Smooth. Depois o 1.3.92-fm6 (patch 0006): edição completa dos 6 operadores no aparelho (grupos VOICE,
+OPERATOR, MOD), bancos DX7 `.syx` (16 × 32 vozes, `tools/amb_syx.py`), 5 moduladores por voz com alvo em qualquer
+parâmetro (inclusive de um operador) e MIDI CC/NRPN de entrada e saída. Veja o README.
 
 O que segue abaixo é o estado de antes.
 

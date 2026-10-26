@@ -17,13 +17,34 @@
 
 /* the store: the project at 0xFC000 and the panel calibration at 0xDC000, where AMB-1 0.9 kept them (an update keeps
  * the pieces) */
-enum { OBJ_PROJ, OBJ_PANEL, OBJ_NOBJ };
-#define APP_STORE_MAP {0xFC000u, 0xDC000u}
+enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_NOBJ };
+#define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u}   /* the pieces' patches after the panel, in the data area */
 #define PROJ_MAGIC 0x314F4E45u           /* "ENO1" */
-#define PROJ_FORMAT 6u                   /* 6: each voice's patch, FM edits and MOD; 5: one MOD for all; 4: the
-                                          * bass's and the pulse's own settings (5, 4 and 3 are carried over; older
-                                          * formats give the recipes) */
+#define PROJ_FORMAT 7u                   /* 7: each voice's own patch (OBJ_PATCH) and five modulators; 6: each
+                                          * voice's patch choice, FM edits and MOD; 5: one MOD for all; 4: the bass's
+                                          * and the pulse's own settings (6, 5, 4 and 3 are carried over; older formats
+                                          * give the recipes) */
 #define NPIECES EN_NPIECES
+
+/* the DX7 banks (bank.c): EN_NBANK sectors of the data area, each a 32-voice bulk dump's voices (VMEM, 4096 bytes),
+ * sent from a computer over USB-MIDI (tools/amb_syx.py) */
+#define BANK_BASE 0x97000u
+int bank_voice(int voice, int src, uint8_t *p);   /* source src's patch for the voice (a bank's: from the flash);
+                                                 * 0: none there */
+int bank_name(int src, char *b);         /* its name (10 characters, trimmed) into b; 0: an empty slot */
+int bank_next(int src, int dir);         /* the next source that holds a voice, dir +1 / -1 (the own six always) */
+#define APP_SYSEX
+int app_sysex(const uint8_t *p, uint32_t n);   /* a bank's chunk, a DX7 single voice (bank.c) */
+
+/* the playing piece's patches, a voice each (as the engine has them) and the pieces' (OBJ_PATCH) */
+typedef struct {
+    uint32_t magic, format;
+    uint8_t pat[NPIECES][EN_NVOX][EN_PATCH];
+} patchstore_t;
+extern uint8_t vpatch[EN_NVOX][EN_PATCH];
+void project_source(int voice, int src);  /* a source's patch into the voice (its parameter, as loaded) */
+void project_patch_set(int voice, int off, int v);   /* one byte edited (OWN) */
+void project_patch_send(int voice, int fresh);       /* the voice's patch to the engine */
 
 typedef struct {
     int16_t par[P_NPARAMS];
@@ -50,6 +71,9 @@ void project_apply(void);                /* every value to the engine (boot, loa
 const char *piece_name(int i);
 void project_piece(int i);               /* the playing piece kept, piece i taken up as it was left */
 void project_piece_reset(void);          /* the playing piece back to its recipe */
+void ui_patch_in(int voice);             /* a voice's patch came in over USB (bank.c): the screen says so */
+void ui_bank_in(int bank, int voices);   /* a bank came in (bank.c): the screen says so */
+int ui_voice(void);                      /* the voice whose pages are shown (VOX_*), else the pad */
 
 void ui_init(void);
 void ui_frame(void);

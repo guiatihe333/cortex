@@ -21,7 +21,72 @@ eco de fita, Echoplex e o plate de Dattorro. Os controles também: **Bright** e 
 moduladores FM6 (o pad fica mais brilhante quando cresce), **Bell tone** reconstrói os patches dos sinos, **Pad tone**
 alterna entre Rhodes e Voices, **Tune** chega ao FM6.
 
-## Cada voz com suas páginas: patch, FM, envelopes e modulação (1.3.91-fm6)
+## Edição FM completa, bancos DX7, 5 moduladores e MIDI CC (1.3.92-fm6)
+
+Cada voz (Pad, Bells, Bass) tem **o próprio patch DX7 de 6 operadores**, editável no aparelho como no JIANT FM, e
+**cinco moduladores generativos** com alvo em qualquer parâmetro. Tudo fica guardado com a peça.
+
+**Como navegar:** aperte de novo o botão da voz (ENV no Pad, ARP nos Bells, LFO no Bass). Cada toque vai para o próximo
+grupo: **VOICE → OPERATOR → MOD →** volta à página da voz. Dentro de um grupo, o **SELECT** passa de página em página, e
+cada grupo volta na página em que você o deixou.
+
+| Grupo | Página | Knob 1 | Knob 2 | Knob 3 | Knob 4 |
+| --- | --- | --- | --- | --- | --- |
+| VOICE | Voice | **Patch** | Algorithm 1–32 | Feedback 0–7 | Index ±24 dB |
+| VOICE | LFO | Speed | Delay | Pitch mod | Amp mod |
+| VOICE | LFO 2 | Wave | Pitch sens | Key sync | Transpose ±24 |
+| VOICE | Pitch EG | Stage 1–4 | Rate | Level ±50 | Osc sync |
+| OPERATOR | OP | **Operador 1–6** | Ratio (×0,50..×31, ou Hz no modo fixo) | Fine | Level |
+| OPERATOR | OP Env | Operador | Stage 1–4 | Rate | Level |
+| OPERATOR | OP 2 | Operador | Mode (Ratio/Fixed) | Detune ±7 | Velocity |
+| OPERATOR | OP 3 | Operador | Break (nota) | L depth | R depth |
+| OPERATOR | OP 4 | Operador | L curve | R curve | Rate scale |
+| OPERATOR | OP 5 | Operador | Amp sens | | |
+| MOD | Mod | **Modulador 1–5** | Target | Depth | Rate |
+| MOD | Mod 2 | Modulador | Shape | Sync | Smooth |
+| MOD | Mod 3 | Modulador | Spread | Fade | |
+
+- **Patch:** primeiro os seis próprios de cada voz (os da 1.3.91), depois as vozes dos bancos DX7 que você mandou, pelo
+  nome; slots vazios são pulados. Girar carrega o patch como ele é; qualquer edição o torna da peça, marcado com `*`.
+- **Quando se ouve:** edições de operador soam **na hora**, nas notas que estão tocando (o núcleo reaplica nível e
+  frequência sem reiniciar o envelope). Patch novo: o pad faz crossfade, os sinos trocam no próximo toque, o baixo é
+  tocado de novo com fade de 10 ms.
+- **Alvos dos moduladores:** os da voz (Timbre, Ratio, Metal, Feedback, Decay, Pitch, Space, All, Level, **LFO PM**) e
+  os de **cada operador**, OP1..OP6: **Level** (±12 dB; portadora só para baixo), **Ratio** (degraus harmônicos),
+  **Fine** (±50 cents), **Atk**, **Dec**, **Sus**, **Rel**. Os cinco moduladores somam.
+- **Formas:** Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos e Env; Spread, Fade, Sync (Free, Note,
+  Tempo) e Smooth por modulador.
+
+**Bancos DX7 (.syx):** 16 bancos de 32 vozes (512) numa área própria da flash. O FM-1 só recebe SysEx de até 640 bytes,
+então o script `tools/amb_syx.py` (na árvore do fm1-amb) manda o banco em 16 pedaços, cada um confirmado:
+
+```sh
+python3 tools/amb_syx.py ROM1A.syx --bank 1      # banco de 32 vozes no banco 1 (de 16)
+python3 tools/amb_syx.py EPIANO.syx              # uma voz direto na voz da página mostrada
+python3 tools/amb_syx.py --info                  # quantas vozes cada banco tem
+```
+
+Aceita bulk dump DX7 (4104 bytes), 4096 bytes de vozes empacotadas ou até 32 vozes avulsas num arquivo. Uma voz avulsa
+mandada por um editor DX7 (o "Send" do Dexed) também entra direto na voz da página mostrada. Os bancos de fábrica da
+Yamaha e os do Dexed/JIANT têm direitos autorais e não vão no firmware: você carrega os seus.
+
+**MIDI CC e NRPN (entrada e saída):**
+
+| Canal | CC | O quê |
+| --- | --- | --- |
+| 16 | 20–49 | parâmetros 0–29 (camadas, espaço, tom, setup; a fonte de patch pelo número) |
+| 1 (pad), 2 (bells), 3 (bass) | 20 | Index da voz |
+| 1, 2, 3 | 21–60 | os 5 moduladores, 8 parâmetros cada (Depth, Rate, Shape, Target, Spread, Fade, Sync, Smooth) |
+| 1, 2, 3 | NRPN (99 = 0/1, 98 = byte, 6 = valor) | o patch da voz, byte a byte (ordem VCED do DX7, 0..154) |
+
+Girar um knob manda o CC/NRPN correspondente (com MIDI out ligado); o que chega por MIDI não volta.
+
+**Projeto formato 7:** os parâmetros num objeto e os patches das 8 peças em outro (0xDE000). Projetos da 1.3.91
+(formato 6) migram: o MOD vira o primeiro modulador de cada voz e as edições Ratio/Feedback/envelope são aplicadas
+no patch (que passa a ser da peça).
+
+## Cada voz com suas páginas: como era na 1.3.91-fm6
+
 
 Pad, Bells e Bass têm, cada um, **quatro páginas próprias**, guardadas com a peça. **Como chegar:** aperte de novo o
 botão da página da voz (ENV no Pad, ARP nos Bells, LFO no Bass): FM → Env → Mod → Mod 2 → volta à página da voz. O
@@ -118,9 +183,14 @@ Arquivos (em `files/`, os mesmos que o patch cria ou altera):
 - Páginas por voz (1.3.91): bancos de patches (`pad_bank`, `bell_bank`, `bass_bank`), edições de FM e envelope,
   formas e funções do MOD (`vox_t`, `vox_apply`, `gen_shape`, `gen_note`) em `amb.c`; `amb.h` (blocos `P_VX`),
   `ui.c` (12 páginas, navegação), `project.c` e `app.h` (formato 6), `host.c` (`storev5`), testes e cenários.
+- Edição completa e bancos (1.3.92): `fm6_core.c` (`fm6_note_refresh` e nível por operador), `amb.c` (patch próprio
+  por voz `vpat`/`vstage`, comandos `en_patch_byte`/`en_patch_done`, `en_unpack` da VMEM do DX7, `en_bake`, matriz de
+  5 moduladores com alvos por operador, LFO em todas as vozes, `en_init` reiniciando o acaso para testes A/B),
+  `app/bank.c` (bancos na flash, SysEx), `project.c` (formato 7, `OBJ_PATCH`), `ui.c` (grupos VOICE/OPERATOR/MOD,
+  knobs virtuais, MIDI CC/NRPN), `host.c` (`storev6`, `bankfake`, `dx7voice`, `patV_OFF`), `tools/amb_syx.py`.
 
-`amb1-fm6.patch` traz tudo de uma vez. Em `patches/` estão os cinco passos separados (vozes FM6, página MOD,
-targets FM, correção do Metal, páginas por voz), para `git am`.
+`amb1-fm6.patch` traz tudo de uma vez. Em `patches/` estão os seis passos separados (vozes FM6, página MOD,
+targets FM, correção do Metal, páginas por voz, edição completa e bancos), para `git am`.
 
 ## A modulação é adequada para síntese FM? O que foi medido
 
@@ -183,12 +253,12 @@ no Mac, `xcode-select --install`.
 
 **Windows:** o toolchain da JieLi só roda em Linux, e o WSL não enxerga o USB-MIDI. Então:
 1. No **WSL (Ubuntu)**: clone como acima e rode `sh build_release.sh`. O pacote sai em
-   `work/fm1-amb/app/build/amb-1.3.91-fm6.fwsc`.
+   `work/fm1-amb/app/build/amb-1.3.92-fm6.fwsc`.
 2. No **PowerShell do Windows**, com Python instalado:
    ```powershell
    py -m pip install mido python-rtmidi
    cd \\wsl$\Ubuntu\home\<seu-usuario>\lostgear\fm1-amb-fm6\work\fm1-amb
-   py base\tools\fm1_install.py app\build\amb-1.3.91-fm6.fwsc
+   py base\tools\fm1_install.py app\build\amb-1.3.92-fm6.fwsc
    ```
 
 Feche outros programas que usem MIDI (DAW, editores web) antes de instalar. Não desligue o FM-1 enquanto grava. Se
@@ -199,7 +269,7 @@ uma instalação for interrompida, o FM-1 fica no modo de atualização: rode o 
 Num Linux x86-64 ou num Mac (com Docker), com acesso a `github.com`, `pkgman.jieliapp.com` e `gitee.com`:
 
 ```sh
-sh build_release.sh               # versão padrão 1.3.91-fm6
+sh build_release.sh               # versão padrão 1.3.92-fm6
 ```
 
 O script faz tudo, em `./work`:
@@ -207,21 +277,21 @@ O script faz tudo, em `./work`:
 2. Baixa o toolchain da JieLi (clang 4.0.1 para pi32v2).
 3. Baixa o SDK AC79 e confere os hashes dos três arquivos que entram no pacote.
 4. Roda os testes.
-5. Gera o `amb-1.3.91-fm6.fwsc` e roda os testes de novo, agora incluindo o caminho de atualização.
+5. Gera o `amb-1.3.92-fm6.fwsc` e roda os testes de novo, agora incluindo o caminho de atualização.
 6. Se houver `emcc`, gera o emulador e o site com o **instalador web**, em `work/site/`.
 
 Para instalar, com o FM-1 no USB:
 
 ```sh
 pip3 install mido python-rtmidi
-python3 work/fm1-amb/base/tools/fm1_install.py work/fm1-amb/app/build/amb-1.3.91-fm6.fwsc
+python3 work/fm1-amb/base/tools/fm1_install.py work/fm1-amb/app/build/amb-1.3.92-fm6.fwsc
 ```
 
 Ou sirva `work/site` (`python3 -m http.server`) e abra `install/` no Chrome ou Edge (Web MIDI). Se o FM-1 não
 responder, segure OCT- e OCT+ por 5 s para o modo de atualização. Instalar firmware é por sua conta e risco; o
 instalador web consegue devolver o firmware de fábrica da M-VAVE.
 
-**Versão 1.3.91-fm6:** a identidade do pacote fica `FM-1_7010391`, longe das versões oficiais do AMB-1 (1.3 hoje).
+**Versão 1.3.92-fm6:** a identidade do pacote fica `FM-1_7010392`, longe das versões oficiais do AMB-1 (1.3 hoje).
 O fork mantém o prefixo de identidade e o lugar de gravação do AMB-1. Isso é de propósito: instalado sobre o
 AMB-1, ele herda as peças salvas (o projeto formato 4 é migrado para o 5).
 

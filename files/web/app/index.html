@@ -113,12 +113,15 @@ const P = { PAD: 0, BELLS: 1, BASS: 2, PULSE: 3, DENSITY: 4, EVOLVE: 5, DRIFT: 6
             BRIGHT: 12, SWELL: 13, BTONE: 14, MOTION: 15, TUNE: 16, MIDI: 17, TEMPO: 18, ROOT: 19, MODE: 20, BOCT: 21, PADTONE: 22,
             BASSOCT: 23, GLIDE: 24, FIFTH: 25, SWING: 26, HATS: 27, BELLPATCH: 28, BASSPATCH: 29 };
 // each voice's own block (amb.h P_VX): FM, its envelopes, MOD, MOD 2
-const VOX = 30, VXN = 15, VX = { RATIO: 0, INDEX: 1, FB: 2, ATK: 3, DEC: 4, SUS: 5, REL: 6, MDEPTH: 7, MRATE: 8, MSHAPE: 9,
-                                 MDEST: 10, MSPREAD: 11, MFADE: 12, MSYNC: 13, MSMOOTH: 14 };
+// each voice's own block (amb.h P_VX): OWN, INDEX, then five modulators of 8 (MS_*). Its patch (its operators) is
+// edited on the FM-1 (and sent from a DX7 editor): not here
+const VOX = 30, VXN = 42, VX = { OWN: 0, INDEX: 1, SLOT: 2 }, NSLOT = 5,
+      MS = { DEPTH: 0, RATE: 1, SHAPE: 2, DEST: 3, SPREAD: 4, FADE: 5, SYNC: 6, SMOOTH: 7 }, MSN = 8;
 const vx = (v, k) => VOX + v * VXN + k;
+const ms = (v, s, k) => vx(v, VX.SLOT + s * MSN + k);
 const VOICES = [["Pad", P.PADTONE], ["Bells", P.BELLPATCH], ["Bass", P.BASSPATCH]];
 const NLOOP = 4, LOOP_MAX = 29;
-const STORE = "eno-app-2";               // 2: each voice its own patch, FM and MOD (format 6)
+const STORE = "eno-app-3";               // 3: each voice its own patch and five modulators (format 7)
 // the layers, as the FM-1's pages: [parameter, its name there]
 const GROUPS = [
   ["Garden", [[P.EVOLVE, "Evolve"], [P.MOTION, "Motion"], [P.DRIFT, "Drift"]]],
@@ -128,10 +131,11 @@ const GROUPS = [
   ["Pulse", [[P.PULSE, "Level"], [P.HITS, "Hits"], [P.SWING, "Swing"], [P.HATS, "Hats"]]],
   ["Space", [[P.ECHO, "Echo"], [P.ETIME, "Echo time"], [P.REVERB, "Reverb"], [P.SIZE, "Size"]]],
   ...VOICES.flatMap(([n, patch], v) => [
-    [`${n} FM`, [[patch, "Patch"], [vx(v, VX.RATIO), "Ratio"], [vx(v, VX.INDEX), "Index"], [vx(v, VX.FB), "Feedback"]]],
-    [`${n} Env`, [[vx(v, VX.ATK), "Attack"], [vx(v, VX.DEC), "Decay"], [vx(v, VX.SUS), "Sustain"], [vx(v, VX.REL), "Release"]]],
-    [`${n} Mod`, [[vx(v, VX.MDEPTH), "Depth"], [vx(v, VX.MRATE), "Rate"], [vx(v, VX.MSHAPE), "Shape"], [vx(v, VX.MDEST), "Target"]]],
-    [`${n} Mod 2`, [[vx(v, VX.MSPREAD), "Spread"], [vx(v, VX.MFADE), "Fade"], [vx(v, VX.MSYNC), "Sync"], [vx(v, VX.MSMOOTH), "Smooth"]]],
+    [`${n} Voice`, [[patch, "Patch"], [vx(v, VX.INDEX), "Index"]]],
+    ...[0, 1, 2, 3, 4].map((sl) => [`${n} Mod ${sl + 1}`,
+      [[ms(v, sl, MS.DEST), "Target"], [ms(v, sl, MS.DEPTH), "Depth"], [ms(v, sl, MS.RATE), "Rate"],
+       [ms(v, sl, MS.SHAPE), "Shape"], [ms(v, sl, MS.SYNC), "Sync"], [ms(v, sl, MS.SMOOTH), "Smooth"],
+       [ms(v, sl, MS.SPREAD), "Spread"], [ms(v, sl, MS.FADE), "Fade"]]]),
   ]),
 ];
 const TIP = { [P.DENSITY]: "notes per bell loop", [P.EVOLVE]: "how often things change and rest", [P.DRIFT]: "how long a chord lasts",
@@ -141,18 +145,17 @@ const TIP = { [P.DENSITY]: "notes per bell loop", [P.EVOLVE]: "how often things 
               [P.GLIDE]: "how slowly the bass slides to its note", [P.FIFTH]: "how often the bass leans on the fifth",
               [P.SWING]: "the off sixteenths late", [P.HATS]: "dark and long to bright and crisp",
               [P.PADTONE]: "the pad's FM6 patch", [P.BELLPATCH]: "the bells' FM6 patch", [P.BASSPATCH]: "the bass's FM6 patch" };
-for (let v = 0; v < VOICES.length; v++)
-  Object.assign(TIP, {
-    [vx(v, VX.RATIO)]: "the modulators' frequency ratio", [vx(v, VX.INDEX)]: "the modulators' level: the FM index, in dB",
-    [vx(v, VX.FB)]: "the feedback operator's feedback", [vx(v, VX.ATK)]: "every operator's attack: + slower",
-    [vx(v, VX.DEC)]: "every operator's decay: + longer", [vx(v, VX.SUS)]: "every operator's sustain level: + higher",
-    [vx(v, VX.REL)]: "every operator's release: + longer",
-    [vx(v, VX.MDEPTH)]: "how far the modulation goes", [vx(v, VX.MRATE)]: "a cycle, 60 s to an eighth of a second, or a note value",
-    [vx(v, VX.MSHAPE)]: "waves, sample and hold, a random walk, chaos, or an envelope from each note",
-    [vx(v, VX.MDEST)]: "what moves: the FM index, ratio, metal, feedback, decay, pitch, space, all or level",
-    [vx(v, VX.MSPREAD)]: "0: the voices move as one; 100: each its own way", [vx(v, VX.MFADE)]: "the modulation coming in after each note",
-    [vx(v, VX.MSYNC)]: "free, again from each note, or at the tempo", [vx(v, VX.MSMOOTH)]: "a glide on the shape",
-  });
+for (let v = 0; v < VOICES.length; v++) {
+  TIP[vx(v, VX.INDEX)] = "the modulators' level: the FM index, in dB";
+  for (let sl = 0; sl < NSLOT; sl++)
+    Object.assign(TIP, {
+      [ms(v, sl, MS.DEPTH)]: "how far the modulation goes", [ms(v, sl, MS.RATE)]: "a cycle, 60 s to an eighth of a second, or a note value",
+      [ms(v, sl, MS.SHAPE)]: "waves, sample and hold, a random walk, chaos, or an envelope from each note",
+      [ms(v, sl, MS.DEST)]: "what moves: the FM index, ratio, metal, feedback, decay, pitch, space, all, level, the LFO, or one operator's level, ratio, fine pitch or envelope",
+      [ms(v, sl, MS.SPREAD)]: "0: the voices move as one; 100: each its own way", [ms(v, sl, MS.FADE)]: "the modulation coming in after each note",
+      [ms(v, sl, MS.SYNC)]: "free, again from each note, or at the tempo", [ms(v, sl, MS.SMOOTH)]: "a glide on the shape",
+    });
+}
 const $ = (id) => document.getElementById(id);
 // names in words, as the FM-1's screen reader says them (ui.c CHORD_Q, firmware/words.tsv)
 const SPOKEN_NOTE = { "C#": "C sharp", "Eb": "E flat", "F#": "F sharp", "Ab": "A flat", "Bb": "B flat" };
