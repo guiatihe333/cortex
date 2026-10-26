@@ -9,15 +9,17 @@
  *   ENV            the pad's colour: Rhodes / Voices (lit: Voices), kept with the piece
  *   SELECT tempo   ALGORITHM mode (loads a pool)   PRESETS the piece (Root is on the Setup page)
  *   HOME SEQ FX SEL GLO   the pages: LAYERS, MOTION, SPACE, TONE, SETUP (EDIT steps through them)
+ *   ENV ARP LFO again     MOD: the voices' generative modulation (depth, rate, chaos, target); also after SETUP
  *   KNOB 1-4       the page's four values
  *   SAVE           saves (it also saves by itself a few seconds after a change, while resting);
  *                  held 1.5 s: the piece back to its recipe */
 #include "fastmath.h"
 
-/* the pages, one a layer (a button each); SELECT steps through them in this order */
-enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, NVIEWS };
-static const char *const VIEW_NAME[NVIEWS] = {"Garden", "Pad", "Bells", "Bass", "Pulse", "Space", "Setup"};
-static const uint8_t VIEW_BTN[NVIEWS] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO};
+/* the pages, one a layer (a button each); SELECT steps through them in this order. MOD has no button of its own:
+ * a voice's page button pressed again on its page opens it (and it lights the three) */
+enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_MOD, NVIEWS };
+static const char *const VIEW_NAME[NVIEWS] = {"Garden", "Pad", "Bells", "Bass", "Pulse", "Space", "Setup", "Mod"};
+static const uint8_t VIEW_BTN[NVIEWS] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO, NB};
 /* the four knobs of each page: a parameter, or one of these; and what the knob is called there */
 enum { K_LEDS = 100, K_CPU, K_NONE };
 static const uint8_t VIEW_KNOB[NVIEWS][4] = {
@@ -28,6 +30,7 @@ static const uint8_t VIEW_KNOB[NVIEWS][4] = {
     {P_PULSE, P_HITS, P_SWING, P_HATS},
     {P_ECHO, P_ETIME, P_REVERB, P_SIZE},
     {P_ROOT, P_TUNE, P_MIDI, K_LEDS},
+    {P_MDEPTH, P_MRATE, P_MCHAOS, P_MDEST},
 };
 static const char *const KNOB_LABEL[NVIEWS][4] = {
     {"Tempo", "Evolve", "Motion", "Drift"},
@@ -37,6 +40,7 @@ static const char *const KNOB_LABEL[NVIEWS][4] = {
     {"Level", "Hits", "Swing", "Hats"},
     {"Echo", "Echo time", "Reverb", "Size"},
     {"Root", "Tune", "MIDI out", "Lights"},
+    {"Depth", "Rate", "Chaos", "Target"},
 };
 
 /* the screen's colours: the cover of Ambient 1: Music for Airports (1978), as the web app and the site.
@@ -301,9 +305,9 @@ static void set_view(int v)
 static void button(int b)
 {
     int v;
-    for (v = 0; v < NVIEWS; v++)                 /* a page's button: its page */
+    for (v = 0; v < NVIEWS; v++)                 /* a page's button: its page; a voice's again: MOD */
         if (VIEW_BTN[v] == b) {
-            set_view(v);
+            set_view(ui.view == v && (v == V_PAD || v == V_BELLS || v == V_BASS) ? V_MOD : v);
             return;
         }
     switch (b) {
@@ -810,9 +814,9 @@ static int help_lines(int b, const char *l[HELP_LINES])
 #define L(t) (l[n++] = (t))
     switch (b) {
     case B_HOME: L("THE GARDEN"); L("TEMPO, EVOLVE, MOTION, DRIFT"); L("+ SELECT: TEMPO"); break;
-    case B_ENV: L("THE PAD"); L("LEVEL, SWELL, BRIGHT,"); L("COLOUR"); break;
-    case B_ARP: L("THE BELLS"); L("LEVEL, DENSITY, TONE,"); L("OCTAVE"); break;
-    case B_LFO: L("THE BASS"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); break;
+    case B_ENV: L("THE PAD"); L("LEVEL, SWELL, BRIGHT,"); L("COLOUR"); L("AGAIN: MOD"); break;
+    case B_ARP: L("THE BELLS"); L("LEVEL, DENSITY, TONE,"); L("OCTAVE"); L("AGAIN: MOD"); break;
+    case B_LFO: L("THE BASS"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: MOD, THE VOICES MOVE"); break;
     case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); break;
     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
@@ -943,7 +947,10 @@ static void draw_knobs(void)
 static void leds(void)
 {
     uint32_t b = 0, k = 0, i, ap = pool_abs();
-    b |= 1u << VIEW_BTN[ui.view];
+    if (ui.view == V_MOD)
+        b |= 1u << B_ENV | 1u << B_ARP | 1u << B_LFO;
+    else
+        b |= 1u << VIEW_BTN[ui.view];
     if (en_playing)
         b |= 1u << B_PLAY;
     if (en_frozen)
@@ -1037,6 +1044,15 @@ static void sp_value(int k)
         }
         sp_int(s);
         sp_cat(s == 1u ? " second" : " seconds");
+        return;
+    }
+    if (k == P_MRATE) {                          /* "2.7s": 2.7 seconds a cycle */
+        uint32_t i;
+        for (i = 0; t[i] && t[i] != 's'; i++)
+            ;
+        t[i] = 0;
+        sp_cat(t);
+        sp_cat(" seconds");
         return;
     }
     sp_cat(t);

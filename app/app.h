@@ -20,8 +20,8 @@
 enum { OBJ_PROJ, OBJ_PANEL, OBJ_NOBJ };
 #define APP_STORE_MAP {0xFC000u, 0xDC000u}
 #define PROJ_MAGIC 0x314F4E45u           /* "ENO1" */
-#define PROJ_FORMAT 4u                   /* 4: the bass's and the pulse's own settings (3 is carried over;
-                                          * older formats give the recipes) */
+#define PROJ_FORMAT 5u                   /* 5: the voices' modulation (MOD); 4: the bass's and the pulse's own
+                                          * settings (4 and 3 are carried over; older formats give the recipes) */
 #define NPIECES EN_NPIECES
 
 typedef struct {

@@ -29,6 +29,7 @@ installer can reach.
 | Keys | The scale: each key adds its note or takes it out |
 | PLAY · REC · EDIT | Grow / rest · freeze · the next chord |
 | HOME · ENV · ARP · LFO · SEQ · FX · GLO | The pages: Garden, Pad, Bells, Bass, Pulse, Space, Setup; KNOB 1–4 set their values, a layer's level on KNOB 1 |
+| ENV · ARP · LFO again | Mod: the voices' generative modulation (depth, rate, chaos, target) |
 | SELECT | The previous or next page; with HOME held, the tempo |
 | ALGORITHM · PRESETS | The mode · the piece (eight of them) |
 | OCT− / OCT+ | The bells' octave |

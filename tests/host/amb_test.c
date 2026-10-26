@@ -298,6 +298,45 @@ int main(void)
         en_play(1);
     }
 
+    /* MOD: silent at depth 0; at depth 100 every generator moves, each its own way, inside -1..1, every target and
+     * chaos at its ends bounded and never NaN */
+    {
+        int k, g, d, moved = 0, apart = 0, out = 0;
+        float lo[EN_NMOD], hi[EN_NMOD];
+        en_set(P_MDEPTH, 0);
+        run(1.0f);
+        for (g = 0; g < EN_NMOD; g++)
+            CHECK(en_mod[g] == 0.0f, "MOD at depth 0: generator %d at %f", g, (double)en_mod[g]);
+        en_set(P_MDEPTH, 100);
+        en_set(P_MRATE, 80);
+        en_set(P_MCHAOS, 50);
+        for (g = 0; g < EN_NMOD; g++)
+            lo[g] = hi[g] = en_mod[g];
+        for (k = 0; k < 40; k++) {
+            run(0.25f);
+            for (g = 0; g < EN_NMOD; g++) {
+                lo[g] = en_mod[g] < lo[g] ? en_mod[g] : lo[g];
+                hi[g] = en_mod[g] > hi[g] ? en_mod[g] : hi[g];
+                out += en_mod[g] < -1.0f || en_mod[g] > 1.0f || en_mod[g] != en_mod[g];
+            }
+            apart += en_mod[0] != en_mod[1];
+        }
+        for (g = 0; g < EN_NMOD; g++)
+            moved += hi[g] - lo[g] > 0.2f;
+        CHECK(!out, "MOD out of -1..1 (%d)", out);
+        CHECK(moved == EN_NMOD, "MOD: %d of %d generators moved", moved, EN_NMOD);
+        CHECK(apart > 30, "MOD: the pad's first two voices together (%d of 40 apart)", apart);
+        for (d = 0; d < EN_NMODDEST; d++)
+            for (k = 0; k <= 100; k += 100) {
+                en_set(P_MDEST, d);
+                en_set(P_MCHAOS, k);
+                peak = 0.0f;
+                run(3.0f);
+                CHECK(!bad && peak < 1.0f, "MOD target %d chaos %d: peak %f", d, k, (double)peak);
+            }
+        en_set(P_MDEPTH, 0);
+    }
+
     /* stop: the tails die away */
     for (i = 0; i < P_NPARAMS; i++)
         en_set(i, en_param_info(i)->def);

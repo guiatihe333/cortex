@@ -94,7 +94,7 @@ The drawing at the top shows them all; here they are in more detail.
 | REC | **Freeze**: the chord holds and the reverb rings on forever, while the bells and pulse go on dry above it. Press again to thaw. Lit while frozen. |
 | EDIT | The next chord, at the start of the next bar (at once while resting). |
 | HOME | The Garden page: the whole garden. |
-| ENV · ARP · LFO · SEQ | The layers' pages: Pad, Bells, Bass, Pulse. |
+| ENV · ARP · LFO · SEQ | The layers' pages: Pad, Bells, Bass, Pulse. ENV, ARP or LFO again: Mod, the voices' modulation. |
 | FX · GLO | The Space and Setup pages. The lit button shows the page. |
 | SELECT | The previous or next page. Hold HOME and turn it for the tempo, from any page. |
 | ALGORITHM | Mode: Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, pentatonic major and minor. Loads the mode's scale; editing it with the keys makes it Custom. |
@@ -194,7 +194,8 @@ the same for all.
 ## 7. The pages
 
 One page a layer, each on its own button, with four values on KNOB 1–4. A layer's level is
-always KNOB 1. SELECT steps through them in this order.
+always KNOB 1. SELECT steps through them in this order. The voices' modulation (MOD) comes last: press
+ENV, ARP or LFO again on its own page.
 
 ### HOME: Garden
 
@@ -215,8 +216,8 @@ always KNOB 1. SELECT steps through them in this order.
 
 - **Level.**
 - **Swell:** how long the voices breathe, from a few seconds to about half a minute.
-- **Bright:** opens the pad's filter and brightens the Rhodes; for the Voices it also moves the
-  vowel from "oo" to "eh".
+- **Bright:** opens the pad's filter and turns up its FM modulators: the voices bloom brighter as
+  they swell.
 - **Colour:** Rhodes or Voices. Each piece keeps its own.
 
 ### ARP: Bells
@@ -270,6 +271,22 @@ always KNOB 1. SELECT steps through them in this order.
   on the black FM-1. Keys: the key lights only. Off.
 
 The top right of this page shows how much of the FM-1's time the sound takes (CPU).
+
+### ENV, ARP or LFO again: Mod
+
+The voices' generative modulation. Every voice (the four pad voices, the six bells, the bass) has a
+generator of its own, each at its own pace around Rate, so the voices never move together; the arc
+deepens it when the garden is full and calms it when sparse. The three voice buttons light on this page.
+SELECT reaches it after Setup.
+
+- **Depth:** how far it goes. 0: the voices as they are.
+- **Rate:** how long a cycle takes, from 60 seconds to half a second (each voice a little faster or
+  slower).
+- **Chaos:** what it makes. 0: slow waves; 50: a random walk, gliding between random values; 100: the
+  logistic map at the edge of chaos, jumping.
+- **Target:** what it moves. **Timbre:** the FM modulators' level, brighter and darker. **Metal:** the
+  modulators' pitch apart, inharmonic, bell-like. **Pitch:** the voice's pitch, ±30 cents, as tape wow
+  or a choir's drift. **Space:** the voice's place in the stereo field. **All:** a little of each.
 
 ---
 
@@ -395,6 +412,10 @@ The defaults are Garden's; each piece has its own.
 | Setup | Tune | −50 – +50 cents | 0 |
 | Setup | MIDI out | Off, On | On |
 | Setup | Lights | Off, On, Keys | On |
+| Mod | Depth | 0–100 | 20 |
+| Mod | Rate | 0–100 (60 s – 0.5 s a cycle) | 35 (11 s) |
+| Mod | Chaos | 0–100 | 25 |
+| Mod | Target | Timbre, Metal, Pitch, Space, All | Timbre |
 | ALGORITHM | Mode | 8 modes, or Custom | Dorian |
 
 ---

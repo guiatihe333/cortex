@@ -111,7 +111,8 @@ td.v { width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
 // ------------------------------------------------------------------ the engine's names (amb.h)
 const P = { PAD: 0, BELLS: 1, BASS: 2, PULSE: 3, DENSITY: 4, EVOLVE: 5, DRIFT: 6, HITS: 7, ECHO: 8, ETIME: 9, REVERB: 10, SIZE: 11,
             BRIGHT: 12, SWELL: 13, BTONE: 14, MOTION: 15, TUNE: 16, MIDI: 17, TEMPO: 18, ROOT: 19, MODE: 20, BOCT: 21, PADTONE: 22,
-            BASSOCT: 23, GLIDE: 24, FIFTH: 25, SWING: 26, HATS: 27 };
+            BASSOCT: 23, GLIDE: 24, FIFTH: 25, SWING: 26, HATS: 27,
+            MDEPTH: 28, MRATE: 29, MCHAOS: 30, MDEST: 31 };
 const NLOOP = 4, LOOP_MAX = 29;
 const STORE = "eno-app-1";
 // the layers, as the FM-1's pages: [parameter, its name there]
@@ -122,13 +123,16 @@ const GROUPS = [
   ["Bass", [[P.BASS, "Level"], [P.BASSOCT, "Octave"], [P.GLIDE, "Glide"], [P.FIFTH, "Fifth"]]],
   ["Pulse", [[P.PULSE, "Level"], [P.HITS, "Hits"], [P.SWING, "Swing"], [P.HATS, "Hats"]]],
   ["Space", [[P.ECHO, "Echo"], [P.ETIME, "Echo time"], [P.REVERB, "Reverb"], [P.SIZE, "Size"]]],
+  ["Mod", [[P.MDEPTH, "Depth"], [P.MRATE, "Rate"], [P.MCHAOS, "Chaos"], [P.MDEST, "Target"]]],
 ];
 const TIP = { [P.DENSITY]: "notes per bell loop", [P.EVOLVE]: "how often things change and rest", [P.DRIFT]: "how long a chord lasts",
               [P.HITS]: "pulse hits", [P.ECHO]: "tape echo send", [P.ETIME]: "tape loop length", [P.REVERB]: "plate send",
               [P.SIZE]: "plate decay, echo feedback", [P.BRIGHT]: "pad filter", [P.SWELL]: "breath length",
               [P.BTONE]: "round to metallic", [P.MOTION]: "how far it drifts and swells", [P.BASSOCT]: "the bass an octave down or up",
               [P.GLIDE]: "how slowly the bass slides to its note", [P.FIFTH]: "how often the bass leans on the fifth",
-              [P.SWING]: "the off sixteenths late", [P.HATS]: "dark and long to bright and crisp" };
+              [P.SWING]: "the off sixteenths late", [P.HATS]: "dark and long to bright and crisp",
+              [P.MDEPTH]: "how far each voice's modulation goes", [P.MRATE]: "a modulation cycle, 60 s to half a second",
+              [P.MCHAOS]: "slow waves, a random walk, then chaos", [P.MDEST]: "what moves: timbre, metal, pitch, space or all" };
 const $ = (id) => document.getElementById(id);
 // names in words, as the FM-1's screen reader says them (ui.c CHORD_Q, firmware/words.tsv)
 const SPOKEN_NOTE = { "C#": "C sharp", "Eb": "E flat", "F#": "F sharp", "Ab": "A flat", "Bb": "B flat" };
