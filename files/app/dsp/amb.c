@@ -696,7 +696,7 @@ static int mod_on(int dest) { return mod_dest == dest || (mod_dest == MOD_ALL &&
 static const int32_t *mod_of(int g, const uint8_t *p, mod_t *m, int32_t *dt)
 {
     const float d = en_mod[g], k = mod_dest == MOD_ALL ? 0.7f : 1.0f;
-    uint32_t car, j;
+    uint32_t car, j, nm = 0;
     int32_t metal, ratio;
     m->bloom = mod_on(MOD_TIMBRE) ? 12.0f * k * d : 0.0f;
     m->pitch = mod_on(MOD_PITCH) ? k * gen[g].pitch : 0.0f;
@@ -708,8 +708,9 @@ static const int32_t *mod_of(int g, const uint8_t *p, mod_t *m, int32_t *dt)
     if (!metal && !ratio)
         return FM_DT0;
     car = fm6_carriers(p[FP_ALG] & 31u);
-    for (j = 0; j < 6u; j++)                     /* the modulators: their ratio, then apart, one up, the next down */
-        dt[j] = (car >> j & 1u) ? 0 : ratio + ((j & 1u) ? -metal : metal);
+    for (j = 0; j < 6u; j++)                     /* the modulators: their ratio, then apart, one up, the next down
+                                                  * (counted: algorithm 5's are operators 6, 4 and 2, all even) */
+        dt[j] = (car >> j & 1u) ? 0 : ratio + ((nm++ & 1u) ? -metal : metal);
     return dt;
 }
 

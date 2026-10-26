@@ -73,8 +73,8 @@ Arquivos (em `files/`, os mesmos que o patch cria ou altera):
   `P_MDEST`), `ui.c` (página e leitor de tela), `project.c` e `app.h` (formato 5 com migração), `web/app/index.html`,
   `docs/MANUAL.md`, `tests/host/amb_test.c` (checagens do motor) e `tests/scenarios/mod.amb` (navegação).
 
-`amb1-fm6.patch` traz tudo de uma vez. Em `patches/` estão os três passos separados (vozes FM6, depois a página MOD,
-depois os targets FM), para `git am`.
+`amb1-fm6.patch` traz tudo de uma vez. Em `patches/` estão os quatro passos separados (vozes FM6, página MOD,
+targets FM, correção do Metal), para `git am`.
 
 ## A modulação é adequada para síntese FM? O que foi medido
 
@@ -108,21 +108,46 @@ Níveis: cada camada ficou a até 0,3 dB do AMB-1 original, medido com `analysis
 (compatível). Nada do código GPL do JIANT ou do Felucca entrou: nem o `eng_fm6.c`, nem os patches de fábrica, nem o
 gerador de tabelas.
 
-## Como compilar e instalar
+## Como compilar e instalar: um comando
+
+Num Linux x86-64 ou num Mac (com Docker), com acesso a `github.com`, `pkgman.jieliapp.com` e `gitee.com`:
 
 ```sh
-git clone --recursive https://github.com/charlesvestal/fm1-amb
-cd fm1-amb
-git checkout 188b0a4 && git submodule update --init --recursive
-git apply /caminho/para/amb1-fm6.patch       # ou copie o conteúdo de files/ por cima da árvore
-sh tests/run_tests.sh                        # testes do instrumento e simulador
-./build.sh                                   # gera app/build/amb.fwsc (precisa do toolchain JieLi + SDK AC79, ver BUILDING.md)
-python3 base/tools/fm1_install.py app/build/amb.fwsc
+sh build_release.sh               # versão padrão 1.3.90-fm6
 ```
 
-O emulador no navegador (`./build.sh --web`, precisa do emcc) deixa ouvir tudo antes de gravar no aparelho.
-Instalar firmware no FM-1 é por sua conta e risco: o instalador web do AMB-1 consegue restaurar o firmware de fábrica
-da M-VAVE.
+O script faz tudo, em `./work`:
+1. Clona o fm1-amb no commit `188b0a4` e aplica os patches de `patches/`.
+2. Baixa o toolchain da JieLi (clang 4.0.1 para pi32v2).
+3. Baixa o SDK AC79 e confere os hashes dos três arquivos que entram no pacote.
+4. Roda os testes.
+5. Gera o `amb-1.3.90-fm6.fwsc` e roda os testes de novo, agora incluindo o caminho de atualização.
+6. Se houver `emcc`, gera o emulador e o site com o **instalador web**, em `work/site/`.
+
+Para instalar, com o FM-1 no USB:
+
+```sh
+pip3 install mido python-rtmidi
+python3 work/fm1-amb/base/tools/fm1_install.py work/fm1-amb/app/build/amb-1.3.90-fm6.fwsc
+```
+
+Ou sirva `work/site` (`python3 -m http.server`) e abra `install/` no Chrome ou Edge (Web MIDI). Se o FM-1 não
+responder, segure OCT- e OCT+ por 5 s para o modo de atualização. Instalar firmware é por sua conta e risco; o
+instalador web consegue devolver o firmware de fábrica da M-VAVE.
+
+**Versão 1.3.90-fm6:** a identidade do pacote fica `FM-1_7010390`, longe das versões oficiais do AMB-1 (1.3 hoje).
+O fork mantém o prefixo de identidade e o lugar de gravação do AMB-1. Isso é de propósito: instalado sobre o
+AMB-1, ele herda as peças salvas (o projeto formato 4 é migrado para o 5).
+
+## Revisão final
+
+- Interface, gravação, app web e motor revisados linha a linha.
+- **1 defeito encontrado e corrigido:** no Metal, os moduladores deveriam se desafinar em sentidos opostos, mas o
+  código alternava pelo índice do operador. No algoritmo 5 os moduladores são os operadores 6, 4 e 2, todos pares,
+  então todos iam para o mesmo lado. Agora alterna por contagem.
+- Conferido no simulador: o cartão de ajuda mais longo cabe na tela, e o leitor de tela fala "Mod page: Depth 20,
+  Rate 11 seconds, Chaos 25, Target Timbre".
+- Os 4 patches aplicados num clone limpo reproduzem a árvore testada sem diferenças.
 
 ## O que ainda NÃO foi verificado
 
@@ -133,8 +158,11 @@ da M-VAVE.
   incluindo o `mod.amb` novo), no Linux, via o wrapper `analysis/cc-linux`. Os scripts do AMB-1 assumem macOS: no
   glibc faltam `-lm` e `_DEFAULT_SOURCE`, e isso falha igual no AMB-1 original. Ficaram de fora o emulador web
   (falta o emcc) e o caminho de atualização (falta o `.fwsc`).
-- **Não houve build para o aparelho**: faltam o toolchain JieLi e o SDK AC79. Por isso as checagens de imagem, RAM e
-  CPU do `build.py` ainda não rodaram.
+- **Não houve build para o aparelho.** A política de rede do ambiente onde isto foi feito bloqueia
+  `pkgman.jieliapp.com` (toolchain) e `gitee.com` (SDK). Por isso o `.fwsc`, o instalador web e as checagens de
+  imagem, RAM, pool e "64-bit beside loads" do `build.py` ainda não rodaram. Rode o `build_release.sh`.
+- O emulador no navegador e o app web também não foram compilados: a instalação do Emscripten não foi permitida
+  nesse ambiente.
 - **Os timbres não foram ouvidos por uma pessoa.** Os níveis foram medidos e igualados ao original, e cada target
   foi verificado por análise espectral, mas o gosto é seu: os patches estão em `fm_patches()` e `bell_patches()`,
   e as faixas da modulação em `mod_of()`.

@@ -1,7 +1,7 @@
 From f5a46b46b1c02ab271e94b873350a48d593dd8fa Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 05:00:53 +0000
-Subject: [PATCH 3/3] MOD: FM targets (ratio, feedback, decay), continuous FM6
+Subject: [PATCH 3/4] MOD: FM targets (ratio, feedback, decay), continuous FM6
  feedback, shaped modulation, levels measured
 
 ---
