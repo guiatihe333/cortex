@@ -105,15 +105,20 @@ extern volatile uint8_t en_pad_note[EN_NPAD];  /* the note each voice sings now 
 extern volatile float en_pad_amp[EN_NPAD];     /* and how loud */
 
 /* MOD: the voices' generative modulation. Each voice (the four pad voices, the six bells, the bass) has a generator
- * of its own, at its own pace around RATE (60 s .. 0.5 s a cycle), so the voices never move together. CHAOS blends
+ * of its own, at its own pace around RATE (60 s .. 0.12 s a cycle), so the voices never move together. CHAOS blends
  * what it makes: 0 a slow wave, 50 a random walk (glides between random values), 100 the logistic map at the edge
- * of chaos (jumps). DEPTH how far it goes (the arc deepens and calms it); TARGET what it moves: */
-enum { MOD_TIMBRE, MOD_METAL, MOD_PITCH, MOD_SPACE, MOD_ALL, EN_NMODDEST };
-/*   TIMBRE  the FM6 modulators' level (+-12 dB): brighter, darker
- *   METAL   the modulators' pitch apart (+-60 cents): inharmonic, bell-like sidebands
- *   PITCH   the voice's pitch (+-30 cents): tape wow, a choir's drift
- *   SPACE   the voice's place in the stereo field
- *   ALL     every one of them, a little less of each */
+ * of chaos (jumps). DEPTH how far it goes (the arc deepens and calms it); TARGET what it moves, the FM6 voice's own
+ * parameters first: */
+enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD_SPACE, MOD_ALL, EN_NMODDEST };
+/*   TIMBRE    the modulators' output level (+-12 dB): the FM index, brighter and darker
+ *   RATIO     the modulators' frequency ratio, in harmonic steps up (x1, x2, x3, x4, x5), gliding 15 ms
+ *   METAL     the modulators' ratio pulled apart (+-80 cents, one up, the next down): inharmonic sidebands
+ *   FEEDBACK  the feedback operator's feedback (up to 9 steps more, continuous): from pure to noisy, saw-like
+ *   DECAY     each note's envelopes as it starts: the modulators' decay (the brightness fading) +-20 rates,
+ *             the carriers' (the ring) +-6
+ *   PITCH     the voice's pitch (+-30 cents, slewed 15 ms): tape wow, a choir's drift, at the top a vibrato
+ *   SPACE     the voice's place in the stereo field (slewed 30 ms, ramped across a block)
+ *   ALL       timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio: its steps) */
 extern const char *const EN_MODDEST_NAME[EN_NMODDEST];
 #define EN_NMOD (EN_NPAD + 6 + 1)               /* the generators: pad voices, bells, bass */
 extern volatile float en_mod[EN_NMOD];         /* each generator's value now, -1 .. 1 (times the depth) */

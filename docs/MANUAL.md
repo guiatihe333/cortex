@@ -280,13 +280,24 @@ deepens it when the garden is full and calms it when sparse. The three voice but
 SELECT reaches it after Setup.
 
 - **Depth:** how far it goes. 0: the voices as they are.
-- **Rate:** how long a cycle takes, from 60 seconds to half a second (each voice a little faster or
-  slower).
+- **Rate:** how long a cycle takes, from 60 seconds to an eighth of a second, a vibrato's speed (each
+  voice a little faster or slower).
 - **Chaos:** what it makes. 0: slow waves; 50: a random walk, gliding between random values; 100: the
   logistic map at the edge of chaos, jumping.
-- **Target:** what it moves. **Timbre:** the FM modulators' level, brighter and darker. **Metal:** the
-  modulators' pitch apart, inharmonic, bell-like. **Pitch:** the voice's pitch, ±30 cents, as tape wow
-  or a choir's drift. **Space:** the voice's place in the stereo field. **All:** a little of each.
+- **Target:** what it moves, the FM voice's own parameters first:
+  - **Timbre:** the modulators' level, ±12 dB: the FM index, brighter and darker.
+  - **Ratio:** the modulators' frequency ratio in harmonic steps, ×1 to ×5, gliding: the voice jumps
+    between related colours and stays in tune (never below ×1, which would drop it an octave).
+  - **Metal:** the modulators pulled out of tune with each other, ±80 cents: inharmonic, bell-like.
+  - **Feedback:** more feedback on the modulator that has it, smoothly: from pure to noisy and saw-like.
+  - **Decay:** each new note's envelopes: how soon its brightness fades and how long it rings. It
+    works on struck notes, the bells; the pad and the bass are held and barely decay.
+  - **Pitch:** the voice's pitch, ±30 cents: tape wow, a choir's drift, at the fastest a vibrato.
+  - **Space:** the voice's place in the stereo field.
+  - **All:** timbre, metal, feedback, decay, pitch and space, a little less of each (not ratio).
+
+Ratio, Metal and Feedback work where there is modulation to change: the bells and the pad. The bass is
+nearly a pure sine on purpose and stays put.
 
 ---
 
@@ -413,9 +424,9 @@ The defaults are Garden's; each piece has its own.
 | Setup | MIDI out | Off, On | On |
 | Setup | Lights | Off, On, Keys | On |
 | Mod | Depth | 0–100 | 20 |
-| Mod | Rate | 0–100 (60 s – 0.5 s a cycle) | 35 (11 s) |
+| Mod | Rate | 0–100 (60 s – 0.12 s a cycle) | 27 (11 s) |
 | Mod | Chaos | 0–100 | 25 |
-| Mod | Target | Timbre, Metal, Pitch, Space, All | Timbre |
+| Mod | Target | Timbre, Ratio, Metal, Feedback, Decay, Pitch, Space, All | Timbre |
 | ALGORITHM | Mode | 8 modes, or Custom | Dorian |
 
 ---

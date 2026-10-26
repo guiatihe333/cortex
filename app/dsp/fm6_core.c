@@ -33,7 +33,11 @@
  * In AMB-1 (2026), from JIANT FM (github.com/juanjiant-bit/JIANT, firmware/src/fm6_core.c at 8580aea): no 64-bit
  * multiply inline, for the FM-1's CPU (fm1-base: bsp/docs/CPU.md, a register a bit off when they sit among 16-bit
  * loads): the operators' sample loops multiply in 32 bits, split exactly (fm6_mulg); the block-rate products go
- * through fm6_smul / fm6_umul, out of line. The sound is bit for bit the same. */
+ * through fm6_smul / fm6_umul, out of line. The sound is bit for bit the same.
+ * And the feedback is continuous: fm6_note_compute takes it in 1/256 steps (0 .. 9 * 256: 8 and 9 past the DX7's
+ * 7, for a quiet operator, whose feedback is as quiet as it is) and the operator with feedback scales by a gain
+ * (Q12, 2^(fb - 9): msfa's shift at whole steps, within its lowest 9 bits; 11 past 7) instead of a shift, so it can move
+ * without zipper noise. */
 
 #define FM6_N CTL
 #define FM6_LG_N 5
@@ -363,14 +367,15 @@ static __attribute__((noinline)) void fm6_op_run(int32_t *out, const int32_t *in
         FM6_OP_LOOP(phase, =)
 }
 
-/* the operator with feedback (fb: its last two outputs) */
+/* the operator with feedback (fb: its last two outputs; fbq: their gain, Q12, at most 4096: 1) */
 static __attribute__((noinline)) void fm6_op_fb(int32_t *out, int32_t phase, int32_t freq, int32_t g1, int32_t g2,
-                                                int32_t *fb, int32_t shift, int add)
+                                                int32_t *fb, int32_t fbq, int add)
 {
     int32_t dg = (g2 - g1 + (FM6_N >> 1)) >> FM6_LG_N, g = g1, y0 = fb[0], y = fb[1];
+    const int32_t sh = fbq > 1024 ? 2 : 0;        /* past the DX7's 7: two bits less of the sum, room for the gain */
     uint32_t i;
     for (i = 0; i < FM6_N; i++) {
-        int32_t s = (y0 + y) >> (shift + 1);
+        int32_t s = (((y0 + y) >> (9 + sh)) * fbq) >> (3 - sh);   /* (|y0 + y| <= 2^29: the product <= 2^30) */
         g += dg;
         y0 = y;
         y = fm6_mulg(fm6_sin(phase + s), g);
@@ -387,7 +392,7 @@ static __attribute__((noinline)) void fm6_op_fb(int32_t *out, int32_t phase, int
 #define MC_CPU() 0u                 /* (built alone: tests/fm6_test.c) */
 #endif
 static int32_t fm6_bus_c[2][2][FM6_N];   /* (JIANT 0.6.71) one pair a core (core.h MC_CPU) */
-static int fm6_core_render(int32_t *out, fm6_op_t *op, uint32_t alg, int32_t *fb, int32_t fb_shift)
+static int fm6_core_render(int32_t *out, fm6_op_t *op, uint32_t alg, int32_t *fb, int32_t fbq)
 {
     int32_t (*fm6_bus)[FM6_N] = fm6_bus_c[MC_CPU() & 1u];
     const uint8_t *a = FM6_ALG[alg & 31u];
@@ -403,8 +408,8 @@ static int fm6_core_render(int32_t *out, fm6_op_t *op, uint32_t alg, int32_t *fb
             if (!has[outbus])
                 add = 0;
             if (inbus == 0u || !has[inbus]) {
-                if ((f & 0xc0u) == 0xc0u && fb_shift < 16)
-                    fm6_op_fb(o, op[k].phase, op[k].freq, g1, g2, fb, fb_shift, add);
+                if ((f & 0xc0u) == 0xc0u && fbq > 0)
+                    fm6_op_fb(o, op[k].phase, op[k].freq, g1, g2, fb, fbq, add);
                 else
                     fm6_op_run(o, 0, op[k].phase, op[k].freq, g1, g2, add);
             } else {
@@ -526,7 +531,7 @@ static int32_t fm6_note_logfreq(int32_t pitch16, int32_t fine)
 }
 
 /* one block (msfa note compute): the LFO's value and delay (Q24), the note's log2 frequency, the patch's
- * algorithm and feedback (already through the macros), dt[k]: a pitch offset per operator (Q24),
+ * algorithm and feedback (0 .. 9 * 256: 1/256 steps), dt[k]: a pitch offset per operator (Q24),
  * modlvl: a level offset of the operators that are not carriers (Q24 log2). Writes out (Q24); 0 = silent
  * (out untouched) */
 static int fm6_note_compute(fm6_note_t *n, const uint8_t *p, int32_t *out, int32_t lfo_val, int32_t lfo_delay,
@@ -555,7 +560,11 @@ static int fm6_note_compute(fm6_note_t *n, const uint8_t *p, int32_t *out, int32
             level += modlvl;
         n->op[k].level_in = level < 0 ? 0 : level > (17 << 24) ? 17 << 24 : level;
     }
-    return fm6_core_render(out, n->op, alg, n->fb, fb ? 8 - fb : 16);
+    if (fb > 0) {                                  /* 2^(fb - 9), Q12: 8 << whole steps, linear between */
+        int32_t w = fb >= 9 * 256 ? 9 : fb >> 8, q = 8 << w;
+        fb = w == 9 ? q : q + ((q * (fb & 255)) >> 8);
+    }
+    return fm6_core_render(out, n->op, alg, n->fb, fb);
 }
 
 /* the note can be dropped: every carrier silent for good (released and done, or held at a silent
