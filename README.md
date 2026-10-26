@@ -110,9 +110,13 @@ gerador de tabelas.
 
 ## Instalar no FM-1 ligado ao seu computador
 
-Antes de tudo: se o FM-1 roda o firmware **FM1 Open** da M-VAVE, ele só aceita o firmware de fábrica V15 por cima.
-Volte ao V15 primeiro (pelo M-UPGRADE da M-VAVE, ou em "Back to the stock firmware" no instalador web do AMB-1).
-O `instalar.sh` detecta isso e avisa.
+Antes de tudo: o FM-1 precisa estar no firmware de fábrica **V15** da M-VAVE. Todos os instaladores (fm1-base,
+AMB-1, JIANT) foram feitos e testados sobre o V15.
+- **V16** (21/10/2026): ninguém confirmou instalação de firmware alternativo sobre ele. Volte ao V15 pelo
+  **M-UPGRADE** da M-VAVE, com o arquivo oficial `FM-1.fwsc` da versão V15.
+- **FM1 Open**: ele só aceita o V15 por cima.
+
+O `instalar.sh` detecta os dois casos e para antes de gravar.
 
 **Linux (x86-64) ou macOS** (no Mac, com o Docker aberto), com o FM-1 no USB:
 

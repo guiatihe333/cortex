@@ -57,6 +57,15 @@ elif [ $RC -ne 0 ]; then
     exit $RC
 fi
 case "$INFO" in
+    *FM-1_015*) ;;                               # M-VAVE's V15: what every FM-1 installer was made and tested on
+    *FM-1_0[0-9][0-9]*)
+        if [ -z "$FORCE_STOCK" ]; then
+            echo "O FM-1 roda outro firmware de fabrica da M-VAVE (V15 e o unico em que os instaladores foram testados;"
+            echo "o V16, de 21/10/2026, nao foi testado por ninguem). Para nao arriscar, volte ao V15 primeiro: no"
+            echo "M-UPGRADE da M-VAVE, com o arquivo oficial FM-1.fwsc da versao V15, e rode este script de novo."
+            echo "(Por sua conta e risco: FORCE_STOCK=1 sh instalar.sh tenta mesmo assim.)"
+            exit 6
+        fi ;;
     *FM1_OFFICIAL_OPEN*|*FM1_COMMUNITY_*)
         echo "O FM-1 roda o firmware FM1 Open da M-VAVE: ele so aceita o firmware de fabrica V15 por cima."
         echo "Volte primeiro ao V15 (M-UPGRADE da M-VAVE, ou o instalador web do AMB-1: Back to the stock"
