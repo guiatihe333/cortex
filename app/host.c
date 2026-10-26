@@ -9,7 +9,7 @@
  * playing piece's Pad at N); storev5 N (as the first FM6 build wrote it, format 5: one MOD for all three voices, its
  * depth N, chaos 90, target Feedback); storev6 N (as 1.3.91 wrote it, format 6: each voice's MOD at depth N, the
  * pad's FM edits Ratio x2 and Feedback +2); storev7 (as 1.3.93 wrote it, format 7: the pieces as they are, their
- * patches too); bankfake B (a bank of 32 voices, the own patches renamed TEST 01..,
+ * patches too); storev8 N (as 1.3.95 wrote it, format 8: every GATE at N, the bells on Tubular); bankfake B (a bank of 32 voices, the own patches renamed TEST 01..,
  * sent to bank B as amb_syx.py sends one: 16 SysEx chunks); dx7voice (a DX7 single voice dump, the bass's Pick
  * named DX7 VOICE, as Dexed sends one). */
 static void host_pack(const uint8_t *p, uint8_t *m)   /* a patch as a DX7 bank packs it */
@@ -177,6 +177,36 @@ int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, c
         }
         ps = pstore;
         ps.format = 7u;
+        plat_store_save(OBJ_PROJ, &o, sizeof o);
+        plat_store_save(OBJ_PATCH, &ps, sizeof ps);
+        return 1;
+    }
+    if (!strcmp(cmd, "storev8")) {               /* format 8 (as 1.3.95 wrote it): its GATEs at N */
+        static project_v8_t o;
+        static patchstore_t ps;
+        int i, k, v;
+        memset(&o, 0, sizeof o);
+        o.magic = PROJ_MAGIC;
+        o.format = 8u;
+        o.pool = proj.pool;
+        o.leds = proj.leds;
+        o.piece = proj.piece;
+        keep();
+        for (i = 0; i <= NPIECES; i++) {
+            int16_t *par = i < NPIECES ? o.slot[i].par : o.par;
+            const int16_t *src = i < NPIECES ? proj.slot[i].par : proj.par;
+            for (k = 0; k < P_PLAY; k++)
+                par[k] = src[k];
+            for (v = 0; v < EN_NVOX; v++) {
+                par[P_PLAY + v * 2] = 0;
+                par[P_PLAY + v * 2 + 1] = (int16_t)atoi(a);
+            }
+            par[P_BELLPATCH] = 3;                /* the bells' Tubular, as format 8 numbered it */
+            if (i < NPIECES)
+                o.slot[i].pool = proj.slot[i].pool;
+        }
+        ps = pstore;
+        ps.format = 8u;
         plat_store_save(OBJ_PROJ, &o, sizeof o);
         plat_store_save(OBJ_PATCH, &ps, sizeof ps);
         return 1;

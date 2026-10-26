@@ -1,6 +1,6 @@
 # the dice (SEL): tapped alone, the page shown rolled; held with a page's button, that layer; held alone a second, the
 # last roll undone. Garden's Tempo 72 (par18), Evolve 35 (par5), Motion 50 (par15); the bells' first modulator's
-# depth 20 (par74), their Gate 25 (par159)
+# depth 20 (par74), their Gate 25 (par168)
 wait 300
 tap HOME
 wait 100
@@ -26,7 +26,7 @@ wait 1100
 release SEL
 wait 100
 expect par74 20
-expect par159 25
+expect par168 25
 expect view 0
 # on a voice's MOD page: the modulator picked
 tap ENV

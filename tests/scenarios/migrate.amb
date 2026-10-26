@@ -36,7 +36,7 @@ expect par116 55
 expect par34 7
 expect par35 3
 expect par119 3
-expect par28 0
+expect par28 6
 expect par31 0
 expect par33 31
 # a project of 1.3.91 (format 6: each voice its own MOD and FM edits) loads with its MOD as the first modulator and
@@ -54,7 +54,7 @@ expect par72 0
 expect pat0_135 2
 expect pat0_18 2
 # a project of 1.3.93 (format 7) loads as it was, its patches too (the pad's edits above), each voice playing as AMB-1
-# does (ENV, par156 on: 0) with its GATE at the default (70)
+# does now: on its patch's envelopes (ENV, par156: 1), its GATE at the default (70)
 storev7
 reboot
 wait 300
@@ -63,5 +63,18 @@ expect par32 44
 expect par116 44
 expect pat0_135 2
 expect pat0_18 2
-expect par156 0
+expect par156 1
 expect par157 70
+# a project of 1.3.95 (format 8) loads with its GATEs (40), each voice the role its layer had (Chord, Loops, Bass), on
+# its patch's envelopes, the bells' Tubular (3 in format 8) as the eighteen number it (9)
+storev8 40
+reboot
+wait 300
+expect par157 40
+expect par168 40
+expect par179 40
+expect par156 1
+expect par158 0
+expect par169 1
+expect par180 2
+expect par28 9

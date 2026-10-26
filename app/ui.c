@@ -23,12 +23,12 @@
  * to the next group (the page it was left on) and from the last back to the layer's page; SELECT steps through the
  * voice's own pages; the voice's button stays lit on them */
 enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_MAIN };
-enum { S_VOICE, S_PLAY, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
+enum { S_VOICE, S_PLAY, S_ADSR, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
 #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
 #define NGROUP 3
 static const uint8_t GROUP0[NGROUP + 1] = {S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
 static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Pulse", "Space", "Setup"};
-static const char *const SUB_NAME[NSUB] = {"Patch", "Play", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
+static const char *const SUB_NAME[NSUB] = {"Patch", "Play", "ADSR", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
 static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO};
 static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
@@ -63,23 +63,25 @@ static void view_name(int v, char *b)          /* "Garden", "Bells OP Env" */
 /* the four knobs of each page: a parameter (< P_NPARAMS), or one of these: the panel's own, the voice's patch source,
  * the operator, envelope stage and modulator picked, a byte of the voice's patch (KP_V + its offset) or of the
  * operator picked (KP_O + its field), the stage picked's rate or level, the modulator picked's setting (KM + MS_*) */
-enum { K_LEDS = 1000, K_CPU, K_NONE, K_ENV, K_GATE, K_SRC, K_OP, K_STAGE, K_PSTAGE, K_SLOT, KP_OR, KP_OL, KP_PR, KP_PL,
-       KP_V = 1100, KP_O = 1300, KM = 1400 };
+enum { K_LEDS = 1000, K_CPU, K_NONE, K_SRC, K_OP, K_STAGE, K_PSTAGE, K_SLOT, KP_OR, KP_OL, KP_PR, KP_PL,
+       KP_V = 1100, KP_O = 1300, KM = 1400, KPL = 1500 };   /* KPL + PL_*: how the page's voice plays (P_PL) */
+#define KPL_(k) (KPL + PL_##k)
 #define KO(f) (KP_O + EP_##f)
 #define KV(f) (KP_V + EP_##f)
 #define KMS(k) (KM + MS_##k)
 static const uint16_t MAIN_KNOB[V_MAIN][4] = {
     {P_TEMPO, P_EVOLVE, P_MOTION, P_DRIFT},
-    {P_PAD, P_SWELL, P_BRIGHT, P_PADTONE},
-    {P_BELLS, P_DENSITY, P_BTONE, P_BOCT},
-    {P_BASS, P_BASSOCT, P_GLIDE, P_FIFTH},
+    {P_PAD, KPL_(ROLE), KPL_(OCT), KPL_(DENS)},   /* the three voices alike */
+    {P_BELLS, KPL_(ROLE), KPL_(OCT), KPL_(DENS)},
+    {P_BASS, KPL_(ROLE), KPL_(OCT), KPL_(DENS)},
     {P_PULSE, P_HITS, P_SWING, P_HATS},
     {P_ECHO, P_ETIME, P_REVERB, P_SIZE},
     {P_ROOT, P_TUNE, P_MIDI, K_LEDS},
 };
 static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_SRC, KV(ALG), KV(FB), K_NONE},          /* (INDEX: P_VX, put in below) */
-    {K_ENV, K_GATE, K_NONE, K_NONE},           /* (the voice's P_PL, put in below) */
+    {KPL_(ENV), KPL_(GATE), KPL_(PACE), KPL_(GLIDE)},   /* (the voice's P_PL, put in below) */
+    {KPL_(A), KPL_(D), KPL_(S), KPL_(R)},
     {KV(LFS), KV(LFD), KV(LPMD), KV(LAMD)},
     {KV(LFW), KV(LPMS), KV(LKS), KV(TRNSP)},
     {K_PSTAGE, KP_PR, KP_PL, KV(OKS)},
@@ -95,16 +97,17 @@ static const uint16_t SUB_KNOB[NSUB][4] = {
 };
 static const char *const MAIN_LABEL[V_MAIN][4] = {
     {"Tempo", "Evolve", "Motion", "Drift"},
-    {"Level", "Swell", "Bright", "Colour"},
-    {"Level", "Density", "Tone", "Octave"},
-    {"Level", "Octave", "Glide", "Fifth"},
+    {"Level", "Role", "Octave", "Density"},
+    {"Level", "Role", "Octave", "Density"},
+    {"Level", "Role", "Octave", "Density"},
     {"Level", "Hits", "Swing", "Hats"},
     {"Echo", "Echo time", "Reverb", "Size"},
     {"Root", "Tune", "MIDI out", "Lights"},
 };
 static const char *const SUB_LABEL[NSUB][4] = {
     {"Patch", "Algorithm", "Feedback", "Index"},
-    {"Envelope", "Gate", "", ""},
+    {"Envelope", "Gate", "Pace", "Glide"},
+    {"Attack", "Decay", "Sustain", "Release"},
     {"Speed", "Delay", "Pitch mod", "Amp mod"},
     {"Wave", "Pitch sens", "Key sync", "Transpose"},
     {"Stage", "Rate", "Level", "Osc sync"},
@@ -120,14 +123,13 @@ static const char *const SUB_LABEL[NSUB][4] = {
 };
 static int view_knob(int v, int i)             /* page v's knob i */
 {
-    int k;
+    int k = v < V_MAIN ? MAIN_KNOB[v][i] : SUB_KNOB[view_sub(v)][i];
+    if (k >= KPL && k < KPL + PL_N)
+        return P_PL(view_vox(v), k - KPL);
     if (v < V_MAIN)
-        return MAIN_KNOB[v][i];
-    k = SUB_KNOB[view_sub(v)][i];
+        return k;
     if (view_sub(v) == S_VOICE && i == 3)
         return P_VX(view_vox(v), VX_INDEX);
-    if (k == K_ENV || k == K_GATE)
-        return P_PL(view_vox(v), k == K_ENV ? PL_ENV : PL_GATE);
     if (k == K_SRC)
         return EN_VOX_PATCH[view_vox(v)];       /* (the source is a parameter, turned its own way: knob_turn) */
     return k;
@@ -460,7 +462,8 @@ static void knob_text(int k, char *b)
  * 0..29 (the layers, the space, the tone, setup; a patch source as its number). A value is scaled to its range,
  * 0..127 */
 #define CC0 20
-#define CC_PL (CC0 + VX_N - VX_INDEX)          /* a voice's channel: 61 its ENV, 62 its GATE (amb.h PL_*) */
+#define CC_PL 102                              /* a voice's channel: 102.. how it plays (amb.h PL_*: ENV, GATE,
+                                                * ROLE, OCTAVE, DENSITY, PACE, GLIDE, A, D, S, R; past 99/98, 6, 64) */
 static void cc_out(int ch, int cc, int v) { en_midi_out(0xB0u | (uint32_t)ch, (uint32_t)cc, (uint32_t)v); }
 static int cc_scale(int v, int lo, int hi) { return hi > lo ? ((v - lo) * 127 + (hi - lo) / 2) / (hi - lo) : 0; }
 static void par_out(int p)                      /* a parameter the knobs set, out as its CC */
@@ -677,6 +680,13 @@ static void dice_env(int v, int n)              /* operator n's envelope: an att
     dice_byte(v, o + EP_L1 + 2, 0, 90);
     dice_byte(v, o + EP_L1 + 3, 0, 0);
 }
+static void dice_adsr(int v)                    /* an attack, a decay, a sustain, a release */
+{
+    dice_par(P_PL(v, PL_A), 0, 60);
+    dice_par(P_PL(v, PL_D), 10, 80);
+    dice_par(P_PL(v, PL_S), 20, 100);
+    dice_par(P_PL(v, PL_R), 10, 80);
+}
 static void dice_mod(int v, int s, int on)      /* modulator s: a target, a shape, a pace; on 0: off */
 {
     static const uint8_t DEST[] = {MOD_TIMBRE, MOD_TIMBRE, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD_SPACE,
@@ -710,24 +720,14 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
         dice_par(P_MOTION, 20, 90);
         dice_par(P_DRIFT, 10, 70);
         break;
-    case V_PAD:
-        dice_par(P_PAD, 45, 80);
-        dice_par(P_SWELL, 10, 90);
-        dice_par(P_BRIGHT, 10, 80);
-        dice_source(VOX_PAD);
+    case V_PAD: case V_BELLS: case V_BASS: {    /* a voice: its level, a role, an octave for it, a density */
+        const int v = view_vox(vw), r = dice(0, EN_NROLE - 1);
+        dice_par(vw == V_PAD ? P_PAD : vw == V_BELLS ? P_BELLS : P_BASS, 45, 80);
+        dice_par(P_PL(v, PL_ROLE), r, r);
+        dice_par(P_PL(v, PL_OCT), r == ROLE_BASS ? -1 : r == ROLE_LOOPS ? 0 : -1, r == ROLE_BASS ? 0 : 1);
+        dice_par(P_PL(v, PL_DENS), r == ROLE_CHORD ? 40 : 15, r == ROLE_CHORD ? 100 : 80);
         break;
-    case V_BELLS:
-        dice_par(P_BELLS, 45, 80);
-        dice_par(P_DENSITY, 15, 80);
-        dice_par(P_BTONE, 0, 100);
-        dice_par(P_BOCT, -1, 1);
-        break;
-    case V_BASS:
-        dice_par(P_BASS, 35, 70);
-        dice_par(P_BASSOCT, -1, 0);
-        dice_par(P_GLIDE, 0, 60);
-        dice_par(P_FIFTH, 0, 70);
-        break;
+    }
     case V_PULSE:
         dice_par(P_PULSE, 0, 60);
         dice_par(P_HITS, 10, 80);
@@ -765,8 +765,13 @@ static void dice_page(int vw)                   /* the page shown */
         dice_par(P_VX(v, VX_INDEX), -6, 6);
         break;
     case S_PLAY:
-        dice_par(P_PL(v, PL_ENV), 0, 1);
+        dice_par(P_PL(v, PL_ENV), 0, EN_NENV - 1);
         dice_par(P_PL(v, PL_GATE), 20, 90);
+        dice_par(P_PL(v, PL_PACE), 0, 100);
+        dice_par(P_PL(v, PL_GLIDE), 0, 60);
+        break;
+    case S_ADSR:
+        dice_adsr(v);
         break;
     case S_LFO: case S_LFO2:
         dice_byte(v, EP_LFS, 10, 70);
@@ -797,11 +802,13 @@ static void dice_voice(int v)                   /* a voice whole: its patch, how
 {
     int s, on = dice(2, 3);
     dice_layer(VOX_VIEW[v]);
-    if (v != VOX_PAD)
-        dice_source(v);
+    dice_source(v);
     dice_par(P_VX(v, VX_INDEX), -6, 6);
-    dice_par(P_PL(v, PL_ENV), 0, 1);
+    dice_par(P_PL(v, PL_ENV), 0, EN_NENV - 1);
     dice_par(P_PL(v, PL_GATE), 20, 90);
+    dice_par(P_PL(v, PL_PACE), 0, 100);
+    dice_par(P_PL(v, PL_GLIDE), 0, 60);
+    dice_adsr(v);
     for (s = 0; s < EN_NSLOT; s++)
         dice_mod(v, s, s < on);
 }
@@ -910,11 +917,13 @@ static void button(int b)
         en_freeze(!en_frozen);                   /* the engine takes it at its next block */
         break;
     case B_OCTDN: case B_OCTUP:
-        knob_set(P_BOCT, proj.par[P_BOCT] + (b == B_OCTUP ? 1 : -1));
         {
-            char t[8];
-            en_param_text(P_BOCT, proj.par[P_BOCT], t);
-            say("BELL OCTAVE", t);
+            const int p = P_PL(kvox(), PL_OCT);
+            char t[16] = "OCTAVE ", w[12];
+            knob_set(p, proj.par[p] + (b == B_OCTUP ? 1 : -1));
+            en_param_text(p, proj.par[p], t + 7);
+            caps(w, MAIN_NAME[VOX_VIEW[kvox()]], sizeof w);
+            say(w, t);
         }
         break;
     case B_SAVE:
@@ -1471,16 +1480,16 @@ static int help_lines(int b, const char *l[HELP_LINES])
 #define L(t) (l[n++] = (t))
     switch (b) {
     case B_HOME: L("THE GARDEN"); L("TEMPO, EVOLVE, MOTION, DRIFT"); L("+ SELECT: TEMPO"); break;
-    case B_ENV: L("VOICE 1 (THE PAD)"); L("LEVEL, SWELL, BRIGHT,"); L(" COLOUR"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
-    case B_ARP: L("VOICE 2 (THE BELLS)"); L("LEVEL, DENSITY, TONE,"); L(" OCTAVE"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
-    case B_LFO: L("VOICE 3 (THE BASS)"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
+    case B_ENV: L("VOICE 1"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
+    case B_ARP: L("VOICE 2"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
+    case B_LFO: L("VOICE 3"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
     case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); break;
     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
     case B_EDIT: L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); break;
     case B_REC: L("FREEZE: THE CHORD HOLDS"); L(" AND THE REVERB RINGS ON"); L("AGAIN: THAW"); break;
-    case B_OCTDN: L("VOICE 2 AN OCTAVE DOWN"); L("WITH OCT+, 5 S: UPDATE MODE"); break;
-    case B_OCTUP: L("VOICE 2 AN OCTAVE UP"); L("WITH OCT-, 5 S: UPDATE MODE"); break;
+    case B_OCTDN: L("THE VOICE SHOWN AN OCTAVE"); L(" DOWN"); L("WITH OCT+, 5 S: UPDATE MODE"); break;
+    case B_OCTUP: L("THE VOICE SHOWN AN OCTAVE"); L(" UP"); L("WITH OCT-, 5 S: UPDATE MODE"); break;
     case B_SAVE: L("SAVES ALL EIGHT PIECES"); L("KEEP HOLDING: THE PIECE"); L(" BACK TO ITS RECIPE"); break;
     default: break;
     }
@@ -2078,8 +2087,10 @@ static void speak_dump(void)
     }
     for (x = -2; x <= 2; x++) {
         char o[8];
-        en_param_text(P_BOCT, x, o);
-        msg_text("BELL OCTAVE", o, t);
+        char oo[16] = "OCTAVE ";
+        en_param_text(P_PL(VOX_PAD, PL_OCT), x, oo + 7);
+        (void)o;
+        msg_text("VOICE 1", oo, t);
         sp_print("MSG", t);
     }
     for (x = 30; x <= 120; x += 45) {
