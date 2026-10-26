@@ -6,6 +6,11 @@ bells on tape loops of unequal length, a gliding bass and quiet Euclidean percus
 a tape echo, a long tape loop and a plate reverb. You don't perform it, you tend it: pick a piece
 and a scale, take notes out, put them back, and let it grow.
 
+**This tree's voices are FM6**: the pad (Rhodes and Voices), the bells and the bass are 6-operator FM, the engine of
+[JIANT FM](https://github.com/juanjiant-bit/JIANT) (msfa, Dexed's core, in integer C: `app/dsp/fm6_core.c`), with
+patches of their own (`fm_patches`, `bell_patches` in `app/dsp/amb.c`). Everything that plays them is AMB-1's as it
+was: the breaths, the loops, the glide, the pulse, the echoes and the plate.
+
 ![AMB-1's screen: the garden](docs/img/screen-garden.png) ![Voices](docs/img/screen-voices.png) ![Frozen](docs/img/screen-frozen.png)
 
 - **Try it in your browser** (no FM-1 needed): <https://charlesvestal.github.io/fm1-amb/emu/>

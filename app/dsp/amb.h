@@ -5,14 +5,14 @@
  *
  *   PAD     four breathing voices: each swells in, hangs and fades on its own cycle (unequal lengths,
  *           as the loops of Music for Airports), taking its note of the chord as it starts, so the
- *           chord forms and dissolves. Two colours, by piece: a filtered Rhodes (FM, blooming brighter
- *           as it swells) or Voices (saws through two formants, as "2/1"); then a soft low-pass and an
- *           ensemble chorus. The chord moves every DRIFT (20 s .. 5 min): voices on shared
+ *           chord forms and dissolves. Two colours, by piece, both FM6 patches (JIANT FM's 6-operator
+ *           engine, fm6_core.c): a Rhodes (blooming brighter as it swells) or Voices (two carriers apart,
+ *           one fed back, vibrato); then a soft low-pass. The chord moves every DRIFT (20 s .. 5 min): voices on shared
  *           notes hold, the others breathe in anew.
- *   BELLS   soft two-operator FM bells played by four tape loops of unequal length (13, 17, 23, 29
+ *   BELLS   soft FM6 bells played by four tape loops of unequal length (13, 17, 23, 29
  *           quarter notes), each holding a short phrase that shifts against the others, each its own
  *           shade of bell. EVOLVE changes a note now and then; DENSITY sets how many notes a loop holds.
- *   BASS    a sine and its sub-octave on the chord's root (now and then its fifth), gliding.
+ *   BASS    an FM6 sine and its sub-octave on the chord's root (now and then its fifth), gliding.
  *   PULSE   a soft thump, a closed hat and an open hat, each on its own Euclidean pattern (16, 12 and 7
  *           sixteenths): polyrhythms. HITS sets how many; the patterns turn and change around it.
  *
