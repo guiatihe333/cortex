@@ -23,12 +23,12 @@
  * to the next group (the page it was left on) and from the last back to the layer's page; SELECT steps through the
  * voice's own pages; the voice's button stays lit on them */
 enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_MAIN };
-enum { S_VOICE, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
+enum { S_VOICE, S_PLAY, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
 #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
 #define NGROUP 3
 static const uint8_t GROUP0[NGROUP + 1] = {S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
 static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Pulse", "Space", "Setup"};
-static const char *const SUB_NAME[NSUB] = {"Patch", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
+static const char *const SUB_NAME[NSUB] = {"Patch", "Play", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
 static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO};
 static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
@@ -63,7 +63,7 @@ static void view_name(int v, char *b)          /* "Garden", "Bells OP Env" */
 /* the four knobs of each page: a parameter (< P_NPARAMS), or one of these: the panel's own, the voice's patch source,
  * the operator, envelope stage and modulator picked, a byte of the voice's patch (KP_V + its offset) or of the
  * operator picked (KP_O + its field), the stage picked's rate or level, the modulator picked's setting (KM + MS_*) */
-enum { K_LEDS = 1000, K_CPU, K_NONE, K_SRC, K_OP, K_STAGE, K_PSTAGE, K_SLOT, KP_OR, KP_OL, KP_PR, KP_PL,
+enum { K_LEDS = 1000, K_CPU, K_NONE, K_ENV, K_GATE, K_SRC, K_OP, K_STAGE, K_PSTAGE, K_SLOT, KP_OR, KP_OL, KP_PR, KP_PL,
        KP_V = 1100, KP_O = 1300, KM = 1400 };
 #define KO(f) (KP_O + EP_##f)
 #define KV(f) (KP_V + EP_##f)
@@ -79,6 +79,7 @@ static const uint16_t MAIN_KNOB[V_MAIN][4] = {
 };
 static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_SRC, KV(ALG), KV(FB), K_NONE},          /* (INDEX: P_VX, put in below) */
+    {K_ENV, K_GATE, K_NONE, K_NONE},           /* (the voice's P_PL, put in below) */
     {KV(LFS), KV(LFD), KV(LPMD), KV(LAMD)},
     {KV(LFW), KV(LPMS), KV(LKS), KV(TRNSP)},
     {K_PSTAGE, KP_PR, KP_PL, KV(OKS)},
@@ -103,6 +104,7 @@ static const char *const MAIN_LABEL[V_MAIN][4] = {
 };
 static const char *const SUB_LABEL[NSUB][4] = {
     {"Patch", "Algorithm", "Feedback", "Index"},
+    {"Envelope", "Gate", "", ""},
     {"Speed", "Delay", "Pitch mod", "Amp mod"},
     {"Wave", "Pitch sens", "Key sync", "Transpose"},
     {"Stage", "Rate", "Level", "Osc sync"},
@@ -124,6 +126,8 @@ static int view_knob(int v, int i)             /* page v's knob i */
     k = SUB_KNOB[view_sub(v)][i];
     if (view_sub(v) == S_VOICE && i == 3)
         return P_VX(view_vox(v), VX_INDEX);
+    if (k == K_ENV || k == K_GATE)
+        return P_PL(view_vox(v), k == K_ENV ? PL_ENV : PL_GATE);
     if (k == K_SRC)
         return EN_VOX_PATCH[view_vox(v)];       /* (the source is a parameter, turned its own way: knob_turn) */
     return k;
@@ -444,6 +448,7 @@ static void knob_text(int k, char *b)
  * 0..29 (the layers, the space, the tone, setup; a patch source as its number). A value is scaled to its range,
  * 0..127 */
 #define CC0 20
+#define CC_PL (CC0 + VX_N - VX_INDEX)          /* a voice's channel: 61 its ENV, 62 its GATE (amb.h PL_*) */
 static void cc_out(int ch, int cc, int v) { en_midi_out(0xB0u | (uint32_t)ch, (uint32_t)cc, (uint32_t)v); }
 static int cc_scale(int v, int lo, int hi) { return hi > lo ? ((v - lo) * 127 + (hi - lo) / 2) / (hi - lo) : 0; }
 static void par_out(int p)                      /* a parameter the knobs set, out as its CC */
@@ -455,6 +460,8 @@ static void par_out(int p)                      /* a parameter the knobs set, ou
     if (p < P_VOX) {
         if (p != P_MIDI && p - P_PAD < 30)
             cc_out(15, CC0 + p, is_src(p) ? (v > 127 ? 127 : v) : cc_scale(v, pi->lo, pi->hi));
+    } else if (p >= P_PLAY) {
+        cc_out((p - P_PLAY) / PL_N, CC_PL + (p - P_PLAY) % PL_N, cc_scale(v, pi->lo, pi->hi));
     } else if ((p - P_VOX) % VX_N != VX_OWN) {
         cc_out((p - P_VOX) / VX_N, CC0 + (p - P_VOX) % VX_N - VX_INDEX, cc_scale(v, pi->lo, pi->hi));
     }
@@ -665,6 +672,8 @@ static void midi_cc(int ch, int cc, int v)
         }
     } else if (ch < EN_NVOX && cc >= CC0 && cc < CC0 + VX_N - VX_INDEX) {
         p = P_VX(ch, VX_INDEX + cc - CC0);
+    } else if (ch < EN_NVOX && cc >= CC_PL && cc < CC_PL + PL_N) {
+        p = P_PL(ch, cc - CC_PL);
     } else if (ch == 15 && cc >= CC0 && cc < CC0 + 30) {
         p = cc - CC0;
     }

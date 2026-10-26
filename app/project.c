@@ -99,10 +99,11 @@ static int project_valid(void)                  /* an older format: the recipes 
     return 1;
 }
 
+static int mig7_on;                             /* format 7's project: its patches kept as they are */
 static int patches_valid(void)
 {
     int i, v, k;
-    if (pstore.magic != PROJ_MAGIC || pstore.format != PROJ_FORMAT)
+    if (pstore.magic != PROJ_MAGIC || (pstore.format != PROJ_FORMAT && !(mig7_on && pstore.format == 7u)))
         return 0;
     for (i = 0; i < NPIECES; i++)
         for (v = 0; v < EN_NVOX; v++)
@@ -113,7 +114,8 @@ static int patches_valid(void)
 }
 
 /* older formats: fewer settings a piece (format 3, 0.9 before the layer pages: 23; format 4, before MOD: 28; format
- * 5, one MOD for all three voices: 32; format 6, each voice its own FM edits and MOD: 75). Carried over: each piece's
+ * 5, one MOD for all three voices: 32; format 6, each voice its own FM edits and MOD: 75; format 7, before each voice's
+ * ENV and GATE: 156, its patches (OBJ_PATCH) as they are). Carried over: each piece's
  * own, the new ones from its recipe; format 5's MOD as every voice's first modulator (en_mod_legacy); format 6's MOD
  * as the first modulator, its INDEX as it was, and its other FM edits (ratio, feedback, envelopes) baked into the
  * voice's patch (en_bake: the patch then edited, OWN) */
@@ -122,6 +124,7 @@ static int patches_valid(void)
 #define V5_NPARAMS (P_HATS + 5)
 #define V6_VX 15
 #define V6_NPARAMS (P_VOX + 3 * V6_VX)
+#define V7_NPARAMS P_PLAY
 static int16_t mig6[NPIECES + 1][EN_NVOX][6];   /* format 6's ratio, feedback, attack, decay, sustain, release */
 static int mig_n, mig6_on;
 static void fix_none(int16_t *par, const int16_t *o) { (void)par, (void)o; }
@@ -191,6 +194,7 @@ OLD_PROJECT(project_v3, V3_NPARAMS, V3_NPARAMS, fix_none)
 OLD_PROJECT(project_v4, V4_NPARAMS, V4_NPARAMS, fix_none)
 OLD_PROJECT(project_v5, V5_NPARAMS, P_BELLPATCH, fix_v5)
 OLD_PROJECT(project_v6, V6_NPARAMS, P_BELLPATCH, fix_v6)
+OLD_PROJECT(project_v7, V7_NPARAMS, V7_NPARAMS, fix_none)
 
 int project_load(void)
 {
@@ -200,10 +204,11 @@ int project_load(void)
         project_v4_t v4;
         project_v5_t v5;
         project_v6_t v6;
+        project_v7_t v7;
     } buf;
     int n, i, v, migrated = 1;
     memset(&buf, 0, sizeof buf);
-    mig_n = mig6_on = 0;
+    mig_n = mig6_on = mig7_on = 0;
     n = plat_store_load(OBJ_PROJ, &buf, sizeof buf);
     if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 3u)
         from_project_v3(&buf.v3);
@@ -214,6 +219,9 @@ int project_load(void)
     else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 6u) {
         mig6_on = 1;
         from_project_v6(&buf.v6);
+    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 7u) {
+        mig7_on = 1;
+        from_project_v7(&buf.v7);
     } else {
         proj = buf.now;
         migrated = 0;
@@ -223,7 +231,7 @@ int project_load(void)
         return -1;
     }
     memset(&pstore, 0, sizeof pstore);
-    if (migrated || plat_store_load(OBJ_PATCH, &pstore, sizeof pstore) < 8 || !patches_valid()) {
+    if ((migrated && !mig7_on) || plat_store_load(OBJ_PATCH, &pstore, sizeof pstore) < 8 || !patches_valid()) {
         pstore.magic = PROJ_MAGIC;               /* none, or a format before them: from the pieces' sources */
         pstore.format = PROJ_FORMAT;
         for (i = 0; i < NPIECES; i++) {
@@ -235,6 +243,7 @@ int project_load(void)
                 }
         }
     }
+    pstore.format = PROJ_FORMAT;
     memcpy(vpatch, pstore.pat[proj.piece], sizeof vpatch);
     if (mig6_on) {                               /* the playing piece as format 6 had it (its own edits) */
         patches_from(proj.par, vpatch);

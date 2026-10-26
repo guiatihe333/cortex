@@ -57,7 +57,8 @@ enum {
     P_SWING, P_HATS,                                  /* pulse: swing, the hats' colour */
     P_BELLPATCH, P_BASSPATCH,                         /* the bells' and the bass's patches (sources) */
     P_VOX,                                            /* then each voice's own: EN_NVOX blocks of VX_N (P_VX) */
-    P_NPARAMS = P_VOX + 3 * 42
+    P_PLAY = P_VOX + 3 * 42,                          /* then how each voice plays its notes: EN_NVOX of PL_N (P_PL) */
+    P_NPARAMS = P_PLAY + 3 * 2
 };
 /* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
  * index and five generative modulators */
@@ -78,7 +79,13 @@ enum { MS_DEPTH, MS_RATE, MS_SHAPE, MS_DEST, MS_SPREAD, MS_FADE, MS_SYNC, MS_SMO
 enum { VX_OWN, VX_INDEX, VX_SLOT, VX_N = VX_SLOT + EN_NSLOT * MS_N };
 #define P_VX(v, k) (P_VOX + (v) * VX_N + (k))
 #define P_MS(v, s, k) P_VX(v, VX_SLOT + (s) * MS_N + (k))
-_Static_assert(P_NPARAMS == P_VOX + EN_NVOX * VX_N, "a block a voice");
+/* how a voice plays its notes: ENV, AMB-1's own (0: the pad's breath, the bells let go after a beat, the bass one note
+ * held and gliding) or the patch's (1: each note struck and let go, its envelopes heard as a DX7 plays them); GATE,
+ * with the patch's, how long a note is held down (of the pad's breath, a chord for the bass, a bar for the bells) */
+enum { PL_ENV, PL_GATE, PL_N };
+#define P_PL(v, k) (P_PLAY + (v) * PL_N + (k))
+_Static_assert(P_PLAY == P_VOX + EN_NVOX * VX_N, "a block a voice");
+_Static_assert(P_NPARAMS == P_PLAY + EN_NVOX * PL_N, "how each voice plays");
 extern const uint8_t EN_VOX_PATCH[EN_NVOX];       /* each voice's patch parameter */
 /* the old global MOD (format 5 and the recipes: depth, rate, chaos, target) as every voice's first modulator */
 void en_mod_legacy(int16_t *par, int depth, int rate, int chaos, int dest);

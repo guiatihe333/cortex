@@ -8,7 +8,8 @@
  * peak_db_min). Its commands: storev3 N (the project as AMB-1 0.9 before the layer pages wrote it, format 3, the
  * playing piece's Pad at N); storev5 N (as the first FM6 build wrote it, format 5: one MOD for all three voices, its
  * depth N, chaos 90, target Feedback); storev6 N (as 1.3.91 wrote it, format 6: each voice's MOD at depth N, the
- * pad's FM edits Ratio x2 and Feedback +2); bankfake B (a bank of 32 voices, the own patches renamed TEST 01..,
+ * pad's FM edits Ratio x2 and Feedback +2); storev7 (as 1.3.93 wrote it, format 7: the pieces as they are, their
+ * patches too); bankfake B (a bank of 32 voices, the own patches renamed TEST 01..,
  * sent to bank B as amb_syx.py sends one: 16 SysEx chunks); dx7voice (a DX7 single voice dump, the bass's Pick
  * named DX7 VOICE, as Dexed sends one). */
 static void host_pack(const uint8_t *p, uint8_t *m)   /* a patch as a DX7 bank packs it */
@@ -154,6 +155,30 @@ int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, c
                 o.slot[i].pool = proj.slot[i].pool;
         }
         plat_store_save(OBJ_PROJ, &o, sizeof o);
+        return 1;
+    }
+    if (!strcmp(cmd, "storev7")) {               /* format 7 (as 1.3.93 wrote it): the pieces and their patches */
+        static project_v7_t o;
+        static patchstore_t ps;
+        int i, k;
+        memset(&o, 0, sizeof o);
+        o.magic = PROJ_MAGIC;
+        o.format = 7u;
+        o.pool = proj.pool;
+        o.leds = proj.leds;
+        o.piece = proj.piece;
+        keep();
+        for (k = 0; k < V7_NPARAMS; k++)
+            o.par[k] = proj.par[k];
+        for (i = 0; i < NPIECES; i++) {
+            for (k = 0; k < V7_NPARAMS; k++)
+                o.slot[i].par[k] = proj.slot[i].par[k];
+            o.slot[i].pool = proj.slot[i].pool;
+        }
+        ps = pstore;
+        ps.format = 7u;
+        plat_store_save(OBJ_PROJ, &o, sizeof o);
+        plat_store_save(OBJ_PATCH, &ps, sizeof ps);
         return 1;
     }
     if (!strcmp(cmd, "bankfake")) {              /* bank B: the own patches, renamed, as amb_syx.py sends them */
