@@ -845,6 +845,109 @@ int main(void)
         en_play(1);
     }
 
+    /* 1.3.97. The reel: 3 s of the garden recorded (a new splice), then the garden silenced: the reel plays it back, at
+     * about its level; stopped (SPEED at its middle), quiet; backwards, and as overlapping genes spread and an octave
+     * off, sounding, bounded; overdubbed (sound on sound) it goes on; erased, quiet */
+    {
+        float live, back;
+        en_init();
+        en_play(1);
+        run(4.0f);
+        peak = 0.0f;
+        run(1.0f);
+        live = peak;
+        en_reel(EN_REEL_NEW);
+        run(3.0f);
+        en_reel(EN_REEL_DUB);                    /* (recording a new one: stop) */
+        run(0.1f);
+        CHECK(en_reel_state == 0 && en_reel_nspl == 1 && en_reel_len > 60000u && en_reel_len < 70000u,
+              "the reel recorded: state %d, splices %d, %u samples", en_reel_state, en_reel_nspl, en_reel_len);
+        en_set(P_PAD, 0);
+        en_set(P_BELLS, 0);
+        en_set(P_BASS, 0);
+        en_set(P_PULSE, 0);
+        en_set(P_ECHO, 0);
+        en_set(P_REVERB, 0);
+        en_set(P_RL(LEVEL), 100);
+        run(3.0f);
+        peak = 0.0f;
+        bad = 0;
+        run(2.0f);
+        back = peak;
+        CHECK(!bad && back > 0.25f * live && back < 3.0f * live, "the reel played back: %f (the garden %f)",
+              (double)back, (double)live);
+        en_set(P_RL(SPEED), 50);
+        run(0.5f);
+        peak = 0.0f;
+        run(0.5f);
+        CHECK(peak < 0.15f * back, "the reel stopped: %f (playing %f; the space's tails remain)", (double)peak,
+              (double)back);
+        en_set(P_RL(SPEED), 25);                 /* backwards, overlapping genes, spread, an octave off */
+        en_set(P_RL(GENE), 40);
+        en_set(P_RL(MORPH), 100);
+        peak = 0.0f;
+        bad = 0;
+        run(3.0f);
+        CHECK(!bad && peak > 0.1f * live && peak < 1.0f, "backwards, as genes: %f", (double)peak);
+        en_set(P_RL(SPEED), 75);
+        en_set(P_PAD, 60);
+        en_reel(EN_REEL_DUB);                    /* overdub the first splice */
+        run(1.0f);
+        CHECK(en_reel_state == 2, "overdubbing: state %d", en_reel_state);
+        en_reel(EN_REEL_DUB);
+        run(0.2f);
+        CHECK(en_reel_state == 0 && en_reel_nspl == 1, "the overdub stopped: state %d", en_reel_state);
+        en_reel(EN_REEL_ERASE);
+        en_set(P_PAD, 0);
+        run(1.0f);
+        peak = 0.0f;
+        run(0.5f);
+        CHECK(en_reel_nspl == 0 && peak < 0.15f * back, "erased: %d splices, %f", en_reel_nspl, (double)peak);
+        en_init();
+        en_play(1);
+    }
+
+    /* the reel at 1x is at the pitch it recorded: the bass alone (SOURCE Voice 3), its zero crossings live and back */
+    {
+        long zc[2];
+        int t, b2, j;
+        en_init();
+        en_set(P_PAD, 0);
+        en_set(P_BELLS, 0);
+        en_set(P_PULSE, 0);
+        en_set(P_ECHO, 0);
+        en_set(P_REVERB, 0);
+        en_set(P_RL(SRC), 3);
+        en_set(P_RL(LEVEL), 0);                  /* (not heard while it records: the bass alone, live) */
+        en_set(P_PL(VOX_BASS, PL_ENV), ENV_AMB);  /* (one note held: a steady pitch) */
+        en_set(P_DRIFT, 100);
+        en_play(1);
+        run(3.0f);
+        en_reel(EN_REEL_NEW);
+        for (t = 0; t < 2; t++) {
+            float prev = 0.0f;
+            if (t) {                             /* the reel back, the bass silenced */
+                en_reel(EN_REEL_DUB);
+                en_set(P_BASS, 0);
+                en_set(P_RL(LEVEL), 100);
+                run(1.0f);
+            }
+            zc[t] = 0;
+            for (b2 = 0; b2 < 2 * 44100 / 256; b2++) {
+                en_render(buf, 256, 2048);
+                for (j = 0; j < 256; j++) {
+                    float x = (float)buf[2 * j];
+                    zc[t] += (x > 0.0f) != (prev > 0.0f);
+                    prev = x;
+                }
+            }
+        }
+        CHECK(zc[0] > 100 && labs(zc[1] - zc[0]) < zc[0] / 20, "the reel's pitch: %ld crossings back, %ld live", zc[1],
+              zc[0]);
+        en_init();
+        en_play(1);
+    }
+
     /* stop: the tails die away */
     for (i = 0; i < P_NPARAMS; i++)
         en_set(i, en_param_info(i)->def);

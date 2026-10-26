@@ -1,0 +1,56 @@
+# the reel (SEQ again: Tape, again: Gene): EDIT records a new splice, REC stops it; REC overdubs the splice picked,
+# again stops; SAVE on the reel's pages keeps the pieces and the reel (a restart loads it); REC held erases it
+wait 300
+tap SEQ
+tap SEQ
+wait 100
+expect view 7
+shot tape.png
+tap EDIT
+wait 100
+expect reelstate 1
+expect reelspl 1
+wait 2000
+tap REC
+wait 100
+expect reelstate 0
+expect reelsec >15
+# REC: the first splice overdubbed, round and round; again: stopped
+tap REC
+wait 100
+expect reelstate 2
+wait 500
+tap REC
+wait 100
+expect reelstate 0
+# a second splice, played (ORGANIZE follows the new one: par196)
+tap EDIT
+wait 1000
+tap EDIT
+wait 100
+expect reelspl 3
+tap REC
+wait 100
+expect reelstate 0
+expect par196 2
+tap SEQ
+wait 100
+expect view 8
+shot gene.png
+# kept: the pieces and the reel; a restart loads them
+tap SAVE
+wait 3000
+reboot
+wait 300
+expect reelspl 3
+expect reelsec >25
+# REC held on the reel's pages: erased
+tap SEQ
+tap SEQ
+wait 100
+expect view 7
+press REC
+wait 1700
+release REC
+wait 100
+expect reelspl 0

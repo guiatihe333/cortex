@@ -275,6 +275,33 @@ MOD, and once more to come back; SELECT steps through a group's pages.
 
 The top right of this page shows how much of the FM-1's time the sound takes (CPU).
 
+### The reel: a track of tape with genes
+
+SEQ on the Pulse page opens **Tape**, again **Gene**, again back to the Pulse. The reel is one track of tape, 11.8 s,
+mono (22 kHz, 4-bit ADPCM, as a cassette's lo-fi), after a Tascam portastudio's tape and Make Noise's Morphagene.
+
+| Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
+| --- | --- | --- | --- | --- |
+| Tape | Source (Mix, Voice 1, 2, 3, Pulse) | Level | SOS | Speed (−2x .. Stop .. +2x) |
+| Gene | Gene (the whole splice .. 1/256) | Slide | Morph | Organize (splice 1–8) |
+
+On these two pages:
+
+- **EDIT** records a new **splice** at the end of the reel (up to 8); EDIT again while recording ends it and starts the
+  next; **REC** stops it.
+- **REC** overdubs the splice Organize picks, round and round, sound on sound (**SOS**: how much of what was there
+  stays; 0 replaces it); REC again stops.
+- **SAVE** keeps the pieces and the reel (the reel comes back after a restart). **REC held** 1.5 s erases the reel.
+
+What it records is **Source**'s: the whole mix (its echo and reverb too, the reel itself left out), or one voice alone,
+or the pulse. It plays the splice Organize picks as **genes**: each a window of the splice (**Gene**), starting where
+the tape is, past it by **Slide**, at **Speed** (pitch and time together, as tape; 1x and −1x stick; at Stop it falls
+silent), with a little wow and flutter. **Morph**: gaps between the genes (0–40), one after another (40–55), two to
+four overlapping (55–100), spread across the field (past 75) and an octave up or down now and then (past 85). The
+reel goes to the mix and a little to the echo and reverb. The echo's tape is 2.8 s now (it gave the reel its room).
+
+MIDI: the reel's eight on channel 16, CC 50–57.
+
 ### The three voices, alike
 
 From 1.3.96 the three voices are set the same way, none of them made for one job. Each plays its own patch in a

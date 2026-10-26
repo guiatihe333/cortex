@@ -1,7 +1,7 @@
 #!/bin/sh
 # Instala o AMB-1 FM6 no FM-1 ligado neste computador (Linux x86-64, ou macOS com Docker para o toolchain).
 #
-#   sh instalar.sh [VERSAO]          VERSAO padrao 1.3.96-fm6
+#   sh instalar.sh [VERSAO]          VERSAO padrao 1.3.97-fm6
 #
 #   1. prepara um Python isolado (work/.venv) com mido, python-rtmidi e Pillow
 #   2. procura o FM-1 no USB e mostra o firmware que ele roda agora (antes do build: falha cedo)
@@ -13,7 +13,7 @@
 # "Back to the stock firmware", que devolve o firmware de fabrica da M-VAVE.
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
-V="${1:-1.3.96-fm6}"
+V="${1:-1.3.97-fm6}"
 export WORK="${WORK:-$HERE/work}"
 mkdir -p "$WORK"
 

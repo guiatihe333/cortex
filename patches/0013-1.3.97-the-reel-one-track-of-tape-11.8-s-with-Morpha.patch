@@ -1,0 +1,1609 @@
+From 45a1cf6fc1e5a84e01fcc5f3d3e4d3666d0e18e4 Mon Sep 17 00:00:00 2001
+From: AMB-1 FM6 <noreply@anthropic.com>
+Date: Mon, 26 Oct 2026 20:48:50 -0300
+Subject: [PATCH] 1.3.97: the reel, one track of tape (11.8 s) with
+ Morphagene-like genes
+
+- app/dsp/reel.c: mono, 22.05 kHz, IMA ADPCM in blocks of 256 (each with the coder's state: read anywhere, either
+  way); SOURCE the mix (the reel left out), a voice alone or the pulse; up to 8 splices, a new one at the end (EDIT on
+  the reel's pages) or the one ORGANIZE picks overdubbed sound on sound (REC, SOS); played as up to four genes: GENE,
+  SLIDE, SPEED (-2x .. stop .. +2x, wow and flutter), MORPH (gaps, joined, overlapping, spread, octaves)
+- the Tape and Gene pages (SEQ again, and again); SAVE there keeps the reel in the flash (0xA7000), loaded at the
+  start; REC held erases it; MIDI CC 50..57 on channel 16; the dice on both pages
+- room for it: the plate's lines in 16 bits (as it sounded: rms 0.0792 against 0.0791), the echo's tape 2.8 s
+- project format 10 (format 9 carried over as it is)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ app/app.c                  |   1 +
+ app/app.h                  |   9 +-
+ app/dsp/amb.c              | 114 +++++++--
+ app/dsp/amb.h              |  19 +-
+ app/dsp/reel.c             | 458 +++++++++++++++++++++++++++++++++++++
+ app/host.c                 |   8 +-
+ app/project.c              |  51 +++++
+ app/ui.c                   | 129 ++++++++++-
+ docs/MANUAL.md             |  27 +++
+ tests/host/amb_test.c      | 103 +++++++++
+ tests/scenarios/mod.amb    |  40 ++--
+ tests/scenarios/reader.amb |   2 +-
+ tests/scenarios/tape.amb   |  56 +++++
+ 13 files changed, 966 insertions(+), 51 deletions(-)
+ create mode 100644 app/dsp/reel.c
+ create mode 100644 tests/scenarios/tape.amb
+
+diff --git a/app/app.c b/app/app.c
+index b1b87cb..df597f8 100644
+--- a/app/app.c
++++ b/app/app.c
+@@ -15,6 +15,7 @@ void app_init(void)
+ {
+     en_init();
+     project_load();                      /* defaults when nothing (or another format) is saved */
++    project_reel_load();                 /* the reel, as it was saved */
+     project_apply();
+ }
+ void app_render(int32_t *lr, uint32_t n, uint32_t gain_q12) { en_render(lr, n, gain_q12); }
+diff --git a/app/app.h b/app/app.h
+index 53cced6..c7eb779 100644
+--- a/app/app.h
++++ b/app/app.h
+@@ -20,18 +20,23 @@
+ enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_NOBJ };
+ #define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u}   /* the pieces' patches after the panel, in the data area */
+ #define PROJ_MAGIC 0x314F4E45u           /* "ENO1" */
+-#define PROJ_FORMAT 9u                   /* 9: the voices alike (a ROLE each, its own octave, density, pace, glide,
++#define PROJ_FORMAT 10u                  /* 10: the reel's settings; 9: the voices alike (a ROLE each, its own octave, density, pace, glide,
+                                           * an ADSR), AMB-1's eighteen patches; 8: how each voice plays (ENV, GATE); 7:
+                                           * each voice's own patch
+                                           * (OBJ_PATCH) and five modulators; 6: each
+                                           * voice's patch choice, FM edits and MOD; 5: one MOD for all; 4: the bass's
+-                                          * and the pulse's own settings (8, 7, 6, 5, 4 and 3 are carried over; older formats
++                                          * and the pulse's own settings (9 down to 3 are carried over; older formats
+                                           * give the recipes) */
+ #define NPIECES EN_NPIECES
+ 
+ /* the DX7 banks (bank.c): EN_NBANK sectors of the data area, each a 32-voice bulk dump's voices (VMEM, 4096 bytes),
+  * sent from a computer over USB-MIDI (tools/amb_syx.py) */
+ #define BANK_BASE 0x97000u
++/* the reel (amb.h en_reel_mem): its splices at REEL_BASE, its blocks' states a sector on, its samples three on; the
++ * splices written last (a reel half written has none) */
++#define REEL_BASE 0xA7000u
++int project_reel_save(void);
++void project_reel_load(void);
+ int bank_voice(int voice, int src, uint8_t *p);   /* source src's patch for the voice (a bank's: from the flash);
+                                                  * 0: none there */
+ int bank_name(int src, char *b);         /* its name (10 characters, trimmed) into b; 0: an empty slot */
+diff --git a/app/dsp/amb.c b/app/dsp/amb.c
+index f0be078..2854a53 100644
+--- a/app/dsp/amb.c
++++ b/app/dsp/amb.c
+@@ -54,6 +54,8 @@ static const en_param_t PARAMS[P_NPARAMS] = {
+     PL_PARAMS("V1", ROLE_CHORD, 100, 60, 70), PL_PARAMS("V2", ROLE_LOOPS, 40, 60, 25),
+     PL_PARAMS("V3", ROLE_BASS, 35, 0, 80),
+ #undef PL_PARAMS
++    {"Tape source", 0, 4, 0}, {"Tape level", 0, 100, 70}, {"SOS", 0, 100, 70}, {"Speed", 0, 100, 75},
++    {"Gene", 0, 100, 100}, {"Slide", 0, 100, 0}, {"Morph", 0, 100, 45}, {"Organize", 0, 7, 0},
+ #undef VOX_PARAMS
+ #undef MS_PARAMS
+ };
+@@ -70,6 +72,7 @@ static const char *const PATCH_NAME[EN_NFACT] = {
+     "Rhodes", "Voices", "Glass", "Strings", "Warm", "Halo", "Bell", "Vibes", "Marimba", "Tubular", "Kalimba", "Celesta",
+     "Sine", "Round", "Pick", "Sub", "Reed", "Fretless"};
+ static const char *const ENV_NAME[EN_NENV] = {"AMB", "Patch", "ADSR"};
++static const char *const TSRC_NAME[5] = {"Mix", "Voice 1", "Voice 2", "Voice 3", "Pulse"};
+ static const char *const ROLE_NAME[EN_NROLE] = {"Chord", "Loops", "Bass"};
+ /* format 6's FM Ratio: the modulators' frequency times these (log2), harmonic, then three inharmonic */
+ #define NRATIO 9
+@@ -246,11 +249,15 @@ void en_param_text(int i, int v, char *b)
+         s = DIV_NAME[div_of(v < 0 ? 0 : v > 100 ? 100 : v)];
+     else if (mk == MS_FADE && v == 0)
+         s = "Off";
+-    else if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_ENV)
++    else if (i == P_RL(SRC))
++        s = TSRC_NAME[(unsigned)v < 5u ? v : 0];
++    else if (i == P_RL(SPEED) && v >= 48 && v <= 52)
++        s = "Stop";
++    else if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_ENV)
+         s = ENV_NAME[(unsigned)v < EN_NENV ? v : 0];
+-    else if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_ROLE)
++    else if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_ROLE)
+         s = ROLE_NAME[(unsigned)v < EN_NROLE ? v : 0];
+-    else if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_PACE && par[i - PL_PACE + PL_ROLE] != ROLE_CHORD) {
++    else if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_PACE && par[i - PL_PACE + PL_ROLE] != ROLE_CHORD) {
+         static const char *const STEP[2][5] = {{"1/16", "1/8", "1/4", "1/2", "1/2"},
+                                                {"Chord", "1 bar", "1/2", "1/4", "1/8"}};
+         const int loops = par[i - PL_PACE + PL_ROLE] == ROLE_LOOPS;
+@@ -284,20 +291,37 @@ void en_param_text(int i, int v, char *b)
+         *b = 0;
+         return;
+     }
+-    if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_PACE) {   /* a chord's breath, seconds a cycle */
++    if (i == P_RL(SPEED)) {                      /* "+1.00x", "-0.50x" */
++        const int c = v >= 73 && v <= 77 ? 100 : v >= 23 && v <= 27 ? -100 : (v - 50) * 4;
++        int a = c < 0 ? -c : c;
++        *b++ = c < 0 ? '-' : '+';
++        b = itoa_s(a / 100, b);
++        *b++ = '.';
++        *b++ = (char)('0' + a % 100 / 10);
++        *b++ = (char)('0' + a % 10);
++        *b++ = 'x';
++        *b = 0;
++        return;
++    }
++    if (i == P_RL(ORG)) {                        /* the splice, 1..8 */
++        b = itoa_s(v + 1, b);
++        *b = 0;
++        return;
++    }
++    if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_PACE) {   /* a chord's breath, seconds a cycle */
+         b = itoa_s(4 + (12 * v + 50) / 100, b);
+         *b++ = 's';
+         *b = 0;
+         return;
+     }
+-    if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_GLIDE) {
++    if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_GLIDE) {
+         b = itoa_s(20 + 12 * v, b);
+         *b++ = 'm';
+         *b++ = 's';
+         *b = 0;
+         return;
+     }
+-    if (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_GATE) {
++    if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_GATE) {
+         b = itoa_s(v, b);
+         *b++ = '%';
+         *b = 0;
+@@ -325,7 +349,7 @@ void en_param_text(int i, int v, char *b)
+         *b = 0;
+         return;
+     }
+-    if ((i == P_TUNE || i == P_BOCT || i == P_BASSOCT || (i >= P_PLAY && (i - P_PLAY) % PL_N == PL_OCT)) && v > 0)
++    if ((i == P_TUNE || i == P_BOCT || i == P_BASSOCT || (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_OCT)) && v > 0)
+         *b++ = '+';
+     itoa_s(v, b);
+ }
+@@ -470,7 +494,8 @@ const char *en_chord_name(const int *pcs, int n, char *buf)
+ }
+ 
+ /* ------------------------------------------------------------ commands --- */
+-enum { C_SET, C_POOL, C_PLAY, C_NEXT, C_FREEZE, C_SEED, C_PANIC, C_CLOCK, C_REGROW, C_PBYTE, C_PDONE, C_PLOAD };
++enum { C_SET, C_POOL, C_PLAY, C_NEXT, C_FREEZE, C_SEED, C_PANIC, C_CLOCK, C_REGROW, C_PBYTE, C_PDONE, C_PLOAD,
++       C_REEL };
+ _Static_assert(P_NPARAMS <= 256, "C_SET carries a parameter's index in 8 bits");
+ _Static_assert(FP_SIZE <= 256, "C_PBYTE carries a patch byte's offset in 8 bits");
+ #define QN 1024u                              /* a piece (project_apply) posts every parameter and patch byte at once */
+@@ -494,6 +519,11 @@ void en_seed(uint32_t s) { post(C_SEED, 0, (int)(s & 0xFFFFu)); }
+ void en_panic(void) { post(C_PANIC, 0, 0); }
+ void en_clock(int msg) { post(C_CLOCK, msg, 0); }
+ void en_regrow(void) { post(C_REGROW, 0, 0); }
++void en_reel(int op) { post(C_REEL, op, 0); }
++static void reel_new(void);                      /* (reel.c) */
++static void reel_dub(void);
++static void reel_erase(void);
++static void reel_init(void);
+ void en_patch_byte(int voice, int off, int v) { post(C_PBYTE, voice, off << 8 | (v & 0xFF)); }
+ void en_patch_done(int voice, int fresh) { post(C_PDONE, voice, fresh); }
+ /* each voice's patch mailbox: the UI writes it whole between two counts (odd while writing), the engine copies it on
+@@ -604,6 +634,7 @@ static float motion;                            /* 0..1: Motion */
+ #define FM_DB (16777216.0f / 6.0206f)          /* a level offset of the modulators, Q24 log2 a dB */
+ enum { FB_PADL, FB_PADR, FB_BELLL, FB_BELLR, FB_BELLE, FB_BASSL, FB_BASSR, FB_N };
+ static float fm_buf[FB_N][FM6_N];
++static float fm_vtap[EN_NVOX][FM6_N];           /* each voice's sound alone, mono (the reel's SOURCE) */
+ static uint32_t fm_pos = FM6_N;
+ static uint8_t vpat[EN_NVOX][FP_SIZE + 1];      /* each voice's patch, as the notes play it */
+ static uint8_t vstage[EN_NVOX][FP_SIZE + 1];    /* its bytes as they arrive, into vpat when applied */
+@@ -2133,9 +2164,11 @@ static const int DL_LEN[L_N] = {PRE_N, DS(142), DS(107), DS(379), DS(277), DS(67
+                                 DS(3720), DS(908) + EXC + 2, DS(4217), DS(2656), DS(3163)};
+ #define DL_TOTAL (PRE_N + DS(142) + DS(107) + DS(379) + DS(277) + DS(672) + DS(4453) + DS(1800) + DS(3720) + DS(908) + \
+                   DS(4217) + DS(2656) + DS(3163) + 2 * (EXC + 2))
+-static float pl_buf[DL_TOTAL] EN_POOL;
++/* the lines in 16 bits (half the RAM of floats: room for the tape), +-4 full scale: the tank's quantisation ~-78 dB */
++#define PL_Q 8192.0f
++static int16_t pl_buf[DL_TOTAL] EN_POOL;
+ typedef struct {
+-    float *b;
++    int16_t *b;
+     int n, i;
+ } dl_t;
+ static dl_t dl[L_N];
+@@ -2144,11 +2177,12 @@ static float pl_bw, pl_damp_l, pl_damp_r, pl_decay = 0.5f, pl_decay_t = 0.5f, pl
+ static inline float tap(const dl_t *d, int k)
+ {
+     int j = d->i - k;
+-    return d->b[j < 0 ? j + d->n : j];
++    return (float)d->b[j < 0 ? j + d->n : j] * (1.0f / PL_Q);
+ }
+ static inline void push(dl_t *d, float x)
+ {
+-    d->b[d->i] = x;
++    float y = x * PL_Q;
++    d->b[d->i] = (int16_t)(y > 32767.0f ? 32767 : y < -32767.0f ? -32767 : (int)(y + (y >= 0.0f ? 0.5f : -0.5f)));
+     if (++d->i >= d->n)
+         d->i = 0;
+ }
+@@ -2203,7 +2237,7 @@ static inline void reverb(float in, float *ol, float *or_)
+ 
+ static void plate_init(void)
+ {
+-    float *p = pl_buf;
++    int16_t *p = pl_buf;
+     int k, i;
+     for (k = 0; k < L_N; k++) {
+         dl[k].b = p;
+@@ -2212,7 +2246,7 @@ static void plate_init(void)
+         p += DL_LEN[k];
+     }
+     for (i = 0; i < DL_TOTAL; i++)
+-        pl_buf[i] = 0.0f;
++        pl_buf[i] = 0;
+     pl_bw = pl_damp_l = pl_damp_r = 0.0f;
+     lfo_s = 0.0f;
+     lfo_c = 1.0f;
+@@ -2220,14 +2254,14 @@ static void plate_init(void)
+ 
+ /* ------------------------------------------------- echo: tape and Echoplex --- */
+ /* After Discreet Music's chain: an Echoplex (a short, smearing echo, ~160 ms, fed back) and a tape loop
+- * (long: up to ~5.6 s, synced to the tempo), each repeat a little darker and thinner, with a little
++ * (long: up to ~2.8 s, synced to the tempo), each repeat a little darker and thinner, with a little
+  * wow. The tape runs at a quarter rate (11 kHz, 16-bit, mono): it loses its highs anyway. Two heads:
+  * the first plays the loop's length, the second a part of it (3/4 at first). With Motion the echo
+  * evolves: each head wanders across the field, the feedback leans now on one head, now on the other
+  * (the repeats fall in changing patterns, left and right), and now and then the second head slides to
+  * another part of the loop, as a head moved by hand (the repeats bend a little in pitch on the way).
+  * The Echoplex has a second tap, for the right. */
+-#define TAPE_N 62000                             /* 5.6 s at 11.025 kHz */
++#define TAPE_N 31000                             /* 2.8 s at 11.025 kHz (the rest of what it had: the looper's) */
+ #define TAPE_SR 11025.0f
+ static int16_t tape[TAPE_N] EN_POOL;
+ static int tape_w, tape_ph;
+@@ -2470,7 +2504,7 @@ static void apply(int p, int v)
+     default:
+         if (p >= P_VOX && p < P_PLAY)            /* a voice's own (FM, its envelopes, MOD) */
+             vox_apply((p - P_VOX) / VX_N, (p - P_VOX) % VX_N, v);
+-        else if (p >= P_PLAY)
++        else if (p >= P_PLAY && p < P_TAPE)
+             play_apply((p - P_PLAY) / PL_N, (p - P_PLAY) % PL_N, v);
+         break;
+     }
+@@ -2557,6 +2591,7 @@ void en_init(void)
+     for (i = 0; i < EN_NDRUM; i++)
+         drum[i].on = 0, drum[i].wait = 0;
+     fm_pos = FM6_N;
++    reel_init();
+     mod_init();
+     plate_init();
+     for (i = 0; i < TAPE_N; i++)
+@@ -2718,14 +2753,26 @@ static void drain(void)
+             }
+             break;
+         case C_PANIC: quiet(); break;
++        case C_REEL:
++            if (a == EN_REEL_NEW)
++                reel_new();
++            else if (a == EN_REEL_DUB)
++                reel_dub();
++            else if (a == EN_REEL_ERASE)
++                reel_erase();
++            break;
+         case C_REGROW: regrow(); break;
+         }
+     }
+ }
+ 
++#include "reel.c"
++
+ /* --------------------------------------------------------------- render --- */
+ #define BLK 256
+ static float mixl[BLK], mixr[BLK], rsend[BLK], esend[BLK];
++static float vsrc[EN_NVOX][BLK], dsrc[BLK];     /* each voice alone, the pulse alone (the reel's SOURCE) */
++static float rl_in[BLK], rl_l[BLK], rl_r[BLK];  /* what the reel records, what it plays */
+ 
+ /* the pad's bus: a 12 dB low-pass, darker than it sounds on paper (Brian Eno darkened everything: the
+  * Synthi's filter below half, then tape). No chorus: a modulated delay against pure tones beats (on
+@@ -2801,6 +2848,7 @@ static void chord_block(int v)                  /* a Chord voice's block: its br
+                 pr += dr;
+                 fm_buf[FB_PADL][j] += x[j] * amp * pl;
+                 fm_buf[FB_PADR][j] += x[j] * amp * pr;
++                fm_vtap[v][j] += x[j] * amp * (pl + pr) * 0.5f;
+             }
+         } else {
+             for (j = 0; j < FM6_N; j++)
+@@ -2884,6 +2932,7 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
+                     fm_buf[FB_BELLL][j] += sm * pl;
+                     fm_buf[FB_BELLR][j] += sm * pr;
+                     fm_buf[FB_BELLE][j] += sm;
++                    fm_vtap[v][j] += sm * (pl + pr) * 0.5f;
+                 }
+             }
+             n->pl = gl;
+@@ -2951,6 +3000,7 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
+                 pr += dr;
+                 fm_buf[FB_BASSL][j] += x[j] * amp * xf * g * pl;
+                 fm_buf[FB_BASSR][j] += x[j] * amp * xf * g * pr;
++                fm_vtap[v][j] += x[j] * amp * xf * g * (pl + pr) * 0.5f;
+             }
+         } else {
+             for (j = 0; j < FM6_N; j++)
+@@ -2974,6 +3024,9 @@ static void fm_block(void)
+     for (i = 0; i < FB_N; i++)
+         for (j = 0; j < FM6_N; j++)
+             fm_buf[i][j] = 0.0f;
++    for (v = 0; v < EN_NVOX; v++)
++        for (j = 0; j < FM6_N; j++)
++            fm_vtap[v][j] = 0.0f;
+     mod_step();
+     if (first_role(ROLE_CHORD) < 0)
+         en_pad_level = 0.0f;
+@@ -3014,6 +3067,9 @@ static void fm_pull(uint32_t n)
+         }
+         padl[j] = fm_buf[FB_PADL][fm_pos];
+         padr[j] = fm_buf[FB_PADR][fm_pos];
++        vsrc[0][j] = fm_vtap[0][fm_pos];
++        vsrc[1][j] = fm_vtap[1][fm_pos];
++        vsrc[2][j] = fm_vtap[2][fm_pos];
+         bl = fm_buf[FB_BASSL][fm_pos];
+         br = fm_buf[FB_BASSR][fm_pos];
+         b = 0.5f * (bl + br);
+@@ -3050,6 +3106,7 @@ static void render_hat(drum_t *v, uint32_t n, float g, float pl, float pr)
+         x = hp * amp * att * g;
+         mixl[j] += x * pl;
+         mixr[j] += x * pr;
++        dsrc[j] += x * (pl + pr) * 0.5f;
+         rsend[j] += x * 0.2f;
+         esend[j] += x * 0.08f;
+         amp *= v->adec;
+@@ -3074,6 +3131,7 @@ static void render_drums(uint32_t n)
+             float x = sine(ph) * amp * att * g;
+             mixl[j] += x;
+             mixr[j] += x;
++            dsrc[j] += x;
+             rsend[j] += x * 0.1f;
+             ph += inc;
+             if (ph >= 1.0f)
+@@ -3096,20 +3154,30 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
+ {
+     uint32_t j;
+     const float rg = rev_send * rev_in_gain * (1.0f - 0.25f * arcm), eg = echo_send;
++    const int src = par[P_RL(SRC)];
+     for (j = 0; j < n; j++)
+-        mixl[j] = mixr[j] = rsend[j] = esend[j] = 0.0f;
++        mixl[j] = mixr[j] = rsend[j] = esend[j] = dsrc[j] = 0.0f;
+     fm_pull(n);
+     pad_bus(n);
+     render_drums(n);
++    reel_play(rl_l, rl_r, n);                    /* the reel: to the mix, and a little to the space */
++    for (j = 0; j < n; j++) {
++        const float m = (rl_l[j] + rl_r[j]) * (1.0f / 0.36f);
++        rsend[j] += m * 0.25f;
++        esend[j] += m * 0.1f;
++    }
+     for (j = 0; j < n; j++) {
+         float wl, wr, l, r, el, er, xl, xr;
+         echoes(esend[j] * eg, &el, &er, &xl, &xr);
+         reverb((rsend[j] * rg + (el + er + xl + xr) * 0.35f * rev_send) * 0.8f, &wl, &wr);
+-        l = (mixl[j] + 0.75f * el + 0.3f * xl + 1.3f * wl) * 0.36f * gain;
+-        r = (mixr[j] + 0.75f * er + 0.3f * xr + 1.3f * wr) * 0.36f * gain;
+-        out[2 * j] = (int32_t)(fm_tanhf(l) * 8300000.0f);
+-        out[2 * j + 1] = (int32_t)(fm_tanhf(r) * 8300000.0f);
+-    }
++        l = (mixl[j] + 0.75f * el + 0.3f * xl + 1.3f * wl) * 0.36f;
++        r = (mixr[j] + 0.75f * er + 0.3f * xr + 1.3f * wr) * 0.36f;
++        /* SOURCE: the whole mix (its space too, the reel's own sound left out) or one voice, or the pulse, alone */
++        rl_in[j] = src == 0 ? 0.5f * (l + r) : src <= EN_NVOX ? vsrc[src - 1][j] * 0.36f : dsrc[j] * 0.36f;
++        out[2 * j] = (int32_t)(fm_tanhf((l + rl_l[j]) * gain) * 8300000.0f);
++        out[2 * j + 1] = (int32_t)(fm_tanhf((r + rl_r[j]) * gain) * 8300000.0f);
++    }
++    reel_record(rl_in, n);
+ }
+ 
+ /* the arc: a slow tide, minutes long, between sparse (-1) and full (+1); Motion sets how far it goes */
+diff --git a/app/dsp/amb.h b/app/dsp/amb.h
+index fa32e03..a1df605 100644
+--- a/app/dsp/amb.h
++++ b/app/dsp/amb.h
+@@ -58,7 +58,8 @@ enum {
+     P_BELLPATCH, P_BASSPATCH,                         /* the bells' and the bass's patches (sources) */
+     P_VOX,                                            /* then each voice's own: EN_NVOX blocks of VX_N (P_VX) */
+     P_PLAY = P_VOX + 3 * 42,                          /* then how each voice plays its notes: EN_NVOX of PL_N (P_PL) */
+-    P_NPARAMS = P_PLAY + 3 * 11
++    P_TAPE = P_PLAY + 3 * 11,                         /* then the reel's (TP_*, P_RL) */
++    P_NPARAMS = P_TAPE + 8
+ };
+ /* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
+  * index and five generative modulators */
+@@ -92,9 +93,23 @@ enum { ROLE_CHORD, ROLE_LOOPS, ROLE_BASS, EN_NROLE };
+ /* the settings of before each voice had its own (Swell, Density, Bell oct, Bass oct, Glide, Fifth: still in the table,
+  * unshown) into each voice's (a piece's recipe, a project of an older format) */
+ void en_upgrade(int16_t *par);
++/* the reel (reel.c): one track of tape, 11.8 s, with genes. SOURCE (Mix, Voice 1..3, Pulse), LEVEL, SOS (of what was
++ * there, how much stays as it is overdubbed), SPEED (-2x .. 0 .. +2x), GENE (a gene: the whole splice .. 1/256),
++ * SLIDE (where in the splice), MORPH (gaps, joined, overlapping, spread), ORGANIZE (the splice played, 1..8) */
++enum { TP_SRC, TP_LEVEL, TP_SOS, TP_SPEED, TP_GENE, TP_SLIDE, TP_MORPH, TP_ORG, TP_N };
++#define P_RL(k) (P_TAPE + TP_##k)
++_Static_assert(P_NPARAMS == P_TAPE + TP_N, "the reel's");
++enum { EN_REEL_NEW = 1, EN_REEL_DUB, EN_REEL_ERASE };
++void en_reel(int op);                             /* a new splice at the end; overdub the one picked (again: stop); erase */
++extern volatile uint8_t en_reel_state, en_reel_nspl;   /* 0 resting, 1 recording a new splice, 2 overdubbing; splices */
++extern volatile uint32_t en_reel_len, en_reel_w;  /* samples recorded (22.05 kHz, of 260096); where it records */
++extern volatile float en_reel_pos;                /* the cursor in the splice playing, 0..1 */
++void *en_reel_mem(int part, uint32_t *n);         /* the reel's memory: 0 its splices, 1 its blocks' states, 2 its
++                                                   * samples recorded (3: all of them), for saving and loading */
++int en_reel_valid(void);                          /* after loading: 1 a reel, 0 none (then empty) */
+ #define P_PL(v, k) (P_PLAY + (v) * PL_N + (k))
+ _Static_assert(P_PLAY == P_VOX + EN_NVOX * VX_N, "a block a voice");
+-_Static_assert(P_NPARAMS == P_PLAY + EN_NVOX * PL_N, "how each voice plays");
++_Static_assert(P_TAPE == P_PLAY + EN_NVOX * PL_N, "how each voice plays");
+ extern const uint8_t EN_VOX_PATCH[EN_NVOX];       /* each voice's patch parameter */
+ /* the old global MOD (format 5 and the recipes: depth, rate, chaos, target) as every voice's first modulator */
+ void en_mod_legacy(int16_t *par, int depth, int rate, int chaos, int dest);
+diff --git a/app/dsp/reel.c b/app/dsp/reel.c
+new file mode 100644
+index 0000000..3a6249f
+--- /dev/null
++++ b/app/dsp/reel.c
+@@ -0,0 +1,458 @@
++/* SPDX-License-Identifier: MPL-2.0
++ * Copyright (C) 2026 Charles Vestal */
++/* AMB-1 FM6's reel: one track of tape, 11.8 s, after a Tascam portastudio's tape and Make Noise's Morphagene's genes
++ * (the idea, not their code). Part of the engine (amb.c includes it, after the echo).
++ *
++ * The tape is mono, 22.05 kHz, IMA ADPCM (4 bits a sample: 11.8 s in 130 KB of the pool), in blocks of 256 samples,
++ * each with the coder's state at its start, so any block can be read on its own (a gene starts anywhere, goes either
++ * way). What is recorded is SOURCE's: the whole mix (the tape's own sound left out) or one voice (before the space) or
++ * the pulse, a little saturated, as onto tape. Recording makes SPLICES (up to 8, one after another on the reel): a
++ * new one at the end (EDIT on the tape's pages), or the one ORGANIZE picks overdubbed, looping (REC), sound on sound
++ * (SOS: how much of what was there stays, 0 replaced .. 100 all of it, the new on top).
++ *
++ * The reel plays the splice ORGANIZE picks, as genes (grains): each a window of the splice (GENE: the whole splice ..
++ * 1/256 of it, 20 ms at least), started where the tape's cursor is, past it by SLIDE, at SPEED (-2x .. stopped ..
++ * +2x: pitch and time together, as tape; 1x and -1x stick), with the tape's wow and flutter. MORPH sets how they
++ * follow: gaps between them (0 .. 40), one after another, joined (40 .. 55), overlapping two, three, four (55 .. 100),
++ * spread across the field (past 75) and an octave up or down now and then (past 85). Recording and playing happen at
++ * once. The reel's sound goes to the mix and a little to the space. */
++#define RL_BLK 256
++#define RL_NBLK 1016
++#define RL_N (RL_BLK * RL_NBLK)                 /* 260096 samples: 11.8 s */
++#define RL_SR 22050.0f
++#define RL_NSPL 8
++#define RL_NG 4                                  /* genes sounding at once */
++#define RL_MAGIC 0x4C45455Eu                     /* "^EEL" */
++static uint8_t rl_nib[RL_N / 2] EN_POOL;         /* two samples a byte, the first in the low nibble */
++typedef struct {
++    int16_t pred;
++    uint8_t idx, pad;
++} rl_hdr_t;
++static rl_hdr_t rl_hdr[RL_NBLK] EN_POOL;
++typedef struct {
++    uint32_t magic, len, nspl, ver;              /* len: how far the reel is recorded (samples) */
++    uint32_t s0[RL_NSPL], s1[RL_NSPL];           /* each splice: its first sample (a block's), one past its last */
++} rl_meta_t;
++static rl_meta_t rl_meta;
++
++volatile uint8_t en_reel_state, en_reel_nspl;    /* 0 resting, 1 recording a new splice, 2 overdubbing */
++volatile uint32_t en_reel_len, en_reel_w;        /* samples recorded; where it records */
++volatile float en_reel_pos;                      /* the cursor in the splice playing, 0..1 */
++
++/* ---------------------------------------------------------------- the coder --- */
++static const int16_t RL_STEP[89] = {
++    7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107,
++    118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876,
++    963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358,
++    5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086,
++    29794, 32767};
++static const int8_t RL_IDX[16] = {-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8};
++static inline void rl_step(int *pred, int *idx, int n)   /* a nibble decoded: the state moved */
++{
++    int step = RL_STEP[*idx], d = step >> 3, p;
++    if (n & 4)
++        d += step;
++    if (n & 2)
++        d += step >> 1;
++    if (n & 1)
++        d += step >> 2;
++    p = (n & 8) ? *pred - d : *pred + d;
++    *pred = p > 32767 ? 32767 : p < -32768 ? -32768 : p;
++    p = *idx + RL_IDX[n];
++    *idx = p < 0 ? 0 : p > 88 ? 88 : p;
++}
++static inline int rl_code(int *pred, int *idx, int x)   /* a sample coded: its nibble, the state moved */
++{
++    int step = RL_STEP[*idx], d = x - *pred, n = 0;
++    if (d < 0) {
++        n = 8;
++        d = -d;
++    }
++    if (d >= step) {
++        n |= 4;
++        d -= step;
++    }
++    step >>= 1;
++    if (d >= step) {
++        n |= 2;
++        d -= step;
++    }
++    step >>= 1;
++    if (d >= step)
++        n |= 1;
++    rl_step(pred, idx, n);
++    return n;
++}
++static inline int rl_nibble(uint32_t i) { return i & 1u ? rl_nib[i >> 1] >> 4 : rl_nib[i >> 1] & 15; }
++static void rl_decode(uint32_t b, int16_t *out)   /* block b whole */
++{
++    int pred = rl_hdr[b].pred, idx = rl_hdr[b].idx, k;
++    uint32_t i = b * RL_BLK;
++    for (k = 0; k < RL_BLK; k++) {
++        rl_step(&pred, &idx, rl_nibble(i + (uint32_t)k));
++        out[k] = (int16_t)pred;
++    }
++}
++
++/* ------------------------------------------------------------- recording --- */
++static uint8_t rl_rec, rl_stopping;              /* rl_rec as en_reel_state; stopping: the block finished first */
++static uint32_t rl_w;                            /* where it records */
++static int rl_spl;                               /* the splice recorded */
++static int rl_ep, rl_ei;                         /* the coder's state */
++static int16_t rl_old[RL_BLK];                   /* the block being written, as it was (sound on sound) */
++static float rl_d1, rl_d2;                       /* the 2:1 decimator's last two in */
++static uint8_t rl_half;
++
++static void rl_publish(void)
++{
++    en_reel_state = rl_rec;
++    en_reel_nspl = (uint8_t)rl_meta.nspl;
++    en_reel_len = rl_meta.len;
++    en_reel_w = rl_w;
++}
++static void rl_block_start(void)                 /* rl_w at a block's start: what it held, the coder's state kept */
++{
++    uint32_t b = rl_w / RL_BLK;
++    if (rl_w < rl_meta.len)
++        rl_decode(b, rl_old);
++    else
++        __builtin_memset(rl_old, 0, sizeof rl_old);
++    rl_hdr[b].pred = (int16_t)rl_ep;
++    rl_hdr[b].idx = (uint8_t)rl_ei;
++}
++static void rl_stop_now(void)
++{
++    rl_rec = 0;
++    rl_stopping = 0;
++    rl_publish();
++}
++static void reel_new(void)                       /* a new splice at the reel's end */
++{
++    uint32_t s = (rl_meta.len + RL_BLK - 1u) / RL_BLK * RL_BLK;
++    if (rl_rec)
++        rl_stop_now();
++    if (rl_meta.nspl >= RL_NSPL || s + RL_BLK * 8u > RL_N)
++        return;                                  /* (full: the UI says so) */
++    rl_spl = (int)rl_meta.nspl;
++    rl_meta.s0[rl_spl] = rl_meta.s1[rl_spl] = s;
++    rl_meta.nspl++;
++    rl_w = s;
++    rl_ep = 0;
++    rl_ei = 0;
++    rl_rec = 1;
++    rl_block_start();
++    rl_publish();
++}
++static void reel_dub(void)                       /* the splice picked, overdubbed, looping; again: stop */
++{
++    int k = par[P_RL(ORG)];
++    if (rl_rec) {
++        if (rl_rec == 2)
++            rl_stopping = 1;                     /* (to the block's end, as it was) */
++        else
++            rl_stop_now();
++        return;
++    }
++    if (!rl_meta.nspl) {
++        reel_new();
++        return;
++    }
++    rl_spl = k < (int)rl_meta.nspl ? k : (int)rl_meta.nspl - 1;
++    rl_w = rl_meta.s0[rl_spl];
++    rl_ep = rl_hdr[rl_w / RL_BLK].pred;
++    rl_ei = rl_hdr[rl_w / RL_BLK].idx;
++    rl_rec = 2;
++    rl_block_start();
++    rl_publish();
++}
++static void reel_erase(void)
++{
++    rl_rec = rl_stopping = 0;
++    rl_meta.len = rl_meta.nspl = 0;
++    rl_w = 0;
++    rl_publish();
++}
++
++/* one sample at 22.05 kHz onto the reel */
++static void rl_put(float x)
++{
++    const uint32_t k = rl_w % RL_BLK;
++    float o = (float)rl_old[k] * (1.0f / 16384.0f), y;
++    int q;
++    if (rl_stopping)
++        y = o;                                   /* (finishing the block as it was) */
++    else if (rl_rec == 2)
++        y = fm_tanhf(x * 1.1f) + o * (float)par[P_RL(SOS)] * 0.01f;
++    else
++        y = fm_tanhf(x * 1.1f);
++    q = (int)(fm_clampf(y, -1.99f, 1.99f) * 16384.0f);
++    q = rl_code(&rl_ep, &rl_ei, q);
++    if (rl_w & 1u)
++        rl_nib[rl_w >> 1] = (uint8_t)((rl_nib[rl_w >> 1] & 15) | q << 4);
++    else
++        rl_nib[rl_w >> 1] = (uint8_t)((rl_nib[rl_w >> 1] & 0xF0) | q);
++    rl_w++;
++    if (rl_rec == 1) {                           /* a new splice: as far as it has gone */
++        rl_meta.s1[rl_spl] = rl_w;
++        if (rl_w > rl_meta.len)
++            rl_meta.len = rl_w;
++        if (rl_w >= RL_N) {
++            rl_stop_now();
++            return;
++        }
++    } else if (rl_w >= rl_meta.s1[rl_spl]) {     /* overdubbing: round the splice again */
++        rl_w = rl_meta.s0[rl_spl];
++        if (rl_stopping) {
++            rl_stop_now();
++            return;
++        }
++    }
++    if (rl_w % RL_BLK == 0u) {
++        if (rl_stopping) {
++            rl_stop_now();
++            return;
++        }
++        rl_block_start();
++    }
++}
++
++/* n samples at 44.1 kHz of SOURCE's, to the reel (2:1, a [1 2 1] / 4 low-pass) */
++static void reel_record(const float *in, uint32_t n)
++{
++    uint32_t j;
++    if (!rl_rec)
++        return;
++    for (j = 0; j < n && rl_rec; j++) {
++        const float x = in[j];
++        if (rl_half)
++            rl_put(0.25f * rl_d2 + 0.5f * rl_d1 + 0.25f * x);
++        rl_d2 = rl_d1;
++        rl_d1 = x;
++        rl_half ^= 1u;
++    }
++    rl_publish();
++}
++
++/* ----------------------------------------------------------------- genes --- */
++typedef struct {
++    uint8_t on, dir;                             /* dir: 1 forward, 0 back */
++    float pos, inc;                              /* where it reads (samples, 22.05 kHz), its step a 44.1 kHz sample */
++    float life, len;                             /* how far it has gone, how far it goes (samples of tape) */
++    float edge;                                  /* its window's fade, a fraction of len each end */
++    float gl, gr, pitch;                         /* its place; its pitch (a ratio) */
++    uint32_t cb[2];                              /* its two decoded blocks (block + 1; 0 none) */
++    int16_t cache[2][RL_BLK];
++} gene_t;
++static gene_t gn[RL_NG];
++static float rl_cursor, rl_spawn, rl_gain, rl_wow, rl_flut;
++static uint32_t rl_rng = 0x1234567u;
++static float rl_rand(void)
++{
++    rl_rng ^= rl_rng << 13;
++    rl_rng ^= rl_rng >> 17;
++    rl_rng ^= rl_rng << 5;
++    return (float)(rl_rng >> 8) * (1.0f / 16777216.0f);
++}
++static int16_t gene_at(gene_t *g, uint32_t i)    /* the tape's sample i, through the gene's two blocks */
++{
++    const uint32_t b = i / RL_BLK;
++    int s = g->cb[0] == b + 1u ? 0 : g->cb[1] == b + 1u ? 1 : -1;
++    if (s < 0) {                                 /* an empty one, or the one further from b */
++        const uint32_t d0 = g->cb[0] ? (g->cb[0] - 1u > b ? g->cb[0] - 1u - b : b - (g->cb[0] - 1u)) : 0xFFFFFFFFu,
++                       d1 = g->cb[1] ? (g->cb[1] - 1u > b ? g->cb[1] - 1u - b : b - (g->cb[1] - 1u)) : 0xFFFFFFFFu;
++        s = d0 >= d1 ? 0 : 1;
++        rl_decode(b, g->cache[s]);
++        g->cb[s] = b + 1u;
++    }
++    return g->cache[s][i % RL_BLK];
++}
++static float rl_speed(void)                      /* SPEED: -2x .. 0 .. +2x, 1x and -1x sticking (+-2) */
++{
++    const int v = par[P_RL(SPEED)];
++    if (v >= 73 && v <= 77)
++        return 1.0f;
++    if (v >= 23 && v <= 27)
++        return -1.0f;
++    if (v >= 48 && v <= 52)
++        return 0.0f;
++    return (float)(v - 50) * 0.04f;
++}
++static void gene_start(int k0, uint32_t s0, float L, float glen, float rate, int morph)
++{
++    gene_t *g = &gn[k0];
++    float st = rl_cursor + (float)par[P_RL(SLIDE)] * 0.01f * L, pm = 1.0f, pan = 0.0f;
++    while (st >= L)
++        st -= L;
++    if (morph > 85 && rl_rand() < (float)(morph - 85) * (0.5f / 15.0f))
++        pm = rl_rand() < 0.5f ? 2.0f : 0.5f;     /* an octave up or down */
++    if (morph > 75)
++        pan = (rl_rand() * 2.0f - 1.0f) * (float)(morph - 75) * 0.04f;
++    g->on = 1;
++    g->dir = rate >= 0.0f;
++    g->pos = (float)s0 + st;
++    g->pitch = pm;
++    g->inc = rate * 0.5f * pm;
++    g->life = 0.0f;
++    g->len = glen;
++    g->edge = morph <= 55 ? 0.03f : 0.03f + 0.47f * (float)(morph - 55) / 45.0f;
++    g->gl = fm_cosf((pan + 1.0f) * (FM_PI / 4.0f)) * 1.4142f;
++    g->gr = fm_sinf((pan + 1.0f) * (FM_PI / 4.0f)) * 1.4142f;
++}
++
++/* n samples of the reel's sound into l and r (the genes of the splice ORGANIZE picks, at SPEED) */
++static void reel_play(float *l, float *r, uint32_t n)
++{
++    const int k = par[P_RL(ORG)], morph = par[P_RL(MORPH)];
++    const float lvl = (float)(par[P_RL(LEVEL)] * par[P_RL(LEVEL)]) * 0.0001f,
++                tgt = en_playing && rl_meta.nspl && lvl > 0.0f ? 1.0f : 0.0f, rate = rl_speed();
++    uint32_t j, s0, s1;
++    float L, glen, iv;
++    int i;
++    for (j = 0; j < n; j++)
++        l[j] = r[j] = 0.0f;
++    if (!rl_meta.nspl || (tgt <= 0.0f && rl_gain < 1e-4f)) {
++        rl_gain = 0.0f;
++        for (i = 0; i < RL_NG; i++)
++            gn[i].on = 0;
++        en_reel_pos = 0.0f;
++        return;
++    }
++    {
++        const int sp = k < (int)rl_meta.nspl ? k : (int)rl_meta.nspl - 1;
++        s0 = rl_meta.s0[sp];
++        s1 = rl_meta.s1[sp];
++    }
++    if (s1 <= s0 + 64u)
++        return;
++    L = (float)(s1 - s0);
++    glen = fm_maxf(L * fm_exp2f((float)(par[P_RL(GENE)] - 100) * 0.08f), 441.0f);
++    if (glen > L)
++        glen = L;
++    iv = morph <= 40 ? glen * (1.0f + (float)(40 - morph) * 0.1f)            /* gaps */
++         : morph <= 55 ? glen * 0.97f                                       /* one after another, joined */
++                       : glen / (1.0f + (float)(morph - 55) / 15.0f);       /* overlapping, to four */
++    for (j = 0; j < n; j++) {
++        float sl = 0.0f, sr = 0.0f, w, step;
++        rl_gain += (tgt - rl_gain) * 0.0005f;
++        rl_wow += 0.5f / EN_SR;                  /* the tape's wow (0.5 Hz) and flutter (6.3 Hz) */
++        rl_flut += 6.3f / EN_SR;
++        if (rl_wow >= 1.0f)
++            rl_wow -= 1.0f;
++        if (rl_flut >= 1.0f)
++            rl_flut -= 1.0f;
++        w = 1.0f + 0.0025f * sine(rl_wow) + 0.0008f * sine(rl_flut);
++        step = rate * 0.5f * w;
++        if (rate != 0.0f) {                      /* the cursor runs with the tape; a gene each interval */
++            rl_cursor += step;
++            while (rl_cursor >= L)
++                rl_cursor -= L;
++            while (rl_cursor < 0.0f)
++                rl_cursor += L;
++            rl_spawn -= fm_fabsf(step);
++            if (rl_spawn <= 0.0f) {
++                int best = 0;
++                float most = -1.0f;
++                rl_spawn += iv;
++                for (i = 0; i < RL_NG; i++) {    /* a free one, or the one furthest through */
++                    const float f = gn[i].on ? gn[i].life / gn[i].len : 2.0f;
++                    if (f > most) {
++                        most = f;
++                        best = i;
++                    }
++                }
++                gene_start(best, s0, L, glen, rate, morph);
++            }
++        }
++        for (i = 0; i < RL_NG; i++) {
++            gene_t *g = &gn[i];
++            float f, e, a, x, p;
++            uint32_t i0, i1;
++            if (!g->on)
++                continue;
++            if (rate == 0.0f) {                  /* the tape stopped: the genes die away (20 ms) */
++                g->life += g->len * 0.0011f;
++            } else {
++                g->inc = rate * 0.5f * g->pitch * w;
++                g->life += fm_fabsf(g->inc);
++            }
++            f = g->life / g->len;
++            if (f >= 1.0f) {
++                g->on = 0;
++                continue;
++            }
++            e = g->edge;
++            a = f < e ? f / e : f > 1.0f - e ? (1.0f - f) / e : 1.0f;
++            a = a * a * (3.0f - 2.0f * a);       /* (smoothstep: no corner) */
++            if (rate != 0.0f) {
++                g->pos += g->inc;
++                while (g->pos >= (float)s1)
++                    g->pos -= L;
++                while (g->pos < (float)s0)
++                    g->pos += L;
++            }
++            i0 = (uint32_t)g->pos;
++            i1 = i0 + 1u >= s1 ? s0 : i0 + 1u;
++            p = g->pos - (float)i0;
++            x = ((float)gene_at(g, i0) + ((float)gene_at(g, i1) - (float)gene_at(g, i0)) * p) * (1.0f / 16384.0f);
++            x *= a;
++            sl += x * g->gl;
++            sr += x * g->gr;
++        }
++        l[j] = sl * lvl * rl_gain;
++        r[j] = sr * lvl * rl_gain;
++    }
++    en_reel_pos = rl_cursor / L;
++}
++
++static void reel_init(void)                      /* (the reel itself stays: a reboot loads it, en_reel_mem) */
++{
++    int i;
++    rl_rec = rl_stopping = 0;
++    rl_cursor = rl_spawn = rl_gain = 0.0f;
++    rl_d1 = rl_d2 = 0.0f;
++    rl_half = 0;
++    for (i = 0; i < RL_NG; i++) {
++        gn[i].on = 0;
++        gn[i].cb[0] = gn[i].cb[1] = 0u;
++    }
++    if (rl_meta.magic != RL_MAGIC) {
++        __builtin_memset(&rl_meta, 0, sizeof rl_meta);
++        rl_meta.magic = RL_MAGIC;
++    }
++    rl_publish();
++}
++
++void *en_reel_mem(int part, uint32_t *n)
++{
++    if (part == 0) {
++        *n = sizeof rl_meta;
++        return &rl_meta;
++    }
++    if (part == 1) {
++        *n = sizeof rl_hdr;
++        return rl_hdr;
++    }
++    *n = (rl_meta.len + 1u) / 2u;
++    if (part == 3)                               /* (the whole of it, for loading) */
++        *n = sizeof rl_nib;
++    return rl_nib;
++}
++int en_reel_valid(void)                          /* a reel loaded: its metadata sound; else none */
++{
++    uint32_t i;
++    for (i = 0; i < RL_NG; i++)                  /* (the cached blocks are of another reel) */
++        gn[i].cb[0] = gn[i].cb[1] = 0u;
++    if (rl_meta.magic != RL_MAGIC || rl_meta.nspl > RL_NSPL || rl_meta.len > RL_N) {
++        __builtin_memset(&rl_meta, 0, sizeof rl_meta);
++        rl_meta.magic = RL_MAGIC;
++        rl_publish();
++        return 0;
++    }
++    for (i = 0; i < rl_meta.nspl; i++)
++        if (rl_meta.s0[i] % RL_BLK || rl_meta.s1[i] > rl_meta.len || rl_meta.s0[i] > rl_meta.s1[i]) {
++            rl_meta.nspl = i;
++            break;
++        }
++    rl_publish();
++    return 1;
++}
+diff --git a/app/host.c b/app/host.c
+index 9c814a4..b9e48b7 100644
+--- a/app/host.c
++++ b/app/host.c
+@@ -74,7 +74,13 @@ int app_expect(const char *what, int *got)
+         for (l = 0; l < EN_NLOOP; l++)
+             for (i = 0; i < EN_LOOP_MAX; i++)
+                 g += en_loop_note[l][i] >= 0;
+-    } else if (!strncmp(what, "par", 3))          /* parN: parameter N (amb.h P_*) */
++    } else if (!strcmp(what, "reelstate"))      /* the reel: 0 resting, 1 recording a splice, 2 overdubbing */
++        g = en_reel_state;
++    else if (!strcmp(what, "reelspl"))          /* its splices */
++        g = en_reel_nspl;
++    else if (!strcmp(what, "reelsec"))          /* its seconds recorded, tenths */
++        g = (int)(en_reel_len * 10u / 22050u);
++    else if (!strncmp(what, "par", 3))          /* parN: parameter N (amb.h P_*) */
+         g = proj.par[atoi(what + 3)];
+     else if (!strncmp(what, "pat", 3) && strchr(what, '_'))   /* patV_OFF: voice V's patch byte OFF */
+         g = vpatch[atoi(what + 3) % EN_NVOX][atoi(strchr(what, '_') + 1) % EN_PATCH];
+diff --git a/app/project.c b/app/project.c
+index 7e0c019..9631a3b 100644
+--- a/app/project.c
++++ b/app/project.c
+@@ -129,6 +129,7 @@ static int patches_valid(void)                  /* (a byte past its range: held
+ #define V6_NPARAMS (P_VOX + 3 * V6_VX)
+ #define V7_NPARAMS P_PLAY
+ #define V8_NPARAMS (P_PLAY + 3 * 2)
++#define V9_NPARAMS P_TAPE
+ static int16_t mig6[NPIECES + 1][EN_NVOX][6];   /* format 6's ratio, feedback, attack, decay, sustain, release */
+ static int mig_n, mig6_on;
+ static void fix_none(int16_t *par, const int16_t *o) { (void)par, (void)o; }
+@@ -168,6 +169,8 @@ static void fix_v8(int16_t *par, const int16_t *o)
+ }
+ static void migrate_up(int16_t *par, uint32_t fmt)   /* a project of format fmt into this one's voices and sources */
+ {
++    if (fmt >= 9u)                               /* (format 9's voices are as they are) */
++        return;
+     en_upgrade(par);
+     if (par[P_PADTONE] >= 6)
+         par[P_PADTONE] = (int16_t)(par[P_PADTONE] + 12);
+@@ -218,6 +221,7 @@ OLD_PROJECT(project_v5, V5_NPARAMS, P_BELLPATCH, fix_v5, 5u)
+ OLD_PROJECT(project_v6, V6_NPARAMS, P_BELLPATCH, fix_v6, 6u)
+ OLD_PROJECT(project_v7, V7_NPARAMS, V7_NPARAMS, fix_none, 7u)
+ OLD_PROJECT(project_v8, V8_NPARAMS, P_PLAY, fix_v8, 8u)
++OLD_PROJECT(project_v9, V9_NPARAMS, V9_NPARAMS, fix_none, 9u)
+ 
+ int project_load(void)
+ {
+@@ -229,6 +233,7 @@ int project_load(void)
+         project_v6_t v6;
+         project_v7_t v7;
+         project_v8_t v8;
++        project_v9_t v9;
+     } buf;
+     int n, i, v, migrated = 1;
+     memset(&buf, 0, sizeof buf);
+@@ -250,6 +255,9 @@ int project_load(void)
+     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 8u) {
+         keep_fmt = 8u;
+         from_project_v8(&buf.v8);
++    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 9u) {
++        keep_fmt = 9u;
++        from_project_v9(&buf.v9);
+     } else {
+         proj = buf.now;
+         migrated = 0;
+@@ -354,3 +362,46 @@ void project_apply(void)
+         if (proj.par[P_VX(i, VX_OWN)] || proj.par[EN_VOX_PATCH[i]] >= EN_NFACT)
+             project_patch_send(i, 1);
+ }
++
++/* ------------------------------------------------------------- the reel --- */
++static int flash_put(uint32_t off, const uint8_t *src, uint32_t n)   /* n bytes into the sectors from off, erased */
++{
++    uint32_t k;
++    for (k = 0; k < n; k += 4096u)
++        if (plat_data_erase(off + k))
++            return -1;
++    for (k = 0; k < n; k += 256u)
++        if (plat_data_write(off + k, src + k, n - k < 256u ? n - k : 256u))
++            return -1;
++    return 0;
++}
++int project_reel_save(void)                     /* its samples, its blocks' states, then its splices (the seal) */
++{
++    uint32_t n0, n1, n2;
++    const uint8_t *m = (const uint8_t *)en_reel_mem(0, &n0), *h = (const uint8_t *)en_reel_mem(1, &n1),
++                  *s = (const uint8_t *)en_reel_mem(2, &n2);
++    if (plat_data_erase(REEL_BASE))
++        return -1;
++    if (flash_put(REEL_BASE + 0x3000u, s, n2) || flash_put(REEL_BASE + 0x1000u, h, n1))
++        return -1;
++    return plat_data_write(REEL_BASE, m, n0) ? -1 : 0;
++}
++void project_reel_load(void)                    /* at the start: the reel kept, if one is */
++{
++    uint32_t n0, n1, n3;
++    uint8_t *m = (uint8_t *)en_reel_mem(0, &n0), *h = (uint8_t *)en_reel_mem(1, &n1), *s;
++    const uint8_t *f = plat_data(REEL_BASE);
++    if (!f)
++        return;
++    memcpy(m, f, n0);
++    if (!en_reel_valid())
++        return;
++    {
++        uint32_t n2;
++        en_reel_mem(2, &n2);
++        s = (uint8_t *)en_reel_mem(3, &n3);
++        memcpy(h, plat_data(REEL_BASE + 0x1000u), n1);
++        memcpy(s, plat_data(REEL_BASE + 0x3000u), n2 < n3 ? n2 : n3);
++    }
++    en_reel_valid();
++}
+diff --git a/app/ui.c b/app/ui.c
+index 447613b..43143a6 100644
+--- a/app/ui.c
++++ b/app/ui.c
+@@ -22,15 +22,17 @@
+  * the bass) has NSUB more, in three groups (SUB_*), with no button of their own: its page's button pressed again goes
+  * to the next group (the page it was left on) and from the last back to the layer's page; SELECT steps through the
+  * voice's own pages; the voice's button stays lit on them */
+-enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_MAIN };
++enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_TAPE, V_GENE, V_MAIN };
+ enum { S_VOICE, S_PLAY, S_ADSR, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
+ #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
+ #define NGROUP 3
+ static const uint8_t GROUP0[NGROUP + 1] = {S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
+-static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Pulse", "Space", "Setup"};
++static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Pulse", "Space", "Setup",
++                                              "Tape", "Gene"};
+ static const char *const SUB_NAME[NSUB] = {"Patch", "Play", "ADSR", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
+                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
+-static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO};
++static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO, B_SEQ, B_SEQ};
++static int tape_view(int v) { return v == V_TAPE || v == V_GENE; }   /* the reel's pages (SEQ again, and again) */
+ static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
+ static int view_vox(int v)                     /* the voice a page is of (its layer's or its own); -1 none */
+ {
+@@ -77,6 +79,8 @@ static const uint16_t MAIN_KNOB[V_MAIN][4] = {
+     {P_PULSE, P_HITS, P_SWING, P_HATS},
+     {P_ECHO, P_ETIME, P_REVERB, P_SIZE},
+     {P_ROOT, P_TUNE, P_MIDI, K_LEDS},
++    {P_RL(SRC), P_RL(LEVEL), P_RL(SOS), P_RL(SPEED)},
++    {P_RL(GENE), P_RL(SLIDE), P_RL(MORPH), P_RL(ORG)},
+ };
+ static const uint16_t SUB_KNOB[NSUB][4] = {
+     {K_SRC, KV(ALG), KV(FB), K_NONE},          /* (INDEX: P_VX, put in below) */
+@@ -103,6 +107,8 @@ static const char *const MAIN_LABEL[V_MAIN][4] = {
+     {"Level", "Hits", "Swing", "Hats"},
+     {"Echo", "Echo time", "Reverb", "Size"},
+     {"Root", "Tune", "MIDI out", "Lights"},
++    {"Source", "Level", "SOS", "Speed"},
++    {"Gene", "Slide", "Morph", "Organize"},
+ };
+ static const char *const SUB_LABEL[NSUB][4] = {
+     {"Patch", "Algorithm", "Feedback", "Index"},
+@@ -165,6 +171,7 @@ static struct {
+     uint32_t turn_t;                   /* the last knob turn */
+     uint8_t help;                      /* a button's card is up: the button + 1 */
+     uint8_t reset_done;                /* SAVE held: the piece went back to its recipe this hold */
++    uint8_t erase_done;                /* REC held on the reel's pages: the reel erased this hold */
+     uint8_t dirty;                     /* the project changed since the last save */
+     uint32_t act_t, saved_t;
+     char msg[2][24];
+@@ -475,6 +482,8 @@ static void par_out(int p)                      /* a parameter the knobs set, ou
+     if (p < P_VOX) {
+         if (p != P_MIDI && p - P_PAD < 30)
+             cc_out(15, CC0 + p, is_src(p) ? (v > 127 ? 127 : v) : cc_scale(v, pi->lo, pi->hi));
++    } else if (p >= P_TAPE) {
++        cc_out(15, 50 + p - P_TAPE, cc_scale(v, pi->lo, pi->hi));
+     } else if (p >= P_PLAY) {
+         cc_out((p - P_PLAY) / PL_N, CC_PL + (p - P_PLAY) % PL_N, cc_scale(v, pi->lo, pi->hi));
+     } else if ((p - P_VOX) % VX_N != VX_OWN) {
+@@ -740,6 +749,20 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in
+         dice_par(P_REVERB, 30, 90);
+         dice_par(P_SIZE, 40, 100);
+         break;
++    case V_TAPE: {                              /* the tape: a level, a sound on sound, a speed (1x, -1x, or about) */
++        static const int8_t SPEED[6] = {75, 75, 25, 62, 88, 38};
++        const int sp = SPEED[dice(0, 5)];
++        dice_par(P_RL(LEVEL), 50, 90);
++        dice_par(P_RL(SOS), 30, 90);
++        dice_par(P_RL(SPEED), sp, sp);
++        break;
++    }
++    case V_GENE:                                /* the genes: their size, where, how they follow, a splice */
++        dice_par(P_RL(GENE), 20, 100);
++        dice_par(P_RL(SLIDE), 0, 100);
++        dice_par(P_RL(MORPH), 20, 95);
++        dice_par(P_RL(ORG), 0, en_reel_nspl ? (int)en_reel_nspl - 1 : 0);
++        break;
+     default: {                                  /* SETUP: a new key (the root, a mode) */
+         int m = dice(0, EN_NMODES - 1);
+         dice_par(P_ROOT, 0, 11);
+@@ -881,9 +904,88 @@ static void vox_title(void)                     /* which voice, and which of its
+     say_as(t, s, 0);
+ }
+ 
++static void reel_say(void)                     /* the reel as it is: recording, or its splices and seconds */
++{
++    char t[24];
++    const uint32_t ds = (en_reel_len * 10u + 11025u) / 22050u;   /* tenths of a second */
++    if (en_reel_state) {
++        say("TAPE", en_reel_state == 1 ? "RECORDING" : "OVERDUB");
++        return;
++    }
++    itoa_u(en_reel_nspl, t);
++    {
++        int k = 0;
++        while (t[k])
++            k++;
++        t[k++] = ' ';
++        t[k++] = 'S';
++        t[k++] = 'P';
++        t[k++] = 'L';
++        t[k++] = ',';
++        t[k++] = ' ';
++        itoa_u(ds / 10u, t + k);
++        while (t[k])
++            k++;
++        t[k++] = '.';
++        t[k++] = (char)('0' + ds % 10u);
++        t[k++] = ' ';
++        t[k++] = 'S';
++        t[k] = 0;
++    }
++    say("TAPE", t);
++}
++int project_reel_save(void);
++static void reel_button(int b)                  /* on the reel's pages: REC overdubs the splice picked (again: stop),
++                                                 * EDIT records a new one at the end, SAVE keeps the reel too */
++{
++    if (b == B_SAVE) {
++        if (en_reel_state) {
++            warn("STOP THE TAPE", "FIRST");
++            return;
++        }
++        say("SAVING", "THE REEL");
++        if (project_save() == 0 && project_reel_save() == 0) {
++            ui.dirty = 0;
++            say("SAVED", "PIECES AND REEL");
++        } else {
++            warn("NOT SAVED", "FLASH ERROR");
++        }
++        return;
++    }
++    if (b == B_EDIT) {
++        if (en_reel_state == 1) {                /* (recording one: it ends, and the next begins) */
++            en_reel(EN_REEL_NEW);
++            say("TAPE", "A NEW SPLICE");
++        } else if (en_reel_nspl >= 8u || en_reel_len + 2048u > 260096u) {
++            warn("THE REEL", "IS FULL");
++            return;
++        } else {
++            en_reel(EN_REEL_NEW);
++            say("TAPE", "RECORDING");
++        }
++        proj.par[P_RL(ORG)] = (int16_t)(en_reel_nspl < 8u ? en_reel_nspl : 7);   /* (the new one plays) */
++        en_set(P_RL(ORG), proj.par[P_RL(ORG)]);
++        par_out(P_RL(ORG));
++        mark_dirty();
++        return;
++    }
++    if (en_reel_state) {
++        en_reel(EN_REEL_DUB);                    /* (stops either) */
++        say("TAPE", "STOPPED");
++    } else {
++        en_reel(EN_REEL_DUB);
++        say("TAPE", en_reel_nspl ? "OVERDUB" : "RECORDING");
++    }
++}
+ static void button(int b)
+ {
+     int v;
++    if (b == B_SEQ && (ui.view == V_PULSE || tape_view(ui.view))) {   /* SEQ again: the tape, the genes, the pulse */
++        set_view(ui.view == V_PULSE ? V_TAPE : ui.view == V_TAPE ? V_GENE : V_PULSE);
++        if (tape_view(ui.view))
++            reel_say();
++        return;
++    }
+     for (v = 0; v < V_MAIN; v++)                 /* a page's button: its page; a voice's again: its next group */
+         if (VIEW_BTN[v] == b) {
+             int x = view_vox(v), g = view_group(ui.view) + 1;
+@@ -895,6 +997,10 @@ static void button(int b)
+                 vox_title();
+             return;
+         }
++    if (tape_view(ui.view) && (b == B_REC || b == B_EDIT || b == B_SAVE)) {   /* the reel's transport */
++        reel_button(b);
++        return;
++    }
+     switch (b) {
+     case B_EDIT:
+         en_next();
+@@ -957,6 +1063,8 @@ static void midi_cc(int ch, int cc, int v)
+         p = P_VX(ch, VX_INDEX + cc - CC0);
+     } else if (ch < EN_NVOX && cc >= CC_PL && cc < CC_PL + PL_N) {
+         p = P_PL(ch, cc - CC_PL);
++    } else if (ch == 15 && cc >= 50 && cc < 50 + TP_N) {   /* the reel's */
++        p = P_TAPE + cc - 50;
+     } else if (ch == 15 && cc >= CC0 && cc < CC0 + 30) {
+         p = cc - CC0;
+     }
+@@ -1052,6 +1160,8 @@ static void input(void)
+             ui.down_t[i] = plat_ms();
+             if (i == B_SAVE)
+                 ui.reset_done = 0;
++            if (i == B_REC)
++                ui.erase_done = 0;
+             if (i == B_PLAY)                   /* transport on the press */
+                 button((int)i);
+         } else if (!(ui.btn_used & m) && i != B_PLAY) {
+@@ -1125,6 +1235,13 @@ static void input(void)
+             ui.touch_until = plat_ms() + 1200u;
+             ui.act_t = ui.turn_t = plat_ms();
+         }
++    if ((btn >> B_REC & 1u) && tape_view(ui.view) && !ui.erase_done && plat_ms() - ui.down_t[B_REC] >= RESET_HOLD) {
++        ui.erase_done = 1;                       /* REC held on the reel's pages: the reel erased */
++        ui.btn_used |= 1u << B_REC;
++        ui.help = 0;
++        en_reel(EN_REEL_ERASE);
++        warn("TAPE", "ERASED");
++    }
+     if (btn == 1u << B_SEL && !(ui.btn_used >> B_SEL & 1u) && plat_ms() - ui.down_t[B_SEL] >= 1000u) {
+         ui.btn_used |= 1u << B_SEL;              /* SEL held alone a second: undo the last roll */
+         dice_undo();
+@@ -1483,11 +1600,11 @@ static int help_lines(int b, const char *l[HELP_LINES])
+     case B_ENV: L("VOICE 1"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
+     case B_ARP: L("VOICE 2"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
+     case B_LFO: L("VOICE 3"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
+-    case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); break;
++    case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); L("AGAIN: TAPE, GENE"); break;
+     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
+     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
+-    case B_EDIT: L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); break;
+-    case B_REC: L("FREEZE: THE CHORD HOLDS"); L(" AND THE REVERB RINGS ON"); L("AGAIN: THAW"); break;
++    case B_EDIT: L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); L("TAPE: A NEW SPLICE"); break;
++    case B_REC: L("FREEZE: THE CHORD HOLDS"); L(" AND THE REVERB RINGS ON"); L("TAPE: OVERDUB, HELD: ERASE"); break;
+     case B_OCTDN: L("THE VOICE SHOWN AN OCTAVE"); L(" DOWN"); L("WITH OCT+, 5 S: UPDATE MODE"); break;
+     case B_OCTUP: L("THE VOICE SHOWN AN OCTAVE"); L(" UP"); L("WITH OCT-, 5 S: UPDATE MODE"); break;
+     case B_SAVE: L("SAVES ALL EIGHT PIECES"); L("KEEP HOLDING: THE PIECE"); L(" BACK TO ITS RECIPE"); break;
+diff --git a/docs/MANUAL.md b/docs/MANUAL.md
+index 85dc04d..f7f41e7 100644
+--- a/docs/MANUAL.md
++++ b/docs/MANUAL.md
+@@ -275,6 +275,33 @@ MOD, and once more to come back; SELECT steps through a group's pages.
+ 
+ The top right of this page shows how much of the FM-1's time the sound takes (CPU).
+ 
++### The reel: a track of tape with genes
++
++SEQ on the Pulse page opens **Tape**, again **Gene**, again back to the Pulse. The reel is one track of tape, 11.8 s,
++mono (22 kHz, 4-bit ADPCM, as a cassette's lo-fi), after a Tascam portastudio's tape and Make Noise's Morphagene.
++
++| Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
++| --- | --- | --- | --- | --- |
++| Tape | Source (Mix, Voice 1, 2, 3, Pulse) | Level | SOS | Speed (−2x .. Stop .. +2x) |
++| Gene | Gene (the whole splice .. 1/256) | Slide | Morph | Organize (splice 1–8) |
++
++On these two pages:
++
++- **EDIT** records a new **splice** at the end of the reel (up to 8); EDIT again while recording ends it and starts the
++  next; **REC** stops it.
++- **REC** overdubs the splice Organize picks, round and round, sound on sound (**SOS**: how much of what was there
++  stays; 0 replaces it); REC again stops.
++- **SAVE** keeps the pieces and the reel (the reel comes back after a restart). **REC held** 1.5 s erases the reel.
++
++What it records is **Source**'s: the whole mix (its echo and reverb too, the reel itself left out), or one voice alone,
++or the pulse. It plays the splice Organize picks as **genes**: each a window of the splice (**Gene**), starting where
++the tape is, past it by **Slide**, at **Speed** (pitch and time together, as tape; 1x and −1x stick; at Stop it falls
++silent), with a little wow and flutter. **Morph**: gaps between the genes (0–40), one after another (40–55), two to
++four overlapping (55–100), spread across the field (past 75) and an octave up or down now and then (past 85). The
++reel goes to the mix and a little to the echo and reverb. The echo's tape is 2.8 s now (it gave the reel its room).
++
++MIDI: the reel's eight on channel 16, CC 50–57.
++
+ ### The three voices, alike
+ 
+ From 1.3.96 the three voices are set the same way, none of them made for one job. Each plays its own patch in a
+diff --git a/tests/host/amb_test.c b/tests/host/amb_test.c
+index 4ef8395..b3d614f 100644
+--- a/tests/host/amb_test.c
++++ b/tests/host/amb_test.c
+@@ -845,6 +845,109 @@ int main(void)
+         en_play(1);
+     }
+ 
++    /* 1.3.97. The reel: 3 s of the garden recorded (a new splice), then the garden silenced: the reel plays it back, at
++     * about its level; stopped (SPEED at its middle), quiet; backwards, and as overlapping genes spread and an octave
++     * off, sounding, bounded; overdubbed (sound on sound) it goes on; erased, quiet */
++    {
++        float live, back;
++        en_init();
++        en_play(1);
++        run(4.0f);
++        peak = 0.0f;
++        run(1.0f);
++        live = peak;
++        en_reel(EN_REEL_NEW);
++        run(3.0f);
++        en_reel(EN_REEL_DUB);                    /* (recording a new one: stop) */
++        run(0.1f);
++        CHECK(en_reel_state == 0 && en_reel_nspl == 1 && en_reel_len > 60000u && en_reel_len < 70000u,
++              "the reel recorded: state %d, splices %d, %u samples", en_reel_state, en_reel_nspl, en_reel_len);
++        en_set(P_PAD, 0);
++        en_set(P_BELLS, 0);
++        en_set(P_BASS, 0);
++        en_set(P_PULSE, 0);
++        en_set(P_ECHO, 0);
++        en_set(P_REVERB, 0);
++        en_set(P_RL(LEVEL), 100);
++        run(3.0f);
++        peak = 0.0f;
++        bad = 0;
++        run(2.0f);
++        back = peak;
++        CHECK(!bad && back > 0.25f * live && back < 3.0f * live, "the reel played back: %f (the garden %f)",
++              (double)back, (double)live);
++        en_set(P_RL(SPEED), 50);
++        run(0.5f);
++        peak = 0.0f;
++        run(0.5f);
++        CHECK(peak < 0.15f * back, "the reel stopped: %f (playing %f; the space's tails remain)", (double)peak,
++              (double)back);
++        en_set(P_RL(SPEED), 25);                 /* backwards, overlapping genes, spread, an octave off */
++        en_set(P_RL(GENE), 40);
++        en_set(P_RL(MORPH), 100);
++        peak = 0.0f;
++        bad = 0;
++        run(3.0f);
++        CHECK(!bad && peak > 0.1f * live && peak < 1.0f, "backwards, as genes: %f", (double)peak);
++        en_set(P_RL(SPEED), 75);
++        en_set(P_PAD, 60);
++        en_reel(EN_REEL_DUB);                    /* overdub the first splice */
++        run(1.0f);
++        CHECK(en_reel_state == 2, "overdubbing: state %d", en_reel_state);
++        en_reel(EN_REEL_DUB);
++        run(0.2f);
++        CHECK(en_reel_state == 0 && en_reel_nspl == 1, "the overdub stopped: state %d", en_reel_state);
++        en_reel(EN_REEL_ERASE);
++        en_set(P_PAD, 0);
++        run(1.0f);
++        peak = 0.0f;
++        run(0.5f);
++        CHECK(en_reel_nspl == 0 && peak < 0.15f * back, "erased: %d splices, %f", en_reel_nspl, (double)peak);
++        en_init();
++        en_play(1);
++    }
++
++    /* the reel at 1x is at the pitch it recorded: the bass alone (SOURCE Voice 3), its zero crossings live and back */
++    {
++        long zc[2];
++        int t, b2, j;
++        en_init();
++        en_set(P_PAD, 0);
++        en_set(P_BELLS, 0);
++        en_set(P_PULSE, 0);
++        en_set(P_ECHO, 0);
++        en_set(P_REVERB, 0);
++        en_set(P_RL(SRC), 3);
++        en_set(P_RL(LEVEL), 0);                  /* (not heard while it records: the bass alone, live) */
++        en_set(P_PL(VOX_BASS, PL_ENV), ENV_AMB);  /* (one note held: a steady pitch) */
++        en_set(P_DRIFT, 100);
++        en_play(1);
++        run(3.0f);
++        en_reel(EN_REEL_NEW);
++        for (t = 0; t < 2; t++) {
++            float prev = 0.0f;
++            if (t) {                             /* the reel back, the bass silenced */
++                en_reel(EN_REEL_DUB);
++                en_set(P_BASS, 0);
++                en_set(P_RL(LEVEL), 100);
++                run(1.0f);
++            }
++            zc[t] = 0;
++            for (b2 = 0; b2 < 2 * 44100 / 256; b2++) {
++                en_render(buf, 256, 2048);
++                for (j = 0; j < 256; j++) {
++                    float x = (float)buf[2 * j];
++                    zc[t] += (x > 0.0f) != (prev > 0.0f);
++                    prev = x;
++                }
++            }
++        }
++        CHECK(zc[0] > 100 && labs(zc[1] - zc[0]) < zc[0] / 20, "the reel's pitch: %ld crossings back, %ld live", zc[1],
++              zc[0]);
++        en_init();
++        en_play(1);
++    }
++
+     /* stop: the tails die away */
+     for (i = 0; i < P_NPARAMS; i++)
+         en_set(i, en_param_info(i)->def);
+diff --git a/tests/scenarios/mod.amb b/tests/scenarios/mod.amb
+index 91bd788..0b0c518 100644
+--- a/tests/scenarios/mod.amb
++++ b/tests/scenarios/mod.amb
+@@ -1,14 +1,14 @@
+ # each voice's own pages, in three groups: its page button pressed again goes to VOICE, again to OPERATOR, again to
+ # MOD, and back; SELECT steps through a group's pages. parN: amb.h (P_VOX 30, a voice's block of 42: OWN, INDEX, five
+-# modulators of 8); patV_OFF: voice V's patch byte (amb.h EP_*). Views: the pad's own 7..21, the bells' 22.., the
+-# bass's 37..
++# modulators of 8); patV_OFF: voice V's patch byte (amb.h EP_*). Views: the pad's own 9..23, the bells' 24.., the
++# bass's 39..
+ wait 300
+ tap ENV
+ wait 100
+ expect view 1
+ tap ENV
+ wait 100
+-expect view 7
++expect view 9
+ shot pad_voice.png
+ # the patch: the next of the pad's own (Voices), as loaded
+ expect par22 0
+@@ -22,14 +22,14 @@ expect par30 1
+ # OPERATOR: OP3's level, 80 -> 70 (OP3's bytes from 63: its level at 79)
+ tap ENV
+ wait 100
+-expect view 13
++expect view 15
+ shot pad_op.png
+ turn K1 2 10
+ spin K4 -10
+ expect pat0_79 70
+ # OP Env: its stage 2's rate, 30 -> 35 (at 64)
+ turn SELECT 1 100
+-expect view 14
++expect view 16
+ turn K2 1 10
+ spin K3 5
+ expect pat0_64 35
+@@ -37,7 +37,7 @@ shot pad_openv.png
+ # MOD: the first modulator's depth, Garden's 20 -> 23 (the bells' and the bass's untouched); the second's target
+ tap ENV
+ wait 100
+-expect view 19
++expect view 21
+ shot mod.png
+ turn K3 3 10
+ expect par32 23
+@@ -47,7 +47,7 @@ turn K1 1 10
+ turn K2 9 100
+ expect par43 9
+ turn SELECT 1 100
+-expect view 20
++expect view 22
+ # back to the pad's page
+ tap ENV
+ wait 100
+@@ -57,14 +57,14 @@ tap ARP
+ wait 100
+ tap ARP
+ wait 100
+-expect view 22
++expect view 24
+ turn K1 1 10
+ expect par28 7
+ tap LFO
+ wait 100
+ tap LFO
+ wait 100
+-expect view 37
++expect view 39
+ turn K4 2 10
+ expect par115 2
+ # another voice's button from a voice's page: that voice's own first page
+@@ -73,6 +73,14 @@ wait 100
+ expect view 2
+ tap SEQ
+ wait 100
++expect view 4
++# SEQ again: the tape, the genes, the pulse
++tap SEQ
++wait 100
++expect view 7
++tap SEQ
++wait 100
++expect view 8
+ tap SEQ
+ wait 100
+ expect view 4
+@@ -81,11 +89,11 @@ wait 100
+ tap HOME
+ wait 100
+ expect view 0
+-# SELECT walks the layers' pages only
++# SELECT walks the layers' pages only (Setup, the tape, the genes, the last)
+ tap GLO
+ wait 100
+-turn SELECT 1 100
+-expect view 6
++turn SELECT 3 100
++expect view 8
+ wav mod.wav
+ wait 20000
+ wavstop
+@@ -111,7 +119,7 @@ tap ARP
+ wait 100
+ tap ARP
+ wait 100
+-expect view 22
++expect view 24
+ turn K1 11 10
+ expect par28 82
+ expect par72 0
+@@ -134,7 +142,7 @@ midi B0 06 32
+ wait 50
+ expect pat0_121 50
+ # MIDI CC out: a knob turned (the bells' INDEX, CC 20 on channel 2)
+-expect view 22
++expect view 24
+ out
+ turn K4 24 100
+ expect par73 24
+@@ -146,9 +154,9 @@ tap ENV
+ wait 100
+ tap ENV
+ wait 100
+-expect view 7
++expect view 9
+ turn SELECT 1 100
+-expect view 8
++expect view 10
+ shot pad_play.png
+ turn K1 1 10
+ expect par156 2
+diff --git a/tests/scenarios/reader.amb b/tests/scenarios/reader.amb
+index da21c05..2a670c1 100644
+--- a/tests/scenarios/reader.amb
++++ b/tests/scenarios/reader.amb
+@@ -94,7 +94,7 @@ tap SAVE
+ said SAVED
+ press REC
+ wait 1000
+-said REC button. FREEZE: THE CHORD HOLDS AND THE REVERB RINGS ON. AGAIN: THAW
++said REC button. FREEZE: THE CHORD HOLDS AND THE REVERB RINGS ON. TAPE: OVERDUB, HELD: ERASE
+ release REC
+ wait 100
+ # the chord moving by itself: queued (said after what is being said)
+diff --git a/tests/scenarios/tape.amb b/tests/scenarios/tape.amb
+new file mode 100644
+index 0000000..770c138
+--- /dev/null
++++ b/tests/scenarios/tape.amb
+@@ -0,0 +1,56 @@
++# the reel (SEQ again: Tape, again: Gene): EDIT records a new splice, REC stops it; REC overdubs the splice picked,
++# again stops; SAVE on the reel's pages keeps the pieces and the reel (a restart loads it); REC held erases it
++wait 300
++tap SEQ
++tap SEQ
++wait 100
++expect view 7
++shot tape.png
++tap EDIT
++wait 100
++expect reelstate 1
++expect reelspl 1
++wait 2000
++tap REC
++wait 100
++expect reelstate 0
++expect reelsec >15
++# REC: the first splice overdubbed, round and round; again: stopped
++tap REC
++wait 100
++expect reelstate 2
++wait 500
++tap REC
++wait 100
++expect reelstate 0
++# a second splice, played (ORGANIZE follows the new one: par196)
++tap EDIT
++wait 1000
++tap EDIT
++wait 100
++expect reelspl 3
++tap REC
++wait 100
++expect reelstate 0
++expect par196 2
++tap SEQ
++wait 100
++expect view 8
++shot gene.png
++# kept: the pieces and the reel; a restart loads them
++tap SAVE
++wait 3000
++reboot
++wait 300
++expect reelspl 3
++expect reelsec >25
++# REC held on the reel's pages: erased
++tap SEQ
++tap SEQ
++wait 100
++expect view 7
++press REC
++wait 1700
++release REC
++wait 100
++expect reelspl 0
+-- 
+2.53.0
+

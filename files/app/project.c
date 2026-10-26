@@ -129,6 +129,7 @@ static int patches_valid(void)                  /* (a byte past its range: held 
 #define V6_NPARAMS (P_VOX + 3 * V6_VX)
 #define V7_NPARAMS P_PLAY
 #define V8_NPARAMS (P_PLAY + 3 * 2)
+#define V9_NPARAMS P_TAPE
 static int16_t mig6[NPIECES + 1][EN_NVOX][6];   /* format 6's ratio, feedback, attack, decay, sustain, release */
 static int mig_n, mig6_on;
 static void fix_none(int16_t *par, const int16_t *o) { (void)par, (void)o; }
@@ -168,6 +169,8 @@ static void fix_v8(int16_t *par, const int16_t *o)
 }
 static void migrate_up(int16_t *par, uint32_t fmt)   /* a project of format fmt into this one's voices and sources */
 {
+    if (fmt >= 9u)                               /* (format 9's voices are as they are) */
+        return;
     en_upgrade(par);
     if (par[P_PADTONE] >= 6)
         par[P_PADTONE] = (int16_t)(par[P_PADTONE] + 12);
@@ -218,6 +221,7 @@ OLD_PROJECT(project_v5, V5_NPARAMS, P_BELLPATCH, fix_v5, 5u)
 OLD_PROJECT(project_v6, V6_NPARAMS, P_BELLPATCH, fix_v6, 6u)
 OLD_PROJECT(project_v7, V7_NPARAMS, V7_NPARAMS, fix_none, 7u)
 OLD_PROJECT(project_v8, V8_NPARAMS, P_PLAY, fix_v8, 8u)
+OLD_PROJECT(project_v9, V9_NPARAMS, V9_NPARAMS, fix_none, 9u)
 
 int project_load(void)
 {
@@ -229,6 +233,7 @@ int project_load(void)
         project_v6_t v6;
         project_v7_t v7;
         project_v8_t v8;
+        project_v9_t v9;
     } buf;
     int n, i, v, migrated = 1;
     memset(&buf, 0, sizeof buf);
@@ -250,6 +255,9 @@ int project_load(void)
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 8u) {
         keep_fmt = 8u;
         from_project_v8(&buf.v8);
+    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 9u) {
+        keep_fmt = 9u;
+        from_project_v9(&buf.v9);
     } else {
         proj = buf.now;
         migrated = 0;
@@ -353,4 +361,47 @@ void project_apply(void)
     for (i = 0; i < EN_NVOX; i++)                /* (the voice's own six, as loaded: made by the engine) */
         if (proj.par[P_VX(i, VX_OWN)] || proj.par[EN_VOX_PATCH[i]] >= EN_NFACT)
             project_patch_send(i, 1);
+}
+
+/* ------------------------------------------------------------- the reel --- */
+static int flash_put(uint32_t off, const uint8_t *src, uint32_t n)   /* n bytes into the sectors from off, erased */
+{
+    uint32_t k;
+    for (k = 0; k < n; k += 4096u)
+        if (plat_data_erase(off + k))
+            return -1;
+    for (k = 0; k < n; k += 256u)
+        if (plat_data_write(off + k, src + k, n - k < 256u ? n - k : 256u))
+            return -1;
+    return 0;
+}
+int project_reel_save(void)                     /* its samples, its blocks' states, then its splices (the seal) */
+{
+    uint32_t n0, n1, n2;
+    const uint8_t *m = (const uint8_t *)en_reel_mem(0, &n0), *h = (const uint8_t *)en_reel_mem(1, &n1),
+                  *s = (const uint8_t *)en_reel_mem(2, &n2);
+    if (plat_data_erase(REEL_BASE))
+        return -1;
+    if (flash_put(REEL_BASE + 0x3000u, s, n2) || flash_put(REEL_BASE + 0x1000u, h, n1))
+        return -1;
+    return plat_data_write(REEL_BASE, m, n0) ? -1 : 0;
+}
+void project_reel_load(void)                    /* at the start: the reel kept, if one is */
+{
+    uint32_t n0, n1, n3;
+    uint8_t *m = (uint8_t *)en_reel_mem(0, &n0), *h = (uint8_t *)en_reel_mem(1, &n1), *s;
+    const uint8_t *f = plat_data(REEL_BASE);
+    if (!f)
+        return;
+    memcpy(m, f, n0);
+    if (!en_reel_valid())
+        return;
+    {
+        uint32_t n2;
+        en_reel_mem(2, &n2);
+        s = (uint8_t *)en_reel_mem(3, &n3);
+        memcpy(h, plat_data(REEL_BASE + 0x1000u), n1);
+        memcpy(s, plat_data(REEL_BASE + 0x3000u), n2 < n3 ? n2 : n3);
+    }
+    en_reel_valid();
 }

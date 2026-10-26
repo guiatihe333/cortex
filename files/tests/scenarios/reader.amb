@@ -94,7 +94,7 @@ tap SAVE
 said SAVED
 press REC
 wait 1000
-said REC button. FREEZE: THE CHORD HOLDS AND THE REVERB RINGS ON. AGAIN: THAW
+said REC button. FREEZE: THE CHORD HOLDS AND THE REVERB RINGS ON. TAPE: OVERDUB, HELD: ERASE
 release REC
 wait 100
 # the chord moving by itself: queued (said after what is being said)
