@@ -21,28 +21,28 @@ expect par1 0
 wait 20000
 shot voices.png
 expect pad_level >10
-# the pad's colour (the Pad page's fourth knob), kept with the piece (Voices starts as Voices)
-expect par22 1
+# the first voice's Density (the Voice 1 page's fourth knob, par160), kept with the piece
+expect par160 100
 spin K4 -1
-expect par22 0
+expect par160 99
 wait 3000
 # back to Garden: as it was left
 turn PRESET -2
-expect par22 0
+expect par160 100
 expect piece 0
 expect par0 50
-spin K4 1
-expect par22 1
+spin K4 -5
+expect par160 95
 turn PRESET 2
-expect par22 0
+expect par160 99
 turn PRESET -2
-expect par22 1
+expect par160 95
 # SAVE held: Garden's recipe again
 press SAVE
 wait 1700
 release SAVE
 expect par0 60
-expect par22 0
+expect par160 100
 expect store_writes 0
 # a tweak, saved, survives a reboot, on the piece it was made on (the Bells page: ARP)
 tap ARP

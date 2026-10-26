@@ -94,13 +94,14 @@ The drawing at the top shows them all; here they are in more detail.
 | REC | **Freeze**: the chord holds and the reverb rings on forever, while the bells and pulse go on dry above it. Press again to thaw. Lit while frozen. |
 | EDIT | The next chord, at the start of the next bar (at once while resting). |
 | HOME | The Garden page: the whole garden. |
-| ENV · ARP · LFO · SEQ | The layers' pages: Voice 1 (the pad), Voice 2 (the bells), Voice 3 (the bass), Pulse. ENV, ARP or LFO again: that voice's own, PATCH, OPERATOR and MOD; the screen's top says which voice and which group. |
+| ENV · ARP · LFO · SEQ | The layers' pages: Voice 1, Voice 2, Voice 3 (alike: Level, Role, Octave, Density), Pulse. ENV, ARP or LFO again: that voice's own, PATCH, OPERATOR and MOD; the screen's top says which voice and which page. |
+| SEL | The dice: tapped, the page shown rolled; held with ENV, ARP, LFO, HOME, SEQ, FX or GLO, that layer whole; with EDIT, new loops; held alone a second, the last roll undone. |
 | FX · GLO | The Space and Setup pages. The lit button shows the page. |
 | SELECT | The previous or next page. Hold HOME and turn it for the tempo, from any page. |
 | ALGORITHM | Mode: Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, pentatonic major and minor. Loads the mode's scale; editing it with the keys makes it Custom. |
 | PRESETS | The piece (see [The pieces](#s6)). |
 | KNOB 1–4 | The four values on the screen. A few clicks are always single steps; a quick turn speeds up, so half a turn sweeps the range. |
-| OCT− / OCT+ | The bells' octave, two down to two up, from any page. |
+| OCT− / OCT+ | The octave of the voice shown (Voice 1 on the other pages), two down to two up. |
 | MASTER | Volume. |
 | SAVE | Saves all eight pieces. Held for 1.5 s: puts the piece back to its recipe. |
 
@@ -274,6 +275,31 @@ MOD, and once more to come back; SELECT steps through a group's pages.
 
 The top right of this page shows how much of the FM-1's time the sound takes (CPU).
 
+### The three voices, alike
+
+From 1.3.96 the three voices are set the same way, none of them made for one job. Each plays its own patch in a
+**Role** of three, and any voice can take any role (all three chords, if you like):
+
+| Role | What it plays |
+| --- | --- |
+| **Chord** | Up to four notes of the chord (Density), each breathing in and out on its own cycle (Pace: 4–16 s), as the pad did |
+| **Loops** | Four loops of 13, 17, 23 and 29 steps; a step is Pace's (1/16, 1/8, 1/4, 1/2); Density grows their notes, as the bells did |
+| **Bass** | The chord's root, gliding (Glide), leaning on the fifth halfway (Density); struck each chord or, by Pace, each bar, 1/2, 1/4 or 1/8 |
+
+Each voice's page (ENV, ARP, LFO): **Level, Role, Octave, Density**. Its **Play** page: **Envelope, Gate, Pace,
+Glide**. Its **ADSR** page: **Attack, Decay, Sustain, Release**.
+
+**Envelope** is how the notes are shaped:
+
+- **AMB:** AMB-1's own: a chord breathes (the amplitude swells), the loops let a held note go after a beat, the bass
+  is one note held down and faded in.
+- **Patch** (the default): each note is struck and let go after **Gate** (of a breath, a bar, a chord or a step), so the
+  patch's own envelopes are heard as a DX7 plays them, and editing them (OPERATOR, OP Env) changes the sound.
+- **ADSR:** the same, but the carriers' envelope comes from the four ADSR knobs (the modulators keep the patch's).
+
+The Chord voices go to the pad's dark bus, the Loops to the bells' (the most echo), the Bass to the mix. A voice
+changing role fades out and in (20 ms). The pieces of before load with each voice in the role its layer had.
+
 ### ENV, ARP or LFO again: the voice's own pages
 
 Each voice (the pad, the bells, the bass) has its own patch, a DX7 voice of six operators, edited as a DX7 edits it,
@@ -287,7 +313,8 @@ dot of its page shows where you are. Each piece keeps all of it.
 | Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
 | --- | --- | --- | --- | --- |
 | Patch | Patch | Algorithm (1–32) | Feedback (0–7) | Index (±24 dB on the modulators) |
-| Play | Envelope (AMB-1's own, Patch) | Gate (5–100 %) | | |
+| Play | Envelope (AMB, Patch, ADSR) | Gate (5–100 %) | Pace | Glide |
+| ADSR | Attack | Decay | Sustain | Release |
 | LFO | Speed | Delay | Pitch mod | Amp mod |
 | LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24 semitones: the patch's, as a DX7 plays it) |
 | Pitch EG | Stage (1–4) | Rate | Level (±50) | Osc sync |
@@ -296,12 +323,8 @@ dot of its page shows where you are. Each piece keeps all of it.
   Tone, Vibes, Marimba, Tubular, Kalimba, Celesta; the bass: Sine, Round, Pick, Sub, Reed, Fretless), then the voices
   of the DX7 banks you sent (see [MIDI](#s8)), by name; empty slots are passed by. Turning it loads the patch as it
   is; any edit after that makes it the piece's own, shown with a `*` ("E.PIANO 1*").
-- **Envelope:** how the voice plays its notes. AMB-1's own (the pad: **Breath**, each voice swelling in and out over
-  seconds, set by Swell; the bells: **A beat**, let go after a beat; the bass: **Held**, one note held down, gliding,
-  fading in over 2.5 s) or **Patch**: each note struck and let go as a DX7 plays it, so its envelopes are heard, the
-  attack and the release too. The pad then strikes each of its four voices at its breath (Swell still sets how often),
-  the bass each chord, the bells each note. **Gate**, with Patch, how long the key is held down: of the pad's breath, of
-  the chord for the bass, of a bar for the bells. Each voice its own; each piece keeps them.
+- **Envelope, Gate, Pace, Glide, the ADSR:** see [the three voices, alike](#the-three-voices-alike). Each voice its
+  own; each piece keeps them.
 - The pad's voices cross over to a new patch as they do for a new key; the bells take it at their next strike; the
   bass is struck anew once the knob rests. An edit is heard at once on the notes sounding.
 
@@ -385,7 +408,7 @@ What the knobs set comes and goes as MIDI CC (out with MIDI out on; what comes i
 | 16 | 20–49 | the parameters 0–29 (amb.h P_*: the layers, the space, the tone, setup; a patch source as its number) |
 | 1 (pad), 2 (bells), 3 (bass) | 20 | the voice's Index |
 | 1, 2, 3 | 21–60 | its five modulators, eight each: Depth, Rate, Shape, Target, Spread, Fade, Sync, Smooth |
-| 1, 2, 3 | 61, 62 | its Envelope (0–63 AMB-1's own, 64–127 Patch), its Gate |
+| 1, 2, 3 | 102–112 | how it plays: Envelope, Gate, Role, Octave, Density, Pace, Glide, Attack, Decay, Sustain, Release |
 | 1, 2, 3 | NRPN: 99 = 0/1, 98 = 0..127, 6 = value | its patch, byte by byte (the DX7's VCED order, 0..154) |
 
 A value is scaled to its range (0..127 to Depth's 0..100, Index's −24..+24). The patch's bytes go as they are.
@@ -507,8 +530,14 @@ The defaults are Garden's; each piece has its own.
 | Each voice's VOICE | Patch | the voice's own six, then the banks' voices | Rhodes, Bell, Sine |
 | Each voice's VOICE | Algorithm, Feedback, LFO, Pitch EG, Transpose | as a DX7 | as the patch |
 | Each voice's VOICE | Index | −24 – +24 dB | 0 dB |
-| Each voice's Play | Envelope | Breath / A beat / Held (AMB-1's own), Patch | AMB-1's own |
-| Each voice's Play | Gate | 5–100 % | 70 % (pad), 25 % (bells), 80 % (bass) |
+| Each voice | Role | Chord, Loops, Bass | Voice 1 Chord, 2 Loops, 3 Bass |
+| Each voice | Octave | −2 – +2 | 0 |
+| Each voice | Density | 0–100 | 100, 40, 35 |
+| Each voice's Play | Envelope | AMB, Patch, ADSR | Patch |
+| Each voice's Play | Gate | 5–100 % | 70 %, 25 %, 80 % |
+| Each voice's Play | Pace | 0–100 (a breath 4–16 s; a step 1/16–1/2; the bass each chord, bar .. 1/8) | 60, 60, 0 |
+| Each voice's Play | Glide | 20 ms – 1.2 s | 260 ms |
+| Each voice's ADSR | Attack, Decay, Sustain, Release | 0–100 | 5, 40, 70, 40 |
 | Each voice's OPERATOR | Ratio, Fine, Level, Envelope, Mode, Detune, Velocity, Break, Depths, Curves, Rate scale, Amp sens | as a DX7 | as the patch |
 | Each voice's MOD (×5) | Depth | 0–100 | 20 (the first), 0 |
 | Each voice's MOD (×5) | Rate | 0–100 (60 s – 0.12 s a cycle; Tempo: 8 bars – 1/16) | 27 (11 s) |

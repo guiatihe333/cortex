@@ -11,7 +11,7 @@ said Scale D, E, F, G, A, B, C
 # a page settles before it is said
 tap ENV
 wait 300
-said Voice 1 page: Level 60, Swell 60, Bright 40, Colour Rhodes
+said Voice 1 page: Level 60, Role Chord, Octave 0, Density 100
 tap GLO
 wait 300
 said Setup page: Root D, Tune 0, MIDI out On, Lights On
@@ -80,9 +80,9 @@ said GROWING
 wait 300
 unsaid RESTING
 tap OCT+
-said BELL OCTAVE +1
+said VOICE 1 OCTAVE +1
 tap OCT-
-said BELL OCTAVE 0
+said VOICE 1 OCTAVE 0
 tap EDIT
 said NEXT CHORD ON THE BAR
 # a help card: its button, then its lines

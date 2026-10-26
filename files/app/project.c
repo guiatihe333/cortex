@@ -99,11 +99,11 @@ static int project_valid(void)                  /* an older format: the recipes 
     return 1;
 }
 
-static int mig7_on;                             /* format 7's project: its patches kept as they are */
+static uint32_t keep_fmt;                       /* format 7's or 8's project: its patches kept as they are */
 static int patches_valid(void)                  /* (a byte past its range: held to it, the rest kept) */
 {
     int i, v, k;
-    if (pstore.magic != PROJ_MAGIC || (pstore.format != PROJ_FORMAT && !(mig7_on && pstore.format == 7u)))
+    if (pstore.magic != PROJ_MAGIC || (pstore.format != PROJ_FORMAT && !(keep_fmt && pstore.format == keep_fmt)))
         return 0;
     for (i = 0; i < NPIECES; i++)
         for (v = 0; v < EN_NVOX; v++)
@@ -115,7 +115,10 @@ static int patches_valid(void)                  /* (a byte past its range: held 
 
 /* older formats: fewer settings a piece (format 3, 0.9 before the layer pages: 23; format 4, before MOD: 28; format
  * 5, one MOD for all three voices: 32; format 6, each voice its own FM edits and MOD: 75; format 7, before each voice's
- * ENV and GATE: 156, its patches (OBJ_PATCH) as they are). Carried over: each piece's
+ * ENV and GATE: 156, its patches (OBJ_PATCH) as they are; format 8, before the voices were alike: 162, its patches as
+ * they are, its GATEs kept, every voice on its patch's envelopes). Each: the layers' settings into the voices' own
+ * (en_upgrade), the patches' sources into the eighteen (format 6 on: a bank's 12 on, the bells' own six 6 on, the
+ * bass's 12 on). Carried over: each piece's
  * own, the new ones from its recipe; format 5's MOD as every voice's first modulator (en_mod_legacy); format 6's MOD
  * as the first modulator, its INDEX as it was, and its other FM edits (ratio, feedback, envelopes) baked into the
  * voice's patch (en_bake: the patch then edited, OWN) */
@@ -125,6 +128,7 @@ static int patches_valid(void)                  /* (a byte past its range: held 
 #define V6_VX 15
 #define V6_NPARAMS (P_VOX + 3 * V6_VX)
 #define V7_NPARAMS P_PLAY
+#define V8_NPARAMS (P_PLAY + 3 * 2)
 static int16_t mig6[NPIECES + 1][EN_NVOX][6];   /* format 6's ratio, feedback, attack, decay, sustain, release */
 static int mig_n, mig6_on;
 static void fix_none(int16_t *par, const int16_t *o) { (void)par, (void)o; }
@@ -156,7 +160,23 @@ static void fix_v6(int16_t *par, const int16_t *o)
         par[P_VX(v, VX_OWN)] = (int16_t)(b[0] || b[2] || b[3] || b[4] || b[5] || b[6]);
     }
 }
-#define OLD_PROJECT(T, N, K, FIX)                                                                                  \
+static void fix_v8(int16_t *par, const int16_t *o)
+{
+    int v;
+    for (v = 0; v < EN_NVOX; v++)
+        par[P_PL(v, PL_GATE)] = o[P_PLAY + v * 2 + 1];
+}
+static void migrate_up(int16_t *par, uint32_t fmt)   /* a project of format fmt into this one's voices and sources */
+{
+    en_upgrade(par);
+    if (par[P_PADTONE] >= 6)
+        par[P_PADTONE] = (int16_t)(par[P_PADTONE] + 12);
+    if (fmt >= 6u) {
+        par[P_BELLPATCH] = (int16_t)(par[P_BELLPATCH] + (par[P_BELLPATCH] < 6 ? EN_FACT_BELL : 12));
+        par[P_BASSPATCH] = (int16_t)(par[P_BASSPATCH] + 12);
+    }
+}
+#define OLD_PROJECT(T, N, K, FIX, FMT)                                                                             \
     typedef struct {                                                                                               \
         int16_t par[N];                                                                                            \
         uint16_t pool;                                                                                             \
@@ -183,18 +203,21 @@ static void fix_v6(int16_t *par, const int16_t *o)
             for (p = 0; p < P_NPARAMS; p++)                                                                        \
                 proj.slot[i].par[p] = p < (K) ? o->slot[i].par[p] : r.par[p];                                      \
             FIX(proj.slot[i].par, o->slot[i].par);                                                                 \
+            migrate_up(proj.slot[i].par, FMT);                                                                     \
             proj.slot[i].pool = o->slot[i].pool;                                                                   \
         }                                                                                                          \
         recipe(proj.piece, &r);                                                                                    \
         for (p = 0; p < P_NPARAMS; p++)                                                                            \
             proj.par[p] = p < (K) ? o->par[p] : r.par[p];                                                          \
         FIX(proj.par, o->par);                                                                                     \
+        migrate_up(proj.par, FMT);                                                                                 \
     }
-OLD_PROJECT(project_v3, V3_NPARAMS, V3_NPARAMS, fix_none)
-OLD_PROJECT(project_v4, V4_NPARAMS, V4_NPARAMS, fix_none)
-OLD_PROJECT(project_v5, V5_NPARAMS, P_BELLPATCH, fix_v5)
-OLD_PROJECT(project_v6, V6_NPARAMS, P_BELLPATCH, fix_v6)
-OLD_PROJECT(project_v7, V7_NPARAMS, V7_NPARAMS, fix_none)
+OLD_PROJECT(project_v3, V3_NPARAMS, V3_NPARAMS, fix_none, 3u)
+OLD_PROJECT(project_v4, V4_NPARAMS, V4_NPARAMS, fix_none, 4u)
+OLD_PROJECT(project_v5, V5_NPARAMS, P_BELLPATCH, fix_v5, 5u)
+OLD_PROJECT(project_v6, V6_NPARAMS, P_BELLPATCH, fix_v6, 6u)
+OLD_PROJECT(project_v7, V7_NPARAMS, V7_NPARAMS, fix_none, 7u)
+OLD_PROJECT(project_v8, V8_NPARAMS, P_PLAY, fix_v8, 8u)
 
 int project_load(void)
 {
@@ -205,10 +228,12 @@ int project_load(void)
         project_v5_t v5;
         project_v6_t v6;
         project_v7_t v7;
+        project_v8_t v8;
     } buf;
     int n, i, v, migrated = 1;
     memset(&buf, 0, sizeof buf);
-    mig_n = mig6_on = mig7_on = 0;
+    mig_n = mig6_on = 0;
+    keep_fmt = 0;
     n = plat_store_load(OBJ_PROJ, &buf, sizeof buf);
     if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 3u)
         from_project_v3(&buf.v3);
@@ -220,8 +245,11 @@ int project_load(void)
         mig6_on = 1;
         from_project_v6(&buf.v6);
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 7u) {
-        mig7_on = 1;
+        keep_fmt = 7u;
         from_project_v7(&buf.v7);
+    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 8u) {
+        keep_fmt = 8u;
+        from_project_v8(&buf.v8);
     } else {
         proj = buf.now;
         migrated = 0;
@@ -231,7 +259,7 @@ int project_load(void)
         return -1;
     }
     memset(&pstore, 0, sizeof pstore);
-    if ((migrated && !mig7_on) || plat_store_load(OBJ_PATCH, &pstore, sizeof pstore) < 8 || !patches_valid()) {
+    if ((migrated && !keep_fmt) || plat_store_load(OBJ_PATCH, &pstore, sizeof pstore) < 8 || !patches_valid()) {
         pstore.magic = PROJ_MAGIC;               /* none, or a format before them: from the pieces' sources */
         pstore.format = PROJ_FORMAT;
         for (i = 0; i < NPIECES; i++) {

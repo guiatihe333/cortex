@@ -20,10 +20,12 @@
 enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_NOBJ };
 #define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u}   /* the pieces' patches after the panel, in the data area */
 #define PROJ_MAGIC 0x314F4E45u           /* "ENO1" */
-#define PROJ_FORMAT 8u                   /* 8: how each voice plays (ENV, GATE); 7: each voice's own patch
+#define PROJ_FORMAT 9u                   /* 9: the voices alike (a ROLE each, its own octave, density, pace, glide,
+                                          * an ADSR), AMB-1's eighteen patches; 8: how each voice plays (ENV, GATE); 7:
+                                          * each voice's own patch
                                           * (OBJ_PATCH) and five modulators; 6: each
                                           * voice's patch choice, FM edits and MOD; 5: one MOD for all; 4: the bass's
-                                          * and the pulse's own settings (7, 6, 5, 4 and 3 are carried over; older formats
+                                          * and the pulse's own settings (8, 7, 6, 5, 4 and 3 are carried over; older formats
                                           * give the recipes) */
 #define NPIECES EN_NPIECES
 

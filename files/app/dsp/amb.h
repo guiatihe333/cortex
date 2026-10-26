@@ -58,19 +58,21 @@ enum {
     P_BELLPATCH, P_BASSPATCH,                         /* the bells' and the bass's patches (sources) */
     P_VOX,                                            /* then each voice's own: EN_NVOX blocks of VX_N (P_VX) */
     P_PLAY = P_VOX + 3 * 42,                          /* then how each voice plays its notes: EN_NVOX of PL_N (P_PL) */
-    P_NPARAMS = P_PLAY + 3 * 2
+    P_NPARAMS = P_PLAY + 3 * 11
 };
 /* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
  * index and five generative modulators */
 enum { VOX_PAD, VOX_BELLS, VOX_BASS, EN_NVOX };
-/* a patch's source: the voice's own six (EN_NFACT, made here) or a voice of the banks loaded from .syx files (EN_NBANK
- * banks of 32 in the flash: source EN_NFACT + bank * 32 + voice) */
-#define EN_NFACT 6
+/* a patch's source: AMB-1's own eighteen, any voice any of them (EN_NFACT, made here: six pads, six bells, six basses)
+ * or a voice of the banks loaded from .syx files (EN_NBANK banks of 32 in the flash: source EN_NFACT + bank * 32 + voice) */
+#define EN_NFACT 18
 #define EN_NBANK 16
 #define EN_NSRC (EN_NFACT + EN_NBANK * 32)
-#define EN_PADPATCHES EN_NFACT
-#define EN_BELLPATCHES EN_NFACT
-#define EN_BASSPATCHES EN_NFACT
+#define EN_PADPATCHES 6
+#define EN_BELLPATCHES 6
+#define EN_BASSPATCHES 6
+#define EN_FACT_BELL 6                            /* the first bell (AMB-1's own, shaded by Bell tone) */
+#define EN_FACT_BASS 12
 /* a voice's block: OWN (the patch edited since its source was loaded: kept as it is), INDEX (dB on the modulators,
  * heard at once), then EN_NSLOT modulators of MS_N: MOD (depth, rate, shape, target) and MOD 2 (spread, fade, sync,
  * smooth) */
@@ -79,10 +81,17 @@ enum { MS_DEPTH, MS_RATE, MS_SHAPE, MS_DEST, MS_SPREAD, MS_FADE, MS_SYNC, MS_SMO
 enum { VX_OWN, VX_INDEX, VX_SLOT, VX_N = VX_SLOT + EN_NSLOT * MS_N };
 #define P_VX(v, k) (P_VOX + (v) * VX_N + (k))
 #define P_MS(v, s, k) P_VX(v, VX_SLOT + (s) * MS_N + (k))
-/* how a voice plays its notes: ENV, AMB-1's own (0: the pad's breath, the bells let go after a beat, the bass one note
- * held and gliding) or the patch's (1: each note struck and let go, its envelopes heard as a DX7 plays them); GATE,
- * with the patch's, how long a note is held down (of the pad's breath, a chord for the bass, a bar for the bells) */
-enum { PL_ENV, PL_GATE, PL_N };
+/* how a voice plays its notes, the three alike: ENV (AMB-1's own: a chord's breath, the loops let go after a beat, the
+ * bass held and gliding; the patch's: each note struck and let go, its envelopes as a DX7 plays them; ADSR: the same,
+ * its carriers' envelope the four knobs), GATE (how long a note is held down: of a breath, a bar, a chord or a step),
+ * ROLE (Chord, Loops or Bass), OCTAVE, DENSITY (a chord's voices, the loops' notes, the bass's leaning on the fifth),
+ * PACE (a breath's length, the loops' step, the bass struck again each bar .. eighth), GLIDE, and the ADSR */
+enum { PL_ENV, PL_GATE, PL_ROLE, PL_OCT, PL_DENS, PL_PACE, PL_GLIDE, PL_A, PL_D, PL_S, PL_R, PL_N };
+enum { ENV_AMB, ENV_PATCH, ENV_ADSR, EN_NENV };
+enum { ROLE_CHORD, ROLE_LOOPS, ROLE_BASS, EN_NROLE };
+/* the settings of before each voice had its own (Swell, Density, Bell oct, Bass oct, Glide, Fifth: still in the table,
+ * unshown) into each voice's (a piece's recipe, a project of an older format) */
+void en_upgrade(int16_t *par);
 #define P_PL(v, k) (P_PLAY + (v) * PL_N + (k))
 _Static_assert(P_PLAY == P_VOX + EN_NVOX * VX_N, "a block a voice");
 _Static_assert(P_NPARAMS == P_PLAY + EN_NVOX * PL_N, "how each voice plays");
@@ -191,7 +200,7 @@ enum { OPT_LEVEL, OPT_RATIO, OPT_FINE, OPT_ATK, OPT_DEC, OPT_SUS, OPT_REL, OPT_N
  *     FINE    its pitch, +-50 cents, slewed 15 ms
  *     ATTACK, DECAY, SUSTAIN, RELEASE   its envelope as each note starts: rates +-30 (+ slower), sustain +-30 */
 void en_moddest_text(int d, char *buf);        /* a target's name, as the screen shows it (10 bytes) */
-#define EN_NMOD (EN_NPAD + 6 + 1)               /* the generators of a modulator: pad voices, bells, bass */
+#define EN_NMOD (EN_NVOX * EN_NPAD)             /* the generators of a modulator: each voice's four notes */
 extern volatile float en_mod[EN_NSLOT][EN_NMOD];   /* each generator's value now, -1 .. 1 (times the depth) */
 
 /* the pure parts, for the tests and the screen */

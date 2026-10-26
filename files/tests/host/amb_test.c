@@ -239,7 +239,7 @@ int main(void)
         int8_t before[EN_NLOOP][EN_LOOP_MAX];
         int diff = 0, l;
         en_set(P_EVOLVE, 100);
-        en_set(P_DENSITY, 80);
+        en_set(P_PL(VOX_BELLS, PL_DENS), 80);
         memcpy(before, (const void *)en_loop_note, sizeof before);
         run(90.0f);
         for (l = 0; l < EN_NLOOP; l++)
@@ -321,9 +321,9 @@ int main(void)
             en_set(P_PULSE, 0);
             en_set(P_ECHO, 0);
             en_set(P_REVERB, 0);
-            en_set(P_DENSITY, 100);
+            en_set(P_PL(VOX_BELLS, PL_DENS), 100);
             en_set(P_BTONE, TONE[k]);
-            en_set(P_BOCT, OCT[k]);
+            en_set(P_PL(VOX_BELLS, PL_OCT), OCT[k]);
             en_play(1);
             for (b2 = 0; b2 < 20 * 44100 / 256; b2++) {
                 en_render(buf, 256, 2048);
@@ -492,7 +492,7 @@ int main(void)
             en_set(P_PULSE, 0);
             en_set(P_ECHO, 0);
             en_set(P_REVERB, 0);
-            en_set(P_DENSITY, 100);
+            en_set(P_PL(VOX_BELLS, PL_DENS), 100);
             if (k < 3) {
                 en_set(P_MS(VOX_BELLS, 0, MS_DEPTH), DEST[k] < 0 ? 0 : 100);
                 en_set(P_MS(VOX_BELLS, 0, MS_DEST), DEST[k] < 0 ? 0 : DEST[k]);
@@ -543,7 +543,7 @@ int main(void)
                 for (k = 0; k < EN_NVOX; k++)
                     en_set(LAYER[k], k == v ? 100 : 0);
                 en_set(P_PULSE, 0);
-                en_set(P_DENSITY, 100);
+                en_set(P_PL(VOX_BELLS, PL_DENS), 100);
                 en_set(EN_VOX_PATCH[v], p);
                 en_play(1);
                 peak = 0.0f;
@@ -598,7 +598,7 @@ int main(void)
         uint8_t p[EN_PATCH + 1];
         int k, j;
         en_init();
-        en_factory(VOX_BELLS, 3, 50, p);         /* (the tubular bell, as a bank's voice: source 6) */
+        en_factory(VOX_BELLS, EN_FACT_BELL + 3, 50, p);   /* (the tubular bell, as a bank's voice) */
         p[EP_ALG] = 0;
         en_set(P_BELLPATCH, EN_NFACT);
         for (k = 0; k < EN_PATCH; k++)
@@ -606,7 +606,7 @@ int main(void)
         en_patch_done(VOX_BELLS, 1);
         en_set(P_PAD, 0);
         en_set(P_BASS, 0);
-        en_set(P_DENSITY, 100);
+        en_set(P_PL(VOX_BELLS, PL_DENS), 100);
         en_play(1);
         peak = 0.0f;
         run(6.0f);
@@ -673,7 +673,7 @@ int main(void)
             en_set(P_PULSE, 0);
             en_set(P_ECHO, 0);
             en_set(P_REVERB, 0);
-            en_set(P_DENSITY, 100);
+            en_set(P_PL(VOX_BELLS, PL_DENS), 100);
             if (DEST[k] >= 0) {
                 en_set(P_MS(VOX_BELLS, 2, MS_DEPTH), 100);
                 en_set(P_MS(VOX_BELLS, 2, MS_DEST), DEST[k]);
@@ -714,7 +714,7 @@ int main(void)
             en_set(P_PULSE, 0);
             en_set(P_ECHO, 0);
             en_set(P_REVERB, 0);
-            en_factory(VOX_BASS, 0, 50, p);
+            en_factory(VOX_BASS, EN_FACT_BASS, 50, p);
             p[EP_TRNSP] = (uint8_t)(t ? 36 : 24);
             en_set(P_VX(VOX_BASS, VX_OWN), 1);
             en_patch_load(VOX_BASS, p, 1);
@@ -743,10 +743,10 @@ int main(void)
             en_set(P_ECHO, 0);
             en_set(P_REVERB, 0);
             en_set(P_VX(VOX_BASS, VX_OWN), 1);
-            en_factory(VOX_BASS, 2, 50, q);
+            en_factory(VOX_BASS, EN_FACT_BASS + 2, 50, q);
             if (t)
                 for (k = 0; k < 900; k++) {   /* (in one drain, the queue short of full) */
-                    en_factory(VOX_BASS, k % 6, 50, p);
+                    en_factory(VOX_BASS, EN_FACT_BASS + k % 6, 50, p);
                     en_patch_load(VOX_BASS, p, 1);
                 }
             en_patch_load(VOX_BASS, q, 1);
@@ -791,6 +791,56 @@ int main(void)
         CHECK(en_tempo > 58.5f && en_tempo < 61.5f, "an external clock at 60: the tempo %f", (double)en_tempo);
         run(2.0f);                               /* the clock gone: the knob's */
         CHECK(en_tempo == 120.0f, "the clock gone: the tempo %f", (double)en_tempo);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.3.96. The voices alike: every voice in every role (all three Chords, all Loops, all Basses) sounds, bounded,
+     * never NaN; a voice changed to another role while playing goes on sounding; the ADSR's attack is heard (the
+     * chord's level 0.3 s in: at once at 0, slow at 100) */
+    {
+        int r, v, b2, j, e;
+        float lv[2];
+        for (r = 0; r < EN_NROLE; r++) {
+            en_init();
+            for (v = 0; v < EN_NVOX; v++) {
+                en_set(P_PL(v, PL_ROLE), r);
+                en_set(P_PL(v, PL_DENS), 80);
+            }
+            en_play(1);
+            peak = 0.0f;
+            bad = 0;
+            run(12.0f);
+            CHECK(!bad && peak > 0.01f && peak < 1.0f, "all three voices role %d: peak %f, NaN %d", r, (double)peak, bad);
+        }
+        en_init();
+        en_play(1);
+        run(3.0f);
+        en_set(P_PL(VOX_PAD, PL_ROLE), ROLE_LOOPS);   /* the first voice to the loops, the third to chords */
+        en_set(P_PL(VOX_BASS, PL_ROLE), ROLE_CHORD);
+        en_set(P_PL(VOX_PAD, PL_DENS), 80);
+        peak = 0.0f;
+        bad = 0;
+        run(8.0f);
+        CHECK(!bad && peak > 0.01f && peak < 1.0f, "roles changed while playing: peak %f", (double)peak);
+        CHECK(en_pad_level > 0.0f, "the third voice's chord not shown (%f)", (double)en_pad_level);
+        for (e = 0; e < 2; e++) {               /* the first voice alone, a chord on the ADSR: attack 0, then 100 */
+            en_init();
+            en_set(P_BELLS, 0);
+            en_set(P_BASS, 0);
+            en_set(P_PULSE, 0);
+            en_set(P_PL(VOX_PAD, PL_ENV), ENV_ADSR);
+            en_set(P_PL(VOX_PAD, PL_A), e ? 100 : 0);
+            en_play(1);
+            lv[e] = 0.0f;
+            for (b2 = 0; b2 < (int)(0.3f * 44100.0f) / 256; b2++) {
+                en_render(buf, 256, 2048);
+                for (j = 0; j < 512; j++)
+                    if (fabsf((float)buf[j]) > lv[e])
+                        lv[e] = fabsf((float)buf[j]);
+            }
+        }
+        CHECK(lv[0] > 4.0f * lv[1], "ADSR attack 0 vs 100, 0.3 s in: %f vs %f", (double)lv[0], (double)lv[1]);
         en_init();
         en_play(1);
     }
