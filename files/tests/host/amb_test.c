@@ -337,6 +337,45 @@ int main(void)
         en_set(P_MDEPTH, 0);
     }
 
+    /* MOD's FM targets are heard: RATIO (harmonic steps up) and FEEDBACK (more of it) are one-sided, so at full
+     * depth the bells alone are brighter (zero crossings) than without */
+    {
+        static const int DEST[3] = {-1, MOD_RATIO, MOD_FEEDBACK};
+        float zc[3];
+        int k;
+        for (k = 0; k < 3; k++) {
+            int b2, j;
+            long z = 0;
+            float prev = 0.0f;
+            en_init();
+            en_set(P_PAD, 0);
+            en_set(P_BASS, 0);
+            en_set(P_PULSE, 0);
+            en_set(P_ECHO, 0);
+            en_set(P_REVERB, 0);
+            en_set(P_DENSITY, 100);
+            en_set(P_MDEPTH, DEST[k] < 0 ? 0 : 100);
+            en_set(P_MDEST, DEST[k] < 0 ? 0 : DEST[k]);
+            en_set(P_MRATE, 60);
+            en_play(1);
+            for (b2 = 0; b2 < 20 * 44100 / 256; b2++) {
+                en_render(buf, 256, 2048);
+                for (j = 0; j < 256; j++) {
+                    float x = (float)buf[2 * j];
+                    z += (x > 0.0f) != (prev > 0.0f);
+                    prev = x;
+                }
+            }
+            zc[k] = (float)z;
+        }
+        CHECK(zc[1] > 1.15f * zc[0], "MOD Ratio not brighter: %.0f vs %.0f", (double)zc[1], (double)zc[0]);
+        CHECK(zc[2] > 1.15f * zc[0], "MOD Feedback not brighter: %.0f vs %.0f", (double)zc[2], (double)zc[0]);
+        printf("  MOD on the bells, zero crossings: off %.0f, ratio %.0f, feedback %.0f\n", (double)zc[0], (double)zc[1],
+               (double)zc[2]);
+        en_init();
+        en_play(1);
+    }
+
     /* stop: the tails die away */
     for (i = 0; i < P_NPARAMS; i++)
         en_set(i, en_param_info(i)->def);

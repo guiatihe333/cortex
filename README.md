@@ -29,17 +29,30 @@ ARP nos Bells, LFO no Bass) ou gire o SELECT depois de Setup. Na página MOD, os
 | Knob | Parâmetro | O que faz |
 | --- | --- | --- |
 | 1 | **Depth** (0–100) | Profundidade da modulação. Em 0 as vozes soam exatamente como sem o motor. |
-| 2 | **Rate** (0–100) | Duração de um ciclo, de 60 s a 0,5 s. Cada voz anda um pouco mais rápido ou mais devagar. |
-| 3 | **Chaos** (0–100) | Forma do movimento: 0 é uma onda lenta; 50 é um passeio aleatório, deslizando entre valores sorteados; 100 é o mapa logístico na borda do caos, com saltos suavizados em ~5 ms. |
-| 4 | **Target** | O que se move. **Timbre:** nível dos moduladores FM, ±12 dB. **Metal:** moduladores desafinados entre si, ±60 cents, dando bandas laterais inarmônicas. **Pitch:** afinação da voz, ±30 cents (wow de fita). **Space:** posição no estéreo. **All:** um pouco de cada. |
+| 2 | **Rate** (0–100) | Duração de um ciclo, de 60 s a 0,12 s (até 8,5 Hz, velocidade de vibrato). Cada voz anda um pouco mais rápido ou mais devagar. |
+| 3 | **Chaos** (0–100) | Forma do movimento: 0 é uma onda lenta; 50 é um passeio aleatório, deslizando entre valores sorteados; 100 é o mapa logístico na borda do caos, com saltos suavizados por 1/20 do segmento (8 a 150 ms). |
+| 4 | **Target** | O que se move; veja a tabela abaixo. |
+
+### Os targets: os parâmetros FM primeiro
+
+| Target | Parâmetro FM6 | Faixa | Forma |
+| --- | --- | --- | --- |
+| **Timbre** | Nível dos moduladores (o índice FM) | ±12 dB | Bipolar, em dB, como o ouvido percebe o índice |
+| **Ratio** | Razão de frequência dos moduladores | ×1, ×2, ×3, ×4, ×5 | Degraus harmônicos só para cima, com histerese e glide de 15 ms |
+| **Metal** | Moduladores desafinados entre si (um sobe, o outro desce) | ±80 cents | Bipolar: bandas laterais inarmônicas, som de sino |
+| **Feedback** | Feedback do operador 6, **contínuo** | até +9 passos | Unipolar, a partir do feedback do patch |
+| **Decay** | Envelopes de cada nota nova: decaimento dos moduladores (o brilho) e das portadoras (a duração) | ±20 / ±6 rates | Aplicado no ataque de cada nota |
+| **Pitch** | Afinação da voz | ±30 cents | Suavizado em 15 ms; no Rate máximo vira vibrato |
+| **Space** | Posição no estéreo | — | Suavizado em 30 ms, com rampa de ganho por bloco |
+| **All** | Timbre, Metal, Feedback, Decay, Pitch e Space, um pouco menos de cada | — | Sem Ratio, por causa dos degraus |
 
 Como funciona:
 - **Um gerador independente por voz**: 4 do pad, 6 dos sinos e 1 do baixo. Os ritmos são espalhados pela razão
   áurea, para que as vozes nunca se movam juntas.
 - **Ligado ao arco do AMB-1**: a modulação se aprofunda quando o jardim está cheio e se acalma quando está esparso.
 - **Gerador aleatório próprio**: notas, loops e acordes continuam exatamente como antes.
-- **Receitas das peças**: cada peça ganhou a sua. Garden usa Timbre suave, Night Bus e Glass usam Metal, Afternoon e
-  Shoreline usam Space, Departures usa Pitch e Tides usa All.
+- **Receitas das peças**: cada peça ganhou a sua. Garden usa Timbre, Glass usa Ratio, Night Bus usa Metal, Voices
+  usa Feedback, Shoreline usa Decay, Departures usa Pitch, Afternoon usa Space e Tides usa All.
 - **Projetos salvos**: o formato do projeto foi para o 5. Projetos salvos nos formatos 4 (AMB-1 atual) e 3 (0.9) são
   migrados, e os parâmetros novos vêm da receita da peça.
 - **Também incluídos**: o leitor de tela fala a página nova, o app web ganhou o grupo "Mod" e o manual foi atualizado.
@@ -60,8 +73,36 @@ Arquivos (em `files/`, os mesmos que o patch cria ou altera):
   `P_MDEST`), `ui.c` (página e leitor de tela), `project.c` e `app.h` (formato 5 com migração), `web/app/index.html`,
   `docs/MANUAL.md`, `tests/host/amb_test.c` (checagens do motor) e `tests/scenarios/mod.amb` (navegação).
 
-`amb1-fm6.patch` traz tudo de uma vez. Em `patches/` estão os dois passos separados (vozes FM6 e depois MOD), para
-`git am`.
+`amb1-fm6.patch` traz tudo de uma vez. Em `patches/` estão os três passos separados (vozes FM6, depois a página MOD,
+depois os targets FM), para `git am`.
+
+## A modulação é adequada para síntese FM? O que foi medido
+
+Ferramentas próprias em `analysis/`. Elas medem cada camada sozinha, sem efeitos, por 30 s: centroide espectral
+(brilho), periodicidade (1,0 = perfeitamente harmônico), pitch e um detector de cliques que varre todas as amostras.
+
+| Problema encontrado | Correção | Medida depois |
+| --- | --- | --- |
+| **Feedback** do msfa é inteiro (0..7, degraus de 6 dB): modular dá zipper | Feedback contínuo no núcleo (ganho Q12 em vez de shift) | Idêntico ao JIANT com feedback 0 (bit a bit) e -58 a -104 dB de diferença com 1..7 |
+| **Feedback** sem efeito: os patches tinham o operador com feedback mudo, e no DX7 o feedback é proporcional à saída do próprio operador | Pares renumerados (o modulador principal virou o op6, sem mudar o som) e faixa até ganho 1 | Sinos: oscilação do centroide de ±605 para ±1112 Hz |
+| **Ratio** ×1/2 fazia a voz soar uma oitava abaixo (bandas laterais em f/2) | Só degraus para cima, ×1 a ×5 | Periodicidade 0,876 → 0,904 (sem modulação: 0,925); picos dos sinos 13,8x → 4,1x |
+| **Space** mudava o ganho em degraus a cada bloco de 0,7 ms (zipper, ~-66 dB) | Rampa de ganho dentro do bloco | Pico 11,3x → 4,8x, igual ao sinal sem modulação |
+| Pitch e Space suavizados demais (40/80 ms cortavam o vibrato pela metade) | 15/30 ms | Pitch medido: ±0,21 st, exatamente o teórico de ±0,3 st senoidal |
+| Rate só ia até 0,5 s | Até 0,12 s (8,5 Hz) | — |
+
+O que já estava adequado e foi confirmado:
+- **Timbre** em dB move o centroide (pad +5 a +9%, sinos ±1195 Hz). O FM6 interpola o ganho dos operadores dentro
+  de cada bloco, então o índice se move sem degraus.
+- **Metal** reduz a periodicidade (som inarmônico) sem mudar o brilho, que é o papel dele.
+- **Decay** atua nos sinos (centroide +38%); no pad e no baixo, que são sustentados, quase não tem efeito.
+
+Limites honestos:
+- **No baixo, Ratio, Metal e Feedback mudam pouco.** O baixo é quase um seno puro (modulador em OL 45), e não há
+  índice FM para mexer. Isso é de propósito.
+- **Chaos 100 dá saltos de timbre de verdade** (até 18 dB em ~20 ms). O detector marca "quinas" de -62 dB nas
+  fronteiras de bloco, o mesmo comportamento dos envelopes do msfa original. Não são cliques.
+
+Níveis: cada camada ficou a até 0,3 dB do AMB-1 original, medido com `analysis/layers.c`.
 
 **Licença:** o resultado continua **MPL-2.0** como o AMB-1. Do JIANT entrou só o `fm6_core.c`, que é Apache-2.0
 (compatível). Nada do código GPL do JIANT ou do Felucca entrou: nem o `eng_fm6.c`, nem os patches de fábrica, nem o
@@ -88,12 +129,15 @@ da M-VAVE.
 - O código compila sem avisos (gcc e clang, com as flags estritas do teste de host do AMB-1: `-Wall -Wextra
   -Wdouble-promotion -Werror`). A interface (`ui.c`, `project.c`) também passou pelo build do simulador de host, com
   cabeçalhos de fonte provisórios só para a checagem.
-- **Os testes não foram executados** (`tests/run_tests.sh`, o teste do instrumento, o simulador). O ambiente onde a
-  modificação foi feita não tinha permissão para executar código vindo de repositórios externos.
+- **Os testes passam todos** (`tests/run_tests.sh`: o teste do instrumento, o build do simulador e os 8 cenários,
+  incluindo o `mod.amb` novo), no Linux, via o wrapper `analysis/cc-linux`. Os scripts do AMB-1 assumem macOS: no
+  glibc faltam `-lm` e `_DEFAULT_SOURCE`, e isso falha igual no AMB-1 original. Ficaram de fora o emulador web
+  (falta o emcc) e o caminho de atualização (falta o `.fwsc`).
 - **Não houve build para o aparelho**: faltam o toolchain JieLi e o SDK AC79. Por isso as checagens de imagem, RAM e
   CPU do `build.py` ainda não rodaram.
-- **Os timbres não foram ouvidos.** Os níveis e envelopes dos patches foram calculados a partir da matemática do msfa
-  para reproduzir o volume e o decaimento das vozes originais, mas vale ouvir e ajustar: os números estão em
-  `fm_patches()` e `bell_patches()`, e `PAD_OUT` define o volume do pad.
-- **CPU**: no pior caso são 11 notas FM6 (4 do pad, 6 dos sinos e 1 do baixo). A estimativa é de uns 10 % a mais de
-  CPU que as vozes originais a 360 MHz. Se faltar fôlego, reduza `NBELL`.
+- **Os timbres não foram ouvidos por uma pessoa.** Os níveis foram medidos e igualados ao original, e cada target
+  foi verificado por análise espectral, mas o gosto é seu: os patches estão em `fm_patches()` e `bell_patches()`,
+  e as faixas da modulação em `mod_of()`.
+- **CPU**: no pior caso são 11 notas FM6 (4 do pad, 6 dos sinos e 1 do baixo), mais 11 geradores de modulação por
+  bloco (barato). A estimativa é de uns 10 % a mais de CPU que as vozes originais a 360 MHz, ainda não medida no
+  aparelho. Se faltar fôlego, reduza `NBELL`.

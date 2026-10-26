@@ -1,0 +1,4 @@
+#!/bin/sh
+# Linux glibc: clock_gettime needs _DEFAULT_SOURCE, sqrtf needs -lm at the end of a link
+for a in "$@"; do case "$a" in -c|-fsyntax-only|-E) exec cc -D_DEFAULT_SOURCE "$@";; esac; done
+exec cc -D_DEFAULT_SOURCE "$@" -lm

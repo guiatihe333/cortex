@@ -1,7 +1,7 @@
 From 7ca33ecc32a179cedc9c937eb85ef312dfa059b5 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 04:36:48 +0000
-Subject: [PATCH 2/2] MOD: generative modulation of the voices (depth, rate,
+Subject: [PATCH 2/3] MOD: generative modulation of the voices (depth, rate,
  chaos, target), a generator a voice
 
 ---
