@@ -94,7 +94,7 @@ The drawing at the top shows them all; here they are in more detail.
 | REC | **Freeze**: the chord holds and the reverb rings on forever, while the bells and pulse go on dry above it. Press again to thaw. Lit while frozen. |
 | EDIT | The next chord, at the start of the next bar (at once while resting). |
 | HOME | The Garden page: the whole garden. |
-| ENV · ARP · LFO · SEQ | The layers' pages: Pad, Bells, Bass, Pulse. ENV, ARP or LFO again: that voice's own, VOICE, OPERATOR and MOD. |
+| ENV · ARP · LFO · SEQ | The layers' pages: Voice 1 (the pad), Voice 2 (the bells), Voice 3 (the bass), Pulse. ENV, ARP or LFO again: that voice's own, PATCH, OPERATOR and MOD; the screen's top says which voice and which group. |
 | FX · GLO | The Space and Setup pages. The lit button shows the page. |
 | SELECT | The previous or next page. Hold HOME and turn it for the tempo, from any page. |
 | ALGORITHM | Mode: Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, pentatonic major and minor. Loads the mode's scale; editing it with the keys makes it Custom. |

@@ -1,0 +1,184 @@
+From 50b1e574e7694be282daf18407dcf2cd6f03ef86 Mon Sep 17 00:00:00 2001
+From: AMB-1 FM6 <noreply@anthropic.com>
+Date: Mon, 26 Oct 2026 19:18:19 -0300
+Subject: [PATCH] The voices named Voice 1, 2 and 3; which voice and group,
+ large at the screen's top on each press
+
+The pad, the bells and the bass are Voice 1, 2 and 3 on the screen, in the help cards, the parameters' names and the
+web app; their first group is PATCH. A voice's button says on the header which voice and which group it went to
+(screen only: a screen reader still hears the page), so a voice's pages are not taken for another's.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ app/dsp/amb.c              | 12 ++++++------
+ app/ui.c                   | 25 +++++++++++++++++--------
+ docs/MANUAL.md             |  2 +-
+ tests/scenarios/reader.amb |  2 +-
+ web/app/index.html         | 10 +++++-----
+ 5 files changed, 30 insertions(+), 21 deletions(-)
+
+diff --git a/app/dsp/amb.c b/app/dsp/amb.c
+index 688e2bf..7493b09 100644
+--- a/app/dsp/amb.c
++++ b/app/dsp/amb.c
+@@ -29,15 +29,15 @@ const uint8_t EN_LOOP_LEN[EN_NLOOP] = {13, 17, 23, 29};
+ const uint8_t EN_DRUM_N[EN_NDRUM] = {16, 12, 7};
+ 
+ static const en_param_t PARAMS[P_NPARAMS] = {
+-    {"Pad", 0, 100, 60},      {"Bells", 0, 100, 65},    {"Bass", 0, 100, 45},     {"Pulse", 0, 100, 40},
++    {"Voice 1", 0, 100, 60},  {"Voice 2", 0, 100, 65},  {"Voice 3", 0, 100, 45},  {"Pulse", 0, 100, 40},
+     {"Density", 0, 100, 40},  {"Evolve", 0, 100, 35},   {"Drift", 0, 100, 25},    {"Hits", 0, 100, 35},
+     {"Echo", 0, 100, 45},     {"Echo time", 0, 5, 3},   {"Reverb", 0, 100, 65},   {"Size", 0, 100, 80},
+-    {"Bright", 0, 100, 40},   {"Swell", 0, 100, 60},    {"Bell tone", 0, 100, 50}, {"Motion", 0, 100, 50},
++    {"Bright", 0, 100, 40},   {"Swell", 0, 100, 60},    {"V2 tone", 0, 100, 50}, {"Motion", 0, 100, 50},
+     {"Tune", -50, 50, 0},     {"MIDI out", 0, 1, 1},    {"Tempo", 30, 120, 72},   {"Root", 0, 11, 2},
+-    {"Mode", 0, EN_NMODES - 1, 1}, {"Bell oct", -2, 2, 0}, {"Pad patch", 0, EN_NSRC - 1, 0},
+-    {"Bass oct", -1, 1, 0},   {"Glide", 0, 100, 20},    {"Fifth", 0, 100, 35},
++    {"Mode", 0, EN_NMODES - 1, 1}, {"V2 oct", -2, 2, 0},   {"V1 patch", 0, EN_NSRC - 1, 0},
++    {"V3 oct", -1, 1, 0},     {"Glide", 0, 100, 20},    {"Fifth", 0, 100, 35},
+     {"Swing", 0, 100, 0},     {"Hats", 0, 100, 50},
+-    {"Bell patch", 0, EN_NSRC - 1, 0}, {"Bass patch", 0, EN_NSRC - 1, 0},
++    {"V2 patch", 0, EN_NSRC - 1, 0}, {"V3 patch", 0, EN_NSRC - 1, 0},
+ #define MS_PARAMS(w, n)                                                                                            \
+     {w " mod" n " depth", 0, 100, 0}, {w " mod" n " rate", 0, 100, 31},                                            \
+     {w " mod" n " shape", 0, EN_NMODSHAPE - 1, 0}, {w " mod" n " target", 0, EN_NMODDEST - 1, 0},                 \
+@@ -46,7 +46,7 @@ static const en_param_t PARAMS[P_NPARAMS] = {
+ #define VOX_PARAMS(w)                                                                                              \
+     {w " own", 0, 1, 0}, {w " index", -24, 24, 0}, MS_PARAMS(w, "1"), MS_PARAMS(w, "2"), MS_PARAMS(w, "3"),        \
+     MS_PARAMS(w, "4"), MS_PARAMS(w, "5")
+-    VOX_PARAMS("Pad"), VOX_PARAMS("Bell"), VOX_PARAMS("Bass"),
++    VOX_PARAMS("V1"), VOX_PARAMS("V2"), VOX_PARAMS("V3"),
+ #undef VOX_PARAMS
+ #undef MS_PARAMS
+ };
+diff --git a/app/ui.c b/app/ui.c
+index 06f0190..650ca50 100644
+--- a/app/ui.c
++++ b/app/ui.c
+@@ -27,8 +27,8 @@ enum { S_VOICE, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5,
+ #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
+ #define NGROUP 3
+ static const uint8_t GROUP0[NGROUP + 1] = {S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
+-static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Pad", "Bells", "Bass", "Pulse", "Space", "Setup"};
+-static const char *const SUB_NAME[NSUB] = {"Voice", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
++static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Pulse", "Space", "Setup"};
++static const char *const SUB_NAME[NSUB] = {"Patch", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
+                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
+ static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO};
+ static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
+@@ -586,6 +586,8 @@ static void set_view(int v)
+         ui.gsub[view_vox(v)][g] = (uint8_t)(view_sub(v) - GROUP0[g]);
+ }
+ 
++static void caps(char *d, const char *s, int n);
++
+ static void button(int b)
+ {
+     int v;
+@@ -596,6 +598,13 @@ static void button(int b)
+                 set_view(V_MAIN + x * NSUB + GROUP0[g] + ui.gsub[x][g]);
+             else
+                 set_view(v);
++            if (x >= 0) {                        /* which voice, and which of its groups, large on the screen */
++                static const char *const GNAME[NGROUP] = {"PATCH", "OPERATOR", "MOD"};
++                char t[12];
++                g = view_group(ui.view);
++                caps(t, MAIN_NAME[v], sizeof t);
++                say_as(t, g < 0 ? "LAYER" : GNAME[g], 0);   /* (a screen reader hears the page itself) */
++            }
+             return;
+         }
+     switch (b) {
+@@ -698,7 +707,7 @@ void ui_patch_in(int voice)                     /* a DX7 voice came in over USB:
+     for (k = 0; k < 10; k++)
+         t[k] = (char)vpatch[voice][EP_NAME + k];
+     t[10] = 0;
+-    say(voice == VOX_PAD ? "PAD: VOICE IN" : voice == VOX_BELLS ? "BELLS: VOICE IN" : "BASS: VOICE IN", t);
++    say(voice == VOX_PAD ? "VOICE 1: DX7 IN" : voice == VOX_BELLS ? "VOICE 2: DX7 IN" : "VOICE 3: DX7 IN", t);
+     mark_dirty();
+ }
+ void ui_bank_in(int bank, int voices)          /* a bank came in */
+@@ -1166,16 +1175,16 @@ static int help_lines(int b, const char *l[HELP_LINES])
+ #define L(t) (l[n++] = (t))
+     switch (b) {
+     case B_HOME: L("THE GARDEN"); L("TEMPO, EVOLVE, MOTION, DRIFT"); L("+ SELECT: TEMPO"); break;
+-    case B_ENV: L("THE PAD"); L("LEVEL, SWELL, BRIGHT,"); L(" COLOUR"); L("AGAIN: VOICE, OPERATOR, MOD"); break;
+-    case B_ARP: L("THE BELLS"); L("LEVEL, DENSITY, TONE,"); L(" OCTAVE"); L("AGAIN: VOICE, OPERATOR, MOD"); break;
+-    case B_LFO: L("THE BASS"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: VOICE, OPERATOR, MOD"); break;
++    case B_ENV: L("VOICE 1 (THE PAD)"); L("LEVEL, SWELL, BRIGHT,"); L(" COLOUR"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
++    case B_ARP: L("VOICE 2 (THE BELLS)"); L("LEVEL, DENSITY, TONE,"); L(" OCTAVE"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
++    case B_LFO: L("VOICE 3 (THE BASS)"); L("LEVEL, OCTAVE, GLIDE, FIFTH"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
+     case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); break;
+     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
+     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
+     case B_EDIT: L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); break;
+     case B_REC: L("FREEZE: THE CHORD HOLDS"); L(" AND THE REVERB RINGS ON"); L("AGAIN: THAW"); break;
+-    case B_OCTDN: L("THE BELLS AN OCTAVE DOWN"); L("WITH OCT+, 5 S: UPDATE MODE"); break;
+-    case B_OCTUP: L("THE BELLS AN OCTAVE UP"); L("WITH OCT-, 5 S: UPDATE MODE"); break;
++    case B_OCTDN: L("VOICE 2 AN OCTAVE DOWN"); L("WITH OCT+, 5 S: UPDATE MODE"); break;
++    case B_OCTUP: L("VOICE 2 AN OCTAVE UP"); L("WITH OCT-, 5 S: UPDATE MODE"); break;
+     case B_SAVE: L("SAVES ALL EIGHT PIECES"); L("KEEP HOLDING: THE PIECE"); L(" BACK TO ITS RECIPE"); break;
+     default: break;
+     }
+diff --git a/docs/MANUAL.md b/docs/MANUAL.md
+index a96279e..e770067 100644
+--- a/docs/MANUAL.md
++++ b/docs/MANUAL.md
+@@ -94,7 +94,7 @@ The drawing at the top shows them all; here they are in more detail.
+ | REC | **Freeze**: the chord holds and the reverb rings on forever, while the bells and pulse go on dry above it. Press again to thaw. Lit while frozen. |
+ | EDIT | The next chord, at the start of the next bar (at once while resting). |
+ | HOME | The Garden page: the whole garden. |
+-| ENV · ARP · LFO · SEQ | The layers' pages: Pad, Bells, Bass, Pulse. ENV, ARP or LFO again: that voice's own, VOICE, OPERATOR and MOD. |
++| ENV · ARP · LFO · SEQ | The layers' pages: Voice 1 (the pad), Voice 2 (the bells), Voice 3 (the bass), Pulse. ENV, ARP or LFO again: that voice's own, PATCH, OPERATOR and MOD; the screen's top says which voice and which group. |
+ | FX · GLO | The Space and Setup pages. The lit button shows the page. |
+ | SELECT | The previous or next page. Hold HOME and turn it for the tempo, from any page. |
+ | ALGORITHM | Mode: Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, pentatonic major and minor. Loads the mode's scale; editing it with the keys makes it Custom. |
+diff --git a/tests/scenarios/reader.amb b/tests/scenarios/reader.amb
+index 0c52a41..a1b2d25 100644
+--- a/tests/scenarios/reader.amb
++++ b/tests/scenarios/reader.amb
+@@ -11,7 +11,7 @@ said Scale D, E, F, G, A, B, C
+ # a page settles before it is said
+ tap ENV
+ wait 300
+-said Pad page: Level 60, Swell 60, Bright 40, Colour Rhodes
++said Voice 1 page: Level 60, Swell 60, Bright 40, Colour Rhodes
+ tap GLO
+ wait 300
+ said Setup page: Root D, Tune 0, MIDI out On, Lights On
+diff --git a/web/app/index.html b/web/app/index.html
+index d41d32c..dec20ad 100644
+--- a/web/app/index.html
++++ b/web/app/index.html
+@@ -78,7 +78,7 @@ td.v { width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
+   <button id="play" hidden>Rest</button>
+   <button id="freeze" aria-pressed="false">Freeze</button>
+   <button id="next">Next chord</button>
+-  <label for="colour">Pad</label> <select id="colour"><option value="0">Rhodes</option><option value="1">Voices</option><option value="2">Glass</option><option value="3">Strings</option><option value="4">Warm</option><option value="5">Halo</option></select>
++  <label for="colour">Voice 1</label> <select id="colour"><option value="0">Rhodes</option><option value="1">Voices</option><option value="2">Glass</option><option value="3">Strings</option><option value="4">Warm</option><option value="5">Halo</option></select>
+   <span role="group" aria-labelledby="octName">
+     <span id="octName">Bells octave</span> <button id="octDn" aria-label="Bells an octave down">&minus;</button>
+     <span id="octVal">0</span> <button id="octUp" aria-label="Bells an octave up">+</button></span>
+@@ -119,15 +119,15 @@ const VOX = 30, VXN = 42, VX = { OWN: 0, INDEX: 1, SLOT: 2 }, NSLOT = 5,
+       MS = { DEPTH: 0, RATE: 1, SHAPE: 2, DEST: 3, SPREAD: 4, FADE: 5, SYNC: 6, SMOOTH: 7 }, MSN = 8;
+ const vx = (v, k) => VOX + v * VXN + k;
+ const ms = (v, s, k) => vx(v, VX.SLOT + s * MSN + k);
+-const VOICES = [["Pad", P.PADTONE], ["Bells", P.BELLPATCH], ["Bass", P.BASSPATCH]];
++const VOICES = [["Voice 1", P.PADTONE], ["Voice 2", P.BELLPATCH], ["Voice 3", P.BASSPATCH]];
+ const NLOOP = 4, LOOP_MAX = 29;
+ const STORE = "eno-app-3";               // 3: each voice its own patch and five modulators (format 7)
+ // the layers, as the FM-1's pages: [parameter, its name there]
+ const GROUPS = [
+   ["Garden", [[P.EVOLVE, "Evolve"], [P.MOTION, "Motion"], [P.DRIFT, "Drift"]]],
+-  ["Pad", [[P.PAD, "Level"], [P.SWELL, "Swell"], [P.BRIGHT, "Bright"]]],
+-  ["Bells", [[P.BELLS, "Level"], [P.DENSITY, "Density"], [P.BTONE, "Tone"]]],
+-  ["Bass", [[P.BASS, "Level"], [P.BASSOCT, "Octave"], [P.GLIDE, "Glide"], [P.FIFTH, "Fifth"]]],
++  ["Voice 1 (pad)", [[P.PAD, "Level"], [P.SWELL, "Swell"], [P.BRIGHT, "Bright"]]],
++  ["Voice 2 (bells)", [[P.BELLS, "Level"], [P.DENSITY, "Density"], [P.BTONE, "Tone"]]],
++  ["Voice 3 (bass)", [[P.BASS, "Level"], [P.BASSOCT, "Octave"], [P.GLIDE, "Glide"], [P.FIFTH, "Fifth"]]],
+   ["Pulse", [[P.PULSE, "Level"], [P.HITS, "Hits"], [P.SWING, "Swing"], [P.HATS, "Hats"]]],
+   ["Space", [[P.ECHO, "Echo"], [P.ETIME, "Echo time"], [P.REVERB, "Reverb"], [P.SIZE, "Size"]]],
+   ...VOICES.flatMap(([n, patch], v) => [
+-- 
+2.53.0
+
