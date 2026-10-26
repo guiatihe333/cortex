@@ -1,0 +1,8 @@
+wait 300
+tap ENV
+wait 100
+tap ENV
+wait 100
+turn K4 3 10
+wait 200
+shot mod_feedback.png

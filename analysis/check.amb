@@ -1,0 +1,12 @@
+wait 300
+press LFO
+wait 1000
+shot help_lfo.png
+release LFO
+wait 200
+listen
+tap LFO
+wait 100
+tap LFO
+wait 800
+said Mod page: Depth 20, Rate 11 seconds, Chaos 25, Target Timbre
