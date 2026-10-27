@@ -1,12 +1,15 @@
-# AMB-1
+# AMB-1 FM6
 
-AMB-1 turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's
-*Music for Airports*. It plays itself from the moment it's switched on: breathing voices, soft
-bells on tape loops of unequal length, a gliding bass and quiet Euclidean percussion, all through
-a short echo, a long tape loop and a plate reverb. You don't perform it, you tend it: pick a piece
-and a scale, take notes out, put them back, and let it grow.
+AMB-1 FM6 turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
+plays itself from the moment it's switched on: three FM voices (each breathing chords, ringing loops or gliding a
+bass, as you choose), quiet Euclidean percussion, a short echo, a tape loop and a plate reverb, and a reel of tape
+that records it all and plays it back as grains. You don't perform it, you tend it: pick a piece and a scale, take
+notes out, put them back, and let it grow.
 
-![A drawing of the FM-1 running AMB-1, each control labelled with what it does: the Controls section below says the same in words](img/fm1-panel.svg "The FM-1 (a drawing), running AMB-1, each control labelled")
+It is an unofficial fork of Charles Vestal's AMB-1: the same garden, with DX7-style FM voices (their patches edited
+operator by operator, your own DX7 banks), three voices alike, the dice and the reel.
+
+![A drawing of the FM-1 running AMB-1 FM6, each control labelled with what it does: the Controls section below says the same in words](img/fm1-panel.svg "The FM-1 (a drawing), each control labelled")
 
 ---
 
@@ -19,71 +22,60 @@ and a scale, take notes out, put them back, and let it grow.
 5. The garden
 6. The pieces
 7. The pages
-8. MIDI
-9. Saving
-10. Troubleshooting
-11. Parameters
-12. Credits
+8. The reel
+9. MIDI
+10. Saving
+11. Troubleshooting
+12. Parameters
+13. Credits
 
 ---
 
 ## 1. Install
 
-This is **AMB-1 FM6**, an unofficial fork of AMB-1: its own package (identity `FM-1_76…`), not the one on AMB-1's
-site. The FM-1 must run M-VAVE's firmware **V15** first (a V16 goes back to V15 with M-VAVE's updater, M-UPGRADE).
+This is **AMB-1 FM6**, its own package (identity `FM-1_76…`), not the one on AMB-1's site. The FM-1 must run
+M-VAVE's firmware **V15** first: a V16 goes back to V15 with M-VAVE's updater, M-UPGRADE, and the V15 file
+(`firmware-original-M-VAVE/FM-1_V15.fwsc` in the package's folder).
 
 **Install:** with Python 3 and its MIDI modules (`pip install mido python-rtmidi`; on Windows the Visual C++
-runtime too), connect the FM-1 with a USB data cable and run, from the folder the package came in:
+runtime too), connect the FM-1 with a USB data cable and run, from the package's folder:
 
 ```
 python fm1_install.py amb-1.3.99-fm6.fwsc
 ```
 
 Don't unplug it while it's writing; when it finishes, the FM-1 restarts into AMB-1 FM6 and the script checks the
-identity it reports. `python fm1_install.py --info` shows what an FM-1 runs.
+identity it reports (`FM-1_76010399`). `python fm1_install.py --info` shows what an FM-1 runs.
 
 **Go back:** AMB-1's [web installer](https://charlesvestal.github.io/fm1-amb/install/) has "Back to the stock
-firmware" at the bottom, for any FM-1 whatever it runs (download the FM-1 V15 file from the link there, choose it,
-press the button). M-VAVE's own updater, M-UPGRADE, works too.
+firmware" at the bottom, for any FM-1 whatever it runs: choose the V15 file and press the button. M-VAVE's
+M-UPGRADE works too.
 
 > Installing other firmware is at your own risk. If the FM-1 ever won't start, see
 > [Recovering an FM-1 that won't start](#recovering-an-fm-1-that-won-t-start).
-
-<details><summary>Install from the command line</summary>
-
-Download the firmware file (for example `amb-1.0.fwsc`) from the
-[releases page](https://github.com/charlesvestal/fm1-amb/releases), get the AMB-1 source from GitHub
-(`git clone --recursive https://github.com/charlesvestal/fm1-amb`), install Python 3 with
-`pip3 install mido python-rtmidi`, and run:
-
-```
-python3 base/tools/fm1_install.py amb-1.0.fwsc
-```
-
-</details>
 
 ---
 
 ## 2. Getting started
 
-AMB-1 starts playing as soon as it's on. A few minutes with it:
+AMB-1 FM6 starts playing as soon as it's on. A few minutes with it:
 
-1. **Listen.** The first piece, Garden, is playing: D Dorian, pad, bells, bass and a soft pulse.
-   Turn MASTER for the volume.
-2. **Try another piece.** Turn PRESETS. Each of the eight pieces has its own key, tempo, sounds
-   and amount of movement.
-3. **Change the scale.** Press a key whose note is lit: it leaves the scale, and nothing plays
-   it any more. Press it again to bring it back. Any key that isn't lit adds its note.
-4. **Move on.** Press EDIT: the pad moves to the next chord at the start of the next bar.
-5. **Freeze.** Press REC: the chord holds and the reverb rings on forever, while the bells and
-   pulse go on above it. Press REC again to let it go.
-6. **Shape a layer.** Each layer has a button: ENV the pad, ARP the bells, LFO the bass, SEQ the
-   pulse, FX the space, HOME the garden as a whole, GLO the setup. KNOB 1–4 set the four values
-   at the bottom of the screen, a layer's level always on KNOB 1. SELECT steps through the pages.
-7. **Rest.** Press PLAY: the garden stops growing and its sounds fade out slowly. PLAY again and
-   it grows back.
+1. **Listen.** The first piece, Garden, is playing: D Dorian, a chord breathing (Voice 1), bells on loops
+   (Voice 2), a bass (Voice 3) and a soft pulse. Turn MASTER for the volume.
+2. **Try another piece.** Turn PRESETS. Each of the eight pieces has its own key, tempo, sounds and movement.
+3. **Change the scale.** Press a key whose note is lit: it leaves the scale. Press it again to bring it back.
+   Any key that isn't lit adds its note.
+4. **Move on.** Press EDIT: the chord moves on at the start of the next bar.
+5. **Freeze.** Press REC: the chord holds and the reverb rings on, while the rest goes on above it. REC again lets
+   it go.
+6. **Shape a voice.** ENV, ARP and LFO are Voices 1, 2 and 3: Level, Role, Octave, Density. Press the button again
+   for the voice's patch, its operators and its modulators.
+7. **Roll the dice.** Press SEL: the page shown gets new values, in ranges that keep it music. Hold SEL a second to
+   undo.
+8. **Record.** SEQ twice opens the Tape page; EDIT records, REC stops, and the reel plays it back.
+9. **Rest.** Press PLAY: the garden stops growing and its sounds fade out slowly. PLAY again and it grows back.
 
-What you change is kept with the piece. AMB-1 saves it by itself while resting, or press SAVE.
+What you change is kept with the piece. It saves by itself while resting, or press SAVE.
 
 Not sure what a button does? Hold it for a second: a card says. Let go and nothing happens.
 
@@ -91,166 +83,131 @@ Not sure what a button does? Hold it for a second: a card says. Let go and nothi
 
 ## 3. Controls
 
-The drawing at the top shows them all; here they are in more detail.
-
 | Control | What it does |
 |---|---|
 | Keys | The scale. Each key adds its note to the scale or takes it out; the keys light up for the notes in it. Every octave of a note is the same key. The root stays, and the scale keeps at least three notes. |
-| PLAY | Grow / rest. AMB-1 starts growing by itself when it's switched on. At rest, the sounds fade out slowly and the reverb rings away. Lit green while growing. |
-| REC | **Freeze**: the chord holds and the reverb rings on forever, while the bells and pulse go on dry above it. Press again to thaw. Lit while frozen. |
-| EDIT | The next chord, at the start of the next bar (at once while resting). |
-| HOME | The Garden page: the whole garden. |
-| ENV · ARP · LFO · SEQ | The layers' pages: Voice 1, Voice 2, Voice 3 (alike: Level, Role, Octave, Density), Pulse. ENV, ARP or LFO again: that voice's own, PATCH, OPERATOR and MOD; the screen's top says which voice and which page. |
-| SEL | The dice: tapped, the page shown rolled; held with ENV, ARP, LFO, HOME, SEQ, FX or GLO, that layer whole; with EDIT, new loops; held alone a second, the last roll undone. |
-| FX · GLO | The Space and Setup pages. The lit button shows the page. |
-| SELECT | The previous or next page. Hold HOME and turn it for the tempo, from any page. |
-| ALGORITHM | Mode: Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, pentatonic major and minor. Loads the mode's scale; editing it with the keys makes it Custom. |
+| PLAY | Grow / rest. At rest, the sounds fade out slowly and the reverb rings away. Lit green while growing. |
+| REC | **Freeze**: the chord holds and the reverb rings on. Again: thaw. On the reel's pages: record (see [The reel](#s8)). |
+| EDIT | The next chord, at the start of the next bar. On the reel's pages: a new splice. |
+| HOME | The Garden page. |
+| ENV · ARP · LFO | Voices 1, 2 and 3. Again: the voice's PATCH, OPERATOR and MOD pages, then back. |
+| SEQ | The Pulse. Again: the reel's Tape, Gene and Deck pages, then back. |
+| FX · GLO | The Space and Setup pages. |
+| SEL | **The dice.** Tapped: the page shown rolled. Held with ENV, ARP, LFO, HOME, SEQ, FX or GLO: that whole layer (with HOME and SEQ, the loops and patterns grown anew too). With EDIT: new loops and patterns, the settings kept. Held alone a second: the last roll undone. |
+| SELECT | The previous or next page. Hold HOME and turn it for the tempo. |
+| ALGORITHM | Mode: Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, pentatonic major and minor. Editing the scale with the keys makes it Custom. |
 | PRESETS | The piece (see [The pieces](#s6)). |
-| KNOB 1–4 | The four values on the screen. A few clicks are always single steps; a quick turn speeds up, so half a turn sweeps the range. |
+| KNOB 1–4 | The four values on the screen. A few clicks are single steps; a quick turn speeds up. |
 | OCT− / OCT+ | The octave of the voice shown (Voice 1 on the other pages), two down to two up. |
 | MASTER | Volume. |
-| SAVE | Saves all eight pieces. Held for 1.5 s: puts the piece back to its recipe. |
+| SAVE | Saves all eight pieces (on the reel's pages, the reel too). Held 1.5 s: the piece back to its recipe. |
 
-**Help:** hold any button but PLAY for a second and a card says what it does. A key, a knob or
-another button puts the card away; letting go after it does nothing else.
+**Help:** hold any button but PLAY for a second and a card says what it does. A key, a knob or another button
+puts it away; letting go after it does nothing else.
 
-![SAVE's card over the Pad page: SAVES ALL EIGHT PIECES. KEEP HOLDING: THE PIECE BACK TO ITS RECIPE](img/screen-help.png "SAVE's card")
+![SAVE's card: SAVES ALL EIGHT PIECES. KEEP HOLDING: THE PIECE BACK TO ITS RECIPE](img/screen-help.png "SAVE's card")
 
 ---
 
 ## 4. The screen
 
-![The screen on the Garden page: Garden, D Dorian, tempo 72; the ring with the chord Dm7 in the middle, the four level bars on the left, the pulse rings on the right; TEMPO 72, EVOLVE 35, MOTION 50, DRIFT 39s](img/screen-garden.png "The Garden page (HOME)")
-![The screen on the Pad page of the piece Voices: F Aeolian, tempo 56, the chord Fm7; LEVEL 85, SWELL 70, BRIGHT 67, COLOUR Voices](img/screen-voices.png "Voices, a piece with only the sung pad and a bass")
+![The Garden page: Garden, D Dorian, tempo 72; the ring with the chord Dm7, the four level bars on the left, the pulse rings on the right](img/screen-garden.png "The Garden page (HOME)")
 
-- **Top line:** the piece, its root and mode. On the right, a slow beat light (a play triangle while
-  resting), the tempo (EXT when it follows MIDI clock) and a dot when there are unsaved changes.
-  Messages ("ADDED F#", "NEXT CHORD") show here for a moment.
-- **Top right of the garden:** a thin bar fills up on the way to the next chord; while frozen it
-  says "held".
-- **The ring:** the twelve notes, C at the top. Notes in the scale are green, the chord's notes
-  a deeper green, the root is ringed in ink. The chord's name is in the middle.
-- **Around it:** the four bell loops, 13, 17, 23 and 29 beats, from the inside out. Each dot is a
-  beat; the blue ones hold a note. A playhead goes round each loop and glows when it rings a bell.
-- **Left:** the four layers' levels as they sound: pad (green), bells (blue), bass (olive),
-  pulse (dark).
-- **Right:** the three pulse rings: thump (16 steps), closed hat (12) and open hat (7). Hits
-  fade while the pulse sits a few bars out.
-- **Bottom:** the page's name and seven dots, one a page, then its four values, one for each knob:
-  a dial (or, for a switch, its positions) and the value. The one you're turning lights up.
+- **Top line:** the piece, its root and mode. On the right, a slow beat light, the tempo (EXT when it follows MIDI
+  clock) and a dot when there are unsaved changes. Messages ("ADDED F#", "VOICE 2 / PATCH") show here for a moment.
+- **Top right of the garden:** a thin bar fills up on the way to the next chord; while frozen it says "held".
+- **The ring:** the twelve notes, C at the top. Notes in the scale are green, the chord's deeper, the root ringed.
+  The chord's name is in the middle.
+- **Around it:** the four loops of the first Loops voice, 13, 17, 23 and 29 steps, from the inside out. The blue
+  dots hold a note; a playhead goes round each loop and glows when it rings.
+- **Left:** the levels as they sound: the chord (green), the loops (blue), the bass (olive), the pulse (dark).
+- **Right:** the three pulse rings: thump (16 steps), closed hat (12), open hat (7).
+- **Bottom:** the page's name and a dot for each of the ten pages, then its four values, one for each knob: a dial
+  (or, for a switch, its positions) and the value. The one you're turning lights up.
 
-![The Space page with ECHO TIME lit as it turns, set to 2 bars; ECHO 45, REVERB 65, SIZE 80](img/screen-turning.png "Turning Echo time on the Space page")
+On the reel's pages the garden gives way to the reel (see [The reel](#s8)).
+
+![The Space page with ECHO TIME lit as it turns](img/screen-turning.png "Turning Echo time on the Space page")
 
 ---
 
 ## 5. The garden
 
-AMB-1 grows four layers from one scale and one chord.
+AMB-1 FM6 grows its voices from one scale and one chord. Each of the three voices plays its own FM patch (six
+operators, as a DX7) in one of three **roles**, and any voice can take any role:
 
-- **Pad:** four breathing voices. Each swells in, hangs and fades on its own cycle (unequal
-  lengths, around 11 to 19 seconds at first, as in the tape loops of "2/1"), taking its note of
-  the chord as it starts, so the chord forms and dissolves instead of sitting there. Two colours:
-  a filtered Rhodes that blooms brighter as it swells, or sung voices. Every so often (**Drift**)
-  the chord moves to another one in the scale. Voices on notes the new chord shares hold to the
-  end of their breath; the others fade out and breathe in again on their new notes.
-- **Bells:** FM bells, soft-struck like a piano slowed to half speed, played by four tape loops
-  13, 17, 23 and 29 beats long. Each loop holds a few notes, so the loops slide against each other
-  and the melody never quite repeats. Each loop is its own shade of bell, and now and then a
-  note rings with its octave.
+- **Chord:** up to four breathing notes. Each swells in, hangs and fades on its own cycle (unequal lengths, as in
+  the tape loops of "2/1"), taking its note of the chord as it starts, so the chord forms and dissolves instead of
+  sitting there. Every so often (**Drift**) the chord moves to another one in the scale; notes the new chord shares
+  hold to the end of their breath, the others fade and breathe in again on their new notes.
+- **Loops:** four tape loops 13, 17, 23 and 29 steps long. Each holds a few notes, so the loops slide against each
+  other and the melody never quite repeats. Each loop is its own shade of the patch, and now and then a note rings
+  with its octave.
 - **Bass:** the chord's root, low and soft, gliding; sometimes it leans on the fifth.
-- **Pulse:** a soft thump tuned to the chord's root, a closed hi-hat and an open one, each on its
-  own Euclidean pattern over 16, 12 and 7 sixteenths: polyrhythms. The patterns slowly turn and
-  gain or lose a hit.
 
-Then the space, after Eno's chain for *Discreet Music*: a short tape echo, a long tape loop (up to
-5.6 seconds, with two heads, each repeat coming back darker and thinner) and a plate reverb.
-They're most of what you hear. The echo is stereo, and it evolves: with **Motion** up, its two
-heads wander across the field, the repeats fall in changing patterns, and now and then the second
-head slides to another part of the loop, bending the repeats a little as it goes.
+By default Voice 1 is a chord, Voice 2 the loops and Voice 3 the bass, as AMB-1's pad, bells and bass were.
+
+- **Pulse:** a soft thump tuned to the chord's root, a closed hi-hat and an open one, each on its own Euclidean
+  pattern over 16, 12 and 7 sixteenths. The patterns slowly turn and gain or lose a hit.
+
+Then the space, after Eno's chain for *Discreet Music*: a short tape echo, a tape loop (up to 2.8 seconds, two
+heads, each repeat darker and thinner) and a plate reverb. With **Motion** up, the echo's heads wander across the
+field and now and then the second slides to another part of the loop.
 
 Over it all:
 
-- **The arc:** a slow tide, a few minutes from end to end, between sparse (fewer bells, a darker
-  pad, a quieter pulse, more reverb) and full. **Motion** sets how far it swings, and how far the
-  smaller things wander: pitch, pan, the vowel, the echo's heads.
-- **Rests:** with **Evolve** up, the layers take breaths: the pulse sits out two to four bars,
-  the bass skips a chord, a bell loop goes quiet for a pass.
+- **The arc:** a slow tide, a few minutes from end to end, between sparse (fewer notes, darker, quieter pulse, more
+  reverb) and full. **Motion** sets how far it swings, and how far pitch, pan and the echo's heads wander.
+- **Rests:** with **Evolve** up, the voices take breaths: the pulse sits out two to four bars, a bass skips a chord,
+  a loop goes quiet for a pass.
 
 ---
 
 ## 6. The pieces
 
-PRESETS chooses one of eight pieces. Each is a recipe for the whole garden: the layers, the
-sounds, tempo, key and mode, how busy it is and how far it moves. Each remembers how you left it.
-Hold SAVE for 1.5 s to put the piece you're on back to its recipe. Tune, MIDI out and Lights are
-the same for all.
+PRESETS chooses one of eight pieces, each a recipe for the whole garden: the voices and their sounds, tempo, key and
+mode, how busy and how changeable. Each remembers how you left it. Hold SAVE 1.5 s to put the piece back to its
+recipe. Tune, MIDI out and Lights are the same for all.
 
 | Piece | What it is |
 |---|---|
 | **Garden** | D Dorian, 72: everything, gently. Rhodes. |
-| **Departures** | C# Ionian, 60: soft, slowed-piano bells an octave down over a quiet Rhodes, as "1/1". |
-| **Voices** | F Aeolian, 56: only the sung voices on unequal loops and a low bass, as "2/1". |
+| **Departures** | C# Ionian, 60: soft bells an octave down over a quiet Rhodes, as "1/1". |
+| **Voices** | F Aeolian, 56: only sung voices and a low bass, as "2/1". |
 | **Afternoon** | G Lydian, 84: a bright Rhodes, busier bells, a light pulse. |
 | **Night Bus** | A Aeolian, 96: the pulse forward, metallic bells, short echoes. |
 | **Shoreline** | E pentatonic major, 64: dark, round bells lost in long echoes, as "2/2". |
 | **Glass** | Eb pentatonic minor, 76: clangy bells an octave up, dense. |
-| **Tides** | Bb Mixolydian, 70: sung voices, the most changeable (Evolve and Motion high). |
+| **Tides** | Bb Mixolydian, 70: sung voices, the most changeable. |
 
 ---
 
 ## 7. The pages
 
-One page a layer, each on its own button, with four values on KNOB 1–4. A layer's level is
-always KNOB 1. SELECT steps through them in this order. Each voice (the pad, the bells, the bass) has four
-pages more, its own, in three groups: press ENV, ARP or LFO again on its page for VOICE, again for OPERATOR, again for
-MOD, and once more to come back; SELECT steps through a group's pages.
+A page on each button, four values on KNOB 1–4; SELECT steps through them: Garden, Voice 1, 2, 3, Pulse, Space,
+Setup, Tape, Gene, Deck. Each voice has more pages of its own (ENV, ARP or LFO again).
 
 ### HOME: Garden
 
-![The Garden page: TEMPO 72, EVOLVE 35, MOTION 50, DRIFT 39s](img/screen-garden.png "The Garden page")
-
 - **Tempo:** 30 to 120 (also HOME + SELECT, from any page).
-- **Evolve:** how restless the garden is. At 0 the loops repeat exactly. Turned up, a bell note
-  now and then changes or moves at the end of a pass, the pulse patterns turn and gain or lose a
-  hit, and the layers take rests.
-- **Motion:** how far the arc swings, and how much pitch, pan, the vowel and the echo wander
-  (at 0 the echo stays put: one head left, one right).
-- **Drift:** how long a chord lasts before the pad moves on, 20 seconds to 5 minutes (each time a
-  little more or less). EDIT moves on now.
+- **Evolve:** how restless the garden is. At 0 the loops repeat exactly; turned up, notes change or move at the end
+  of a pass, the pulse patterns turn, and the voices take rests.
+- **Motion:** how far the arc swings, and how much pitch, pan and the echo wander.
+- **Drift:** how long a chord lasts before it moves on, 20 seconds to 5 minutes. EDIT moves on now.
 
-### ENV: Pad
+### ENV · ARP · LFO: Voices 1, 2, 3
 
-![The Pad page: LEVEL 60, SWELL 60, BRIGHT 40, COLOUR Rhodes](img/screen-pad.png "The Pad page")
+![Voice 2's page: LEVEL 65, ROLE Loops, OCTAVE 0, DENSITY 40](img/screen-voice.png "A voice's page")
 
-- **Level.**
-- **Swell:** how long the voices breathe, from a few seconds to about half a minute.
-- **Bright:** opens the pad's filter and turns up its FM modulators: the voices bloom brighter as
-  they swell.
-- **Colour:** the pad's patch, the same as on its FM page: Rhodes, Voices, Glass, Strings, Warm or Halo.
-  Each piece keeps its own.
-
-### ARP: Bells
-
-![The Bells page: LEVEL 65, DENSITY 40, TONE 50, OCTAVE 0](img/screen-bells.png "The Bells page")
+The three alike:
 
 - **Level.**
-- **Density:** how many notes each loop holds, none at 0 to five at the top. A change shows up as
-  each loop comes round.
-- **Tone:** from round and soft-struck to a long metallic clang.
+- **Role:** Chord, Loops or Bass (see [The garden](#s5)). Changing it fades the voice out and in.
 - **Octave:** two down to two up (OCT− and OCT+ too).
-
-### LFO: Bass
-
-![The Bass page: LEVEL 45, OCTAVE 0, GLIDE 20, FIFTH 35](img/screen-bass.png "The Bass page")
-
-- **Level.**
-- **Octave:** one down, home, or one up.
-- **Glide:** how slowly the bass slides to its next note, from a quick step to over a second.
-- **Fifth:** how often, halfway through a chord, the bass leans on the fifth.
+- **Density:** a chord's notes (1 to 4); the loops' notes (none to five a loop); how often the bass leans on the
+  fifth.
 
 ### SEQ: Pulse
-
-![The Pulse page: LEVEL 40, HITS 35, SWING 50%, HATS 50](img/screen-pulse.png "The Pulse page")
 
 - **Level.**
 - **Hits:** how many beats the three rings play. 0: no pulse.
@@ -259,97 +216,29 @@ MOD, and once more to come back; SELECT steps through a group's pages.
 
 ### FX: Space
 
-![The Space page: ECHO 45, ECHO TIME 1 bar, REVERB 65, SIZE 80](img/screen-space.png "The Space page")
-
 - **Echo:** how much goes to the echoes.
-- **Echo time:** the tape loop's length: a dotted quarter, a half, a dotted half, 1, 2 or 4 bars,
-  shortened to fit its 5.6 seconds at slow tempos. The second head repeats at three quarters of it,
-  or with Motion up, at two thirds, five eighths, a half or three eighths.
+- **Echo time:** the tape loop's length: a dotted quarter, a half, a dotted half, 1, 2 or 4 bars, shortened to fit
+  its 2.8 seconds at slow tempos. The second head repeats at three quarters of it (with Motion, at other parts).
 - **Reverb:** how much goes to the plate.
-- **Size:** how long the plate rings, from a room to a long hall, and how many times the echo
-  comes back.
+- **Size:** how long the plate rings, from a room to a long hall, and how many times the echo comes back.
 
 ### GLO: Setup
 
 ![The Setup page: ROOT D, TUNE 0, MIDI OUT On, LIGHTS On](img/screen-setup.png "The Setup page")
 
-- **Root:** the key's root note. The scale moves with it.
+- **Root:** the key's root note.
 - **Tune:** fine tuning, ±50 cents.
 - **MIDI out:** on or off.
-- **Lights:** On: the keys light the scale, and the unlit buttons glow dimly so they can be read
-  on the black FM-1. Keys: the key lights only. Off.
+- **Lights:** On: the keys light the scale and the unlit buttons glow dimly. Keys: the key lights only. Off.
 
 The top right of this page shows how much of the FM-1's time the sound takes (CPU).
 
-### The reel: a track of tape with genes
+### ENV, ARP or LFO again: a voice's own pages
 
-SEQ on the Pulse page opens **Tape**, again **Gene**, again **Deck**, again back to the Pulse. On these pages the
-screen shows the reel instead of the garden: a cassette (its spools winding, turning at Speed), the reel as a strip
-(its splices, the one playing bright, the cursor, the genes, the record head), the seconds recorded and the splices. The reel is one track of tape, 11.8 s,
-mono (22 kHz, 4-bit ADPCM, as a cassette's lo-fi), after a Tascam portastudio's tape and Make Noise's Morphagene.
-
-| Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
-| --- | --- | --- | --- | --- |
-| Tape | Source (Mix, Voice 1, 2, 3, Pulse) | Dry/Wet | SOS | Speed (−2x .. Stop .. +2x) |
-| Gene | Gene (the whole splice .. 1/256) | Slide | Morph | Organize (splice 1–8) |
-| Deck | FX (Before, After) | Wow | Drive | Tone |
-
-- **Dry/Wet:** the garden against the reel: Dry the garden alone, 50 both full, Wet the reel alone (the garden goes on
-  being recorded, unheard, as a send).
-- **FX:** where the space (echo and reverb) is. **Before** the reel: the garden through it, the reel records it with
-  its space (Source Mix) and plays dry beside it. **After** the reel: the reel records the garden dry and plays through
-  the space, as the garden does.
-- **Wow** (and flutter), **Drive** (onto tape: saturating sooner), **Tone** (the reel's highs, 1.5 kHz .. open).
-
-On these two pages:
-
-- **EDIT** records a new **splice** at the end of the reel (up to 8); EDIT again while recording ends it and starts the
-  next; **REC** stops it.
-- **REC** overdubs the splice Organize picks, round and round, sound on sound (**SOS**: how much of what was there
-  stays; 0 replaces it); REC again stops.
-- **SAVE** keeps the pieces and the reel (the reel comes back after a restart). **REC held** 1.5 s erases the reel.
-
-What it records is **Source**'s: the whole mix (its echo and reverb too, the reel itself left out), or one voice alone,
-or the pulse. It plays the splice Organize picks as **genes**: each a window of the splice (**Gene**), starting where
-the tape is, past it by **Slide**, at **Speed** (pitch and time together, as tape; 1x and −1x stick; at Stop it falls
-silent), with a little wow and flutter. **Morph**: gaps between the genes (0–40), one after another (40–55), two to
-four overlapping (55–100), spread across the field (past 75) and an octave up or down now and then (past 85). The
-reel goes to the mix and a little to the echo and reverb. The echo's tape is 2.8 s now (it gave the reel its room).
-
-MIDI: the reel's twelve on channel 16, CC 50–61.
-
-### The three voices, alike
-
-From 1.3.96 the three voices are set the same way, none of them made for one job. Each plays its own patch in a
-**Role** of three, and any voice can take any role (all three chords, if you like):
-
-| Role | What it plays |
-| --- | --- |
-| **Chord** | Up to four notes of the chord (Density), each breathing in and out on its own cycle (Pace: 4–16 s), as the pad did |
-| **Loops** | Four loops of 13, 17, 23 and 29 steps; a step is Pace's (1/16, 1/8, 1/4, 1/2); Density grows their notes, as the bells did |
-| **Bass** | The chord's root, gliding (Glide), leaning on the fifth halfway (Density); struck each chord or, by Pace, each bar, 1/2, 1/4 or 1/8 |
-
-Each voice's page (ENV, ARP, LFO): **Level, Role, Octave, Density**. Its **Play** page: **Envelope, Gate, Pace,
-Glide**. Its **ADSR** page: **Attack, Decay, Sustain, Release**.
-
-**Envelope** is how the notes are shaped:
-
-- **AMB:** AMB-1's own: a chord breathes (the amplitude swells), the loops let a held note go after a beat, the bass
-  is one note held down and faded in.
-- **Patch** (the default): each note is struck and let go after **Gate** (of a breath, a bar, a chord or a step), so the
-  patch's own envelopes are heard as a DX7 plays them, and editing them (OPERATOR, OP Env) changes the sound.
-- **ADSR:** the same, but the carriers' envelope comes from the four ADSR knobs (the modulators keep the patch's).
-
-The Chord voices go to the pad's dark bus, the Loops to the bells' (the most echo), the Bass to the mix. A voice
-changing role fades out and in (20 ms). The pieces of before load with each voice in the role its layer had.
-
-### ENV, ARP or LFO again: the voice's own pages
-
-Each voice (the pad, the bells, the bass) has its own patch, a DX7 voice of six operators, edited as a DX7 edits it,
-and five generative modulators. Their pages come in three groups: press the voice's button again for **PATCH**, again
-for **OPERATOR**, again for **MOD**, and once more to come back to the voice's page. SELECT steps through the pages of
-the group (and the voice's); each group comes back on the page it was left on. The voice's button stays lit, and the
-dot of its page shows where you are. Each piece keeps all of it.
+Each voice's patch is a DX7 voice of six operators, edited as a DX7 edits it, with five generative modulators. Its
+pages come in three groups: press the voice's button again for **PATCH**, again for **OPERATOR**, again for
+**MOD**, and once more to come back. SELECT steps through the group's pages; each group comes back on the page it
+was left on. The top of the screen says which voice and which page. Each piece keeps all of it.
 
 **PATCH**
 
@@ -359,30 +248,40 @@ dot of its page shows where you are. Each piece keeps all of it.
 | Play | Envelope (AMB, Patch, ADSR) | Gate (5–100 %) | Pace | Glide |
 | ADSR | Attack | Decay | Sustain | Release |
 | LFO | Speed | Delay | Pitch mod | Amp mod |
-| LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24 semitones: the patch's, as a DX7 plays it) |
+| LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24 semitones, as a DX7 plays it) |
 | Pitch EG | Stage (1–4) | Rate | Level (±50) | Osc sync |
 
-- **Patch:** the voice's own six first (the pad: Rhodes, Voices, Glass, Strings, Warm, Halo; the bells: Bell, shaped by
-  Tone, Vibes, Marimba, Tubular, Kalimba, Celesta; the bass: Sine, Round, Pick, Sub, Reed, Fretless), then the voices
-  of the DX7 banks you sent (see [MIDI](#s8)), by name; empty slots are passed by. Turning it loads the patch as it
-  is; any edit after that makes it the piece's own, shown with a `*` ("E.PIANO 1*").
-- **Envelope, Gate, Pace, Glide, the ADSR:** see [the three voices, alike](#the-three-voices-alike). Each voice its
-  own; each piece keeps them.
-- The pad's voices cross over to a new patch as they do for a new key; the bells take it at their next strike; the
-  bass is struck anew once the knob rests. An edit is heard at once on the notes sounding.
+![A voice's Play page: ENVELOPE Patch, GATE 25%, PACE 1/4, GLIDE 260ms](img/screen-play.png "The Play page")
+
+- **Patch:** AMB-1 FM6's own eighteen first (pads: Rhodes, Voices, Glass, Strings, Warm, Halo; bells: Bell, shaped
+  by the piece's tone, Vibes, Marimba, Tubular, Kalimba, Celesta; basses: Sine, Round, Pick, Sub, Reed, Fretless),
+  any voice any of them, then the voices of the DX7 banks you sent (see [MIDI](#s9)), by name. Turning it loads the
+  patch as it is; any edit makes it the piece's own, shown with a `*` ("E.PIANO 1*").
+- **Envelope:** how the notes are shaped. **AMB:** AMB-1's own (a chord breathes, the loops let a held note go after
+  a beat, the bass is one note held and faded in). **Patch** (the default): each note struck and let go after
+  **Gate**, so the patch's own envelopes are heard, and editing them changes the sound. **ADSR:** the same, the
+  carriers' envelope from the four ADSR knobs (the modulators keep the patch's).
+- **Gate:** how long a note is held down: of a chord's breath, of a bar for the loops, of a chord (or a step) for the
+  bass.
+- **Pace:** a chord's breath (4 to 16 s); the loops' step (1/16, 1/8, 1/4, 1/2); the bass struck each chord, or
+  each bar, 1/2, 1/4, 1/8 (with Patch or ADSR).
+- **Glide:** how slowly the bass slides to its next note, 20 ms to 1.2 s.
+
+![A voice's ADSR page: ATTACK 5, DECAY 40, SUSTAIN 70, RELEASE 40](img/screen-adsr.png "The ADSR page")
 
 **OPERATOR** (KNOB 1 picks the operator, OP1–OP6, on every page of the group)
 
 | Page | KNOB 2 | KNOB 3 | KNOB 4 |
 | --- | --- | --- | --- |
-| OP | Ratio (coarse: ×0.50 .. ×31; fixed mode: Hz) | Fine | Level |
+| OP | Ratio (×0.50 .. ×31; fixed mode: Hz) | Fine | Level |
 | OP Env | Stage (1–4) | Rate | Level |
 | OP 2 | Mode (Ratio, Fixed) | Detune (±7) | Velocity |
 | OP 3 | Break (a note) | L depth | R depth |
 | OP 4 | L curve | R curve | Rate scale |
 | OP 5 | Amp sens | | |
 
-Ratio and Fine show the operator's frequency together ("x1.50"). In fixed mode it is in Hz.
+Ratio and Fine show the operator's frequency together ("x1.50"); in fixed mode it is in Hz. Edits are heard at once
+on the notes sounding.
 
 **MOD** (KNOB 1 picks the modulator, 1–5, on every page of the group)
 
@@ -392,55 +291,84 @@ Ratio and Fine show the operator's frequency together ("x1.50"). In fixed mode i
 | Mod 2 | Shape | Sync | Smooth |
 | Mod 3 | Spread | Fade | |
 
-Every sounding voice (the four pad voices, the six bells, the bass) has a generator of its own in each modulator,
-each at its own pace around Rate; the five are summed; the arc deepens them when the garden is full and calms them
-when sparse.
+Each of a voice's four notes has a generator of its own in each modulator, each at its own pace around Rate; the five
+are summed; the arc deepens them when the garden is full and calms them when sparse.
 
-- **Depth:** how far it goes. 0: the modulator off.
-- **Rate:** how long a cycle takes, from 60 seconds to an eighth of a second (each voice a little faster or slower).
-  With Sync at Tempo: a note value, 8 bars to a sixteenth.
-- **Shape:** Sine, Triangle, Saw up, Saw down, Square: a wave a cycle. S&H: a random value a cycle, held. Walk:
-  gliding between random values. Chaos: the logistic map at the edge of chaos, jumping. Env: from each note's start,
-  falling from the top to nothing over a cycle (a pluck of brightness, a pitch drop).
-- **Target:** what it moves. The voice's: **Timbre** (the modulators' level, ±12 dB), **Ratio** (the modulators'
-  ratio in harmonic steps, ×1 to ×5), **Metal** (the modulators out of tune with each other, ±80 cents),
-  **Feedback** (more of it), **Decay** (each new note's envelopes), **Pitch** (±30 cents), **Space** (the stereo
-  field), **All** (timbre, metal, feedback, decay, pitch and space, a little less of each), **Level** (down to
-  −10 dB: a tremolo), **LFO PM** (the patch's LFO's vibrato, deeper). And any operator's own, **OP1**..**OP6**:
-  **Level** (±12 dB; a carrier only down), **Ratio** (harmonic steps up), **Fine** (±50 cents), **Atk**, **Dec**,
-  **Sus**, **Rel** (its envelope as each note starts).
-- **Spread:** 100: each voice its own way. 0: the layer's voices move as one.
-- **Fade:** the modulation coming in after each note, from at once (Off) to 8 seconds.
-- **Sync:** Free. Note: each note starts the shape again. Tempo: Rate is a note value at the tempo.
-- **Smooth:** a glide on the shape, 2 ms (a square's edge never clicks) to half a second.
+- **Depth:** how far it goes. 0: off.
+- **Rate:** a cycle from 60 seconds to an eighth of a second. With Sync at Tempo: a note value, 8 bars to 1/16.
+- **Shape:** Sine, Triangle, Saw up, Saw down, Square; S&H (a random value a cycle, held); Walk (gliding between
+  random values); Chaos (the logistic map, jumping); Env (from each note's start, falling to nothing over a cycle).
+- **Target:** the voice's: **Timbre** (the modulators' level, ±12 dB), **Ratio** (harmonic steps, ×1 to ×5),
+  **Metal** (the modulators out of tune with each other), **Feedback**, **Decay** (each new note's envelopes),
+  **Pitch** (±30 cents), **Space** (the stereo field), **All**, **Level** (a tremolo, to −10 dB), **LFO PM** (the
+  patch's vibrato, deeper). And any operator's own, **OP1**..**OP6**: **Level**, **Ratio**, **Fine**, **Atk**,
+  **Dec**, **Sus**, **Rel**.
+- **Spread:** 100: each note its own way. 0: the voice's notes move as one.
+- **Fade:** the modulation coming in after each note, at once (Off) to 8 seconds.
+- **Sync:** Free; Note (each note starts the shape again); Tempo (Rate a note value).
+- **Smooth:** a glide on the shape, 2 ms to half a second.
 
 ---
 
-## 8. MIDI
+## 8. The reel
+
+A track of tape, 11.8 seconds, mono, after a TASCAM portastudio's tape and Make Noise's Morphagene's genes (the idea,
+not their code). SEQ on the Pulse page opens **Tape**, again **Gene**, again **Deck**, again back to the Pulse.
+
+![The Tape page: a cassette with its spools, the reel as a strip with two splices and the cursor; 4.2 / 11.8 s, FX BEFORE, 2 SPLICES; SOURCE Mix, DRY/WET 50, SOS 70, SPEED +1.00x](img/screen-tape.png "The Tape page")
+
+On these pages the screen shows the reel: a cassette whose spools wind and turn at Speed, the reel as a strip (its
+splices, the one playing bright, the cursor, each gene where it reads, the record head), the seconds recorded and
+the splices.
+
+| Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
+| --- | --- | --- | --- | --- |
+| Tape | Source (Mix, Voice 1, 2, 3, Pulse) | Dry/Wet | SOS | Speed (−2x .. Stop .. +2x) |
+| Gene | Gene (the whole splice .. 1/256) | Slide | Morph | Organize (splice 1–8) |
+| Deck | FX (Before, After) | Wow | Drive | Tone |
+
+**Recording** (on these three pages):
+
+- **EDIT** records a new **splice** at the end of the reel (up to 8). EDIT again while recording ends it and starts
+  the next at once; **REC** stops.
+- **REC** overdubs the splice Organize picks, round and round, sound on sound (**SOS**: how much of what was there
+  stays; 0 replaces it). REC again stops.
+- **SAVE** keeps the pieces and the reel; the screen shows how far it has gone, and the reel comes back after a
+  restart. **REC held** 1.5 s erases the reel (save after, to erase the saved one too).
+- A splice can't be erased alone: overdub it at SOS 0, or erase the reel.
+
+**What it records** is **Source**'s: the whole mix (the reel itself left out), one voice alone, or the pulse, a
+little saturated as onto tape (**Drive**).
+
+**How it plays:** the splice Organize picks, as **genes**: each a window of the splice (**Gene**), starting where
+the tape is, past it by **Slide**, at **Speed** (pitch and time together, as tape; 1x and −1x stick; at Stop it
+falls silent), with **Wow** and flutter. **Morph**: gaps between the genes (0–40), one after another (40–55), two to
+four overlapping (55–100), spread across the field (past 75), an octave up or down now and then (past 85). **Tone**
+darkens it (1.5 kHz to open).
+
+![The Gene page: GENE 100, SLIDE 0, MORPH 45, ORGANIZE 3](img/screen-gene.png "The Gene page")
+
+**Dry/Wet:** the garden against the reel: Dry, the garden alone; 50, both full; Wet, the reel alone (the garden is
+still recorded, unheard, as a send).
+
+**FX** sets where the space (echo and reverb) is: **Before** the reel, the garden goes through it and the reel
+records it with its space and plays dry beside it; **After** the reel, it records the garden dry and plays through
+the space, as the garden does.
+
+![The Deck page: FX Before, WOW 25, DRIVE 20, TONE 85](img/screen-deck.png "The Deck page")
+
+---
+
+## 9. MIDI
 
 MIDI comes in over USB and the TRS jack, and goes out over USB.
 
 - **In, channel 1:** a note adds or removes its note from the scale, like a key.
-- **In, clock:** the beat follows MIDI clock, and start / stop start and stop the garden. The
-  screen shows EXT for the tempo. What else hangs on the tempo follows the clock's too, measured a beat at a time:
-  the echo's time, the modulators at SYNC Tempo, the bells' beat and Gate, the swing.
-- **Out** (on by default): the pad on channel 1, the bells on 2, the bass on 3 and the pulse on 10,
-  and clock with start / stop when AMB-1 runs on its own tempo. Turning MIDI out off sends all
-  notes off.
-
-### Screen reader
-
-AMB-1 can tell a screen reader what its screen shows. Connect the FM-1 by USB, open the
-[FM-1 Screen Reader](https://charlesvestal.github.io/fm1-reader/) in Chrome or Edge, and click
-Connect. It reads out the page you're on and its knobs, a knob's value as you turn it, the piece
-and its key, the notes you add or take out, help cards, every message, and the chord each time
-the garden moves on, in words: "E flat pentatonic minor", not "Eb Pent min".
-
-The page can speak with its own voice or pass everything to your own screen reader (VoiceOver,
-NVDA, JAWS, TalkBack). Press W to hear the whole screen again: the page, the piece, the chord and
-the scale. The FM-1 says nothing until the page connects, so a DAW on the same cable never sees it.
-
----
+- **In, clock:** the beat follows MIDI clock, and start / stop start and stop the garden. The screen shows EXT for
+  the tempo. What hangs on the tempo follows it too, measured a beat at a time: the echo, the modulators at Sync
+  Tempo, the loops' Gate, the swing.
+- **Out** (on by default): Voices 1, 2 and 3 on channels 1, 2 and 3, the pulse on 10, and clock with start / stop
+  when it runs on its own tempo. Turning MIDI out off sends all notes off.
 
 ### CC and NRPN, in and out
 
@@ -448,95 +376,97 @@ What the knobs set comes and goes as MIDI CC (out with MIDI out on; what comes i
 
 | Channel | CC | What |
 | --- | --- | --- |
-| 16 | 20–49 | the parameters 0–29 (amb.h P_*: the layers, the space, the tone, setup; a patch source as its number) |
-| 1 (pad), 2 (bells), 3 (bass) | 20 | the voice's Index |
+| 16 | 20–49 | the parameters 0–29 (the layers, the space, setup; a patch source as its number) |
+| 16 | 50–61 | the reel: Source, Dry/Wet, SOS, Speed, Gene, Slide, Morph, Organize, FX, Wow, Drive, Tone |
+| 1, 2, 3 (the voices) | 20 | the voice's Index |
 | 1, 2, 3 | 21–60 | its five modulators, eight each: Depth, Rate, Shape, Target, Spread, Fade, Sync, Smooth |
 | 1, 2, 3 | 102–112 | how it plays: Envelope, Gate, Role, Octave, Density, Pace, Glide, Attack, Decay, Sustain, Release |
 | 1, 2, 3 | NRPN: 99 = 0/1, 98 = 0..127, 6 = value | its patch, byte by byte (the DX7's VCED order, 0..154) |
 
-A value is scaled to its range (0..127 to Depth's 0..100, Index's −24..+24). The patch's bytes go as they are.
+A value is scaled to its range. The patch's bytes go as they are.
 
 ### DX7 voices and banks from a computer
 
-`tools/amb_syx.py` sends them over USB (Python with mido and python-rtmidi; close other programs using the FM-1's
-MIDI port first):
+The firmware carries no Yamaha voices: you send your own. `amb_syx.py` sends them over USB (Python with mido and
+python-rtmidi; close other programs using the FM-1's MIDI port first):
 
 ```sh
-python3 tools/amb_syx.py ROM1A.syx --bank 1      # a 32-voice bank into bank 1 (of 16)
-python3 tools/amb_syx.py EPIANO.syx              # a single voice into the voice whose pages are shown
-python3 tools/amb_syx.py --info                  # how many voices each bank holds
-python3 tools/amb_syx.py --erase 1
+python amb_syx.py ROM1A.syx --bank 1      # a 32-voice bank into bank 1 (of 16)
+python amb_syx.py EPIANO.syx              # a single voice into the voice whose pages are shown
+python amb_syx.py --info                  # how many voices each bank holds
+python amb_syx.py --erase 1
 ```
 
-A bank can be a DX7 bulk dump (4104 bytes), 4096 bytes of packed voices, or up to 32 single voices in one file. The
-screen says BANK n and how many voices came. A single voice from a DX7 editor (Dexed's Send) goes straight into the
-voice whose pages are shown too. The banks stay in the FM-1's memory (16 of 32 voices, apart from the pieces); a piece
-keeps a copy of each voice it plays, so sending another bank later never changes it.
+A bank can be a DX7 bulk dump (4104 bytes), 4096 bytes of packed voices, or up to 32 single voices in one file;
+values past the DX7's ranges (common in old banks) are held to them. The screen says BANK n and how many voices came.
+A single voice from a DX7 editor (Dexed's Send) goes straight into the voice whose pages are shown. The banks (16 of
+32 voices) stay in the FM-1's memory apart from the pieces; a piece keeps a copy of each voice it plays, so sending
+another bank later never changes it.
 
-## 9. Saving
+### Screen reader
 
-AMB-1 keeps all eight pieces in the FM-1's memory, each as you left it: the knobs, the scale,
-the tempo, the pad's colour and the bells' octave, plus Tune, MIDI out and Lights.
-
-- **By itself:** a few seconds after a change, but only while resting. Writing to the memory
-  interrupts the sound for a moment, so it never happens while the garden grows. A dot at the top
-  of the screen means there are unsaved changes.
-- **SAVE:** saves now, playing or not.
-- **Hold SAVE** for 1.5 s: the piece goes back to its recipe. That isn't saved until the next save,
-  so switching off before then brings your version back.
+AMB-1 can tell a screen reader what its screen shows: connect the FM-1 by USB, open the
+[FM-1 Screen Reader](https://charlesvestal.github.io/fm1-reader/) in Chrome or Edge, and click Connect. It reads out
+the page, its knobs, a knob's value as you turn it, the piece and its key, help cards, messages and each chord. Press
+W to hear the whole screen again.
 
 ---
 
-## 10. Troubleshooting
+## 10. Saving
 
-**Update mode:** hold OCT- and OCT+ together for five seconds. A countdown appears; let go
-before it ends to cancel.
+AMB-1 FM6 keeps all eight pieces in the FM-1's memory, each as you left it: the knobs, the scale, the tempo, each
+voice's patch and settings, plus Tune, MIDI out and Lights.
 
-**Calibration:** if a button or knob does the wrong thing, hold OCT- and OCT+ while you switch
-the FM-1 on. The screen then asks you to press each button and turn each knob in turn.
+- **By itself:** a few seconds after a change, but only while resting (writing to the memory interrupts the sound
+  for a moment). A dot at the top of the screen means there are unsaved changes.
+- **SAVE:** saves now. On the reel's pages, the reel too.
+- **Hold SAVE** 1.5 s: the piece goes back to its recipe (not saved until the next save).
+- The pieces of earlier versions load as they were, each voice in the role its layer had.
 
-**After a crash:** AMB-1 shows a red CRASH screen and restarts by itself a few seconds later. The
-next start shows RESTARTED AFTER A CRASH and an address (PC ...) for a moment. If you report the
-problem, include that address and what you were doing.
+---
 
-**Safe mode:** if AMB-1 crashes twice in a row while starting, it starts in SAFE MODE instead.
-There's no sound, but USB works, so the web installer can reach it: reinstall AMB-1, or put the
-stock firmware back from the same page. Press PLAY to try starting AMB-1 normally again. If even
-safe mode fails twice, the FM-1 drops into the chip's own update mode, and only the rescue below
-can reach it.
+## 11. Troubleshooting
+
+**Clicks with everything going:** the sound takes most of the FM-1's time with three voices busy, the modulators on
+and the reel playing many genes (CPU on the Setup page, top right). Fewer overlapping genes (Morph lower), fewer
+modulators or a lower Density help.
+
+**Update mode:** hold OCT- and OCT+ together for five seconds. A countdown appears; let go before it ends to cancel.
+
+**Calibration:** if a button or knob does the wrong thing, hold OCT- and OCT+ while you switch the FM-1 on. The
+screen then asks you to press each button and turn each knob in turn.
+
+**After a crash:** a red CRASH screen, and it restarts by itself a few seconds later. The next start shows RESTARTED
+AFTER A CRASH and an address (PC ...) for a moment: note it, and what you were doing.
+
+**Safe mode:** if it crashes twice in a row while starting, it starts in SAFE MODE instead: no sound, but USB works,
+so the installer can reach it: install again, or put the stock firmware back. Press PLAY to try starting normally.
+If even safe mode fails twice, the FM-1 drops into the chip's own update mode, and only the rescue below reaches it.
 
 ### Recovering an FM-1 that won't start
 
-An FM-1 in the chip's own update mode shows a blank screen, and neither the web installer nor
-M-VAVE's updater can see it. A script can put M-VAVE's firmware back, on a Mac, with the USB cable
-you already have.
-
-Open Terminal, paste this line and press Return:
+An FM-1 in the chip's own update mode shows a blank screen, and neither the installers nor M-VAVE's updater can see
+it. A script can put M-VAVE's firmware back, on a Mac, with the USB cable you already have. Open Terminal, paste this
+line and press Return:
 
 ```
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/hugelton/felucca-bsp/main/tools/fm1_rescue.sh)"
 ```
 
-1. If a window asks to install the command line developer tools, click Install. When it has
-   finished, paste the line again.
-2. If it asks for a password, type your Mac password (nothing shows as you type) and press Return.
-3. When it says it's waiting, plug the FM-1 in and switch it on. The script catches it, checks the
-   chip, saves a backup of the FM-1's memory in the `fm1-rescue` folder in your home folder, and
-   asks before it writes anything.
-4. Type **yes** and press Return. Don't unplug anything until it says it's restarting the FM-1.
-   The FM-1 then starts into its original firmware, and you can install AMB-1 again from there.
+1. If a window asks to install the command line developer tools, click Install, then paste the line again.
+2. If it asks for a password, type your Mac password (nothing shows) and press Return.
+3. When it says it's waiting, plug the FM-1 in and switch it on. The script catches it, checks the chip, saves a
+   backup of the FM-1's memory in the `fm1-rescue` folder in your home folder, and asks before it writes anything.
+4. Type **yes** and press Return. Don't unplug anything until it says it's restarting the FM-1. It then starts into
+   its original firmware, and you can install AMB-1 FM6 again.
 
-The script downloads M-VAVE's FM-1 V15 firmware and JieLi's flash loader, and checks both against
-known fingerprints. It writes only the firmware area of the memory, never the bootloader or the
-FM-1's own settings, and checks everything it writes. Running it again is always safe. If it fails,
-copy everything in the Terminal window and
-[open an issue](https://github.com/charlesvestal/fm1-amb/issues). If the FM-1 never shows up at
-all, Felucca's [FM-1-transporter](https://github.com/kurogedelic/FM-1-transporter) (a small
-RP2040 board wired to the USB lines) can still reach it.
+The script downloads M-VAVE's FM-1 V15 firmware and JieLi's flash loader and checks both against known
+fingerprints. It writes only the firmware area, never the bootloader or the FM-1's own settings. If the FM-1 never
+shows up at all, Felucca's [FM-1-transporter](https://github.com/kurogedelic/FM-1-transporter) can still reach it.
 
 ---
 
-## 11. Parameters
+## 12. Parameters
 
 The defaults are Garden's; each piece has its own.
 
@@ -546,18 +476,10 @@ The defaults are Garden's; each piece has its own.
 | Garden | Evolve | 0–100 | 35 |
 | Garden | Motion | 0–100 | 50 |
 | Garden | Drift | 20 s – 5:00 | 25 (about 40 s) |
-| Pad | Level | 0–100 | 60 |
-| Pad | Swell | 0–100 | 60 |
-| Pad | Bright | 0–100 | 40 |
-| Pad | Colour | Rhodes, Voices | Rhodes |
-| Bells | Level | 0–100 | 65 |
-| Bells | Density | 0–100 (0 to 5 notes a loop) | 40 |
-| Bells | Tone | 0–100 | 50 |
-| Bells | Octave | −2 – +2 | 0 |
-| Bass | Level | 0–100 | 45 |
-| Bass | Octave | −1 – +1 | 0 |
-| Bass | Glide | 0–100 (20 ms – 1.2 s) | 20 |
-| Bass | Fifth | 0–100 | 35 |
+| Voice 1, 2, 3 | Level | 0–100 | 60, 65, 45 |
+| Voice 1, 2, 3 | Role | Chord, Loops, Bass | Chord, Loops, Bass |
+| Voice 1, 2, 3 | Octave | −2 – +2 | 0 |
+| Voice 1, 2, 3 | Density | 0–100 | 100, 40, 35 |
 | Pulse | Level | 0–100 | 40 |
 | Pulse | Hits | 0–100 | 35 |
 | Pulse | Swing | 50%–75% | 50% |
@@ -570,45 +492,50 @@ The defaults are Garden's; each piece has its own.
 | Setup | Tune | −50 – +50 cents | 0 |
 | Setup | MIDI out | Off, On | On |
 | Setup | Lights | Off, On, Keys | On |
-| Each voice's VOICE | Patch | the voice's own six, then the banks' voices | Rhodes, Bell, Sine |
-| Each voice's VOICE | Algorithm, Feedback, LFO, Pitch EG, Transpose | as a DX7 | as the patch |
-| Each voice's VOICE | Index | −24 – +24 dB | 0 dB |
-| Each voice | Role | Chord, Loops, Bass | Voice 1 Chord, 2 Loops, 3 Bass |
-| Each voice | Octave | −2 – +2 | 0 |
-| Each voice | Density | 0–100 | 100, 40, 35 |
-| Each voice's Play | Envelope | AMB, Patch, ADSR | Patch |
-| Each voice's Play | Gate | 5–100 % | 70 %, 25 %, 80 % |
-| Each voice's Play | Pace | 0–100 (a breath 4–16 s; a step 1/16–1/2; the bass each chord, bar .. 1/8) | 60, 60, 0 |
-| Each voice's Play | Glide | 20 ms – 1.2 s | 260 ms |
-| Each voice's ADSR | Attack, Decay, Sustain, Release | 0–100 | 5, 40, 70, 40 |
-| Each voice's OPERATOR | Ratio, Fine, Level, Envelope, Mode, Detune, Velocity, Break, Depths, Curves, Rate scale, Amp sens | as a DX7 | as the patch |
-| Each voice's MOD (×5) | Depth | 0–100 | 20 (the first), 0 |
-| Each voice's MOD (×5) | Rate | 0–100 (60 s – 0.12 s a cycle; Tempo: 8 bars – 1/16) | 27 (11 s) |
-| Each voice's MOD (×5) | Shape | Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos, Env | Sine |
-| Each voice's MOD (×5) | Target | the voice's ten, then each operator's seven | Timbre |
-| Each voice's MOD (×5) | Spread | 0–100 | 100 |
-| Each voice's MOD (×5) | Fade | Off – 8 s | Off |
-| Each voice's MOD (×5) | Sync | Free, Note, Tempo | Free |
-| Each voice's MOD (×5) | Smooth | 2 ms – 500 ms | 2 ms |
+| Tape | Source | Mix, Voice 1, 2, 3, Pulse | Mix |
+| Tape | Dry/Wet | 0–100 | 50 |
+| Tape | SOS | 0–100 | 70 |
+| Tape | Speed | −2x .. Stop .. +2x | +1x |
+| Gene | Gene, Slide, Morph | 0–100 | 100, 0, 45 |
+| Gene | Organize | 1–8 | 1 |
+| Deck | FX | Before, After | Before |
+| Deck | Wow, Drive, Tone | 0–100 | 25, 20, 85 |
+| A voice's PATCH | Patch | the eighteen, then the banks' voices | Rhodes, Bell, Sine |
+| A voice's PATCH | Algorithm, Feedback, LFO, Pitch EG, Transpose | as a DX7 | as the patch |
+| A voice's PATCH | Index | −24 – +24 dB | 0 dB |
+| A voice's Play | Envelope | AMB, Patch, ADSR | Patch |
+| A voice's Play | Gate | 5–100 % | 70 %, 25 %, 80 % |
+| A voice's Play | Pace | 0–100 | 60, 60 (1/4), 0 (each chord) |
+| A voice's Play | Glide | 20 ms – 1.2 s | 260 ms |
+| A voice's ADSR | Attack, Decay, Sustain, Release | 0–100 | 5, 40, 70, 40 |
+| A voice's OPERATOR | Ratio, Fine, Level, Envelope, Mode, Detune, Velocity, Break, Depths, Curves, Rate scale, Amp sens | as a DX7 | as the patch |
+| A voice's MOD (×5) | Depth | 0–100 | 20 (the first), 0 |
+| A voice's MOD (×5) | Rate | 0–100 (60 s – 0.12 s; Tempo: 8 bars – 1/16) | 27 (11 s) |
+| A voice's MOD (×5) | Shape | Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos, Env | Sine |
+| A voice's MOD (×5) | Target | the voice's ten, then each operator's seven | Timbre |
+| A voice's MOD (×5) | Spread, Fade, Sync, Smooth | 0–100, Off – 8 s, Free/Note/Tempo, 2–500 ms | 100, Off, Free, 2 ms |
 | ALGORITHM | Mode | 8 modes, or Custom | Dorian |
 
 ---
 
-## 12. Credits
+## 13. Credits
 
-AMB-1 is free software under the GNU General Public License, version 3. If you share the
-firmware, you must also share its source code.
+AMB-1 FM6 is free software under the Mozilla Public License 2.0: if you share it changed, share the changed files'
+source too. Its source comes with it (`codigo-fonte/`), with `LICENSING.md`.
 
-- The idea comes from Brian Eno's generative music: *Music for Airports*' tape loops of unequal
-  length, and the echo and tape-delay chain of *Discreet Music*.
-- The reverb is Jon Dattorro's plate ("Effect Design, Part 1", JAES 1997), by way of
-  [FoMni-1](https://charlesvestal.github.io/fm1-fomni/).
-- The Euclidean rhythms are Godfried Toussaint's reading of Bjorklund's algorithm.
-- The platform (hardware layer, USB, update loader, installer and storage) is
-  [fm1-base](https://github.com/charlesvestal/fm1-base) and [felucca-bsp](https://github.com/hugelton/felucca-bsp),
-  from **Felucca** by Leo Kuroshita, Hügelton Instruments.
-- The idea of running FM-1 firmware in the browser comes from [Groove OS](https://www.groove-os.com/).
+- **AMB-1**, the garden, its pieces and its screen: Charles Vestal. AMB-1 FM6 is an unofficial fork, not connected
+  with him.
+- The idea comes from Brian Eno's generative music: *Music for Airports*' tape loops of unequal length, and the echo
+  and tape-delay chain of *Discreet Music*.
+- The FM voices: **msfa**, the DX7 core of Dexed (Google Inc., Pascal Gauthier), Apache-2.0, as ported to integer C
+  by Leo Kuroshita and carried in Juan Ignacio Antonucci's JIANT FM.
+- The reel's genes follow the idea of Make Noise's Morphagene, its tape a TASCAM portastudio's; no code of theirs.
+  Its coding is IMA ADPCM.
+- The reverb is Jon Dattorro's plate ("Effect Design, Part 1", JAES 1997), by way of FoMni-1. The Euclidean rhythms
+  are Godfried Toussaint's reading of Bjorklund's algorithm.
+- The platform is [fm1-base](https://github.com/charlesvestal/fm1-base) and
+  [felucca-bsp](https://github.com/hugelton/felucca-bsp), from **Felucca** by Leo Kuroshita, Hügelton Instruments.
 - The fonts are Barlow Semi Condensed and Terminus (SIL Open Font License).
 
-M-VAVE and FM-1 are trademarks of their owners. AMB-1 is not connected with M-VAVE, Brian Eno or
-Hügelton Instruments.
+M-VAVE, FM-1, Yamaha, DX7, Make Noise, Morphagene and TASCAM are trademarks of their owners. AMB-1 FM6 is not
+connected with any of them, with Brian Eno or with Hügelton Instruments.
