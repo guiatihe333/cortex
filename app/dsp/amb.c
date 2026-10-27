@@ -54,8 +54,9 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     PL_PARAMS("V1", ROLE_CHORD, 100, 60, 70), PL_PARAMS("V2", ROLE_LOOPS, 40, 60, 25),
     PL_PARAMS("V3", ROLE_BASS, 35, 0, 80),
 #undef PL_PARAMS
-    {"Tape source", 0, 4, 0}, {"Tape level", 0, 100, 70}, {"SOS", 0, 100, 70}, {"Speed", 0, 100, 75},
+    {"Tape source", 0, 4, 0}, {"Dry/Wet", 0, 100, 50}, {"SOS", 0, 100, 70}, {"Speed", 0, 100, 75},
     {"Gene", 0, 100, 100}, {"Slide", 0, 100, 0}, {"Morph", 0, 100, 45}, {"Organize", 0, 7, 0},
+    {"Tape FX", 0, 1, 0},     {"Wow", 0, 100, 25},      {"Drive", 0, 100, 20},    {"Tone", 0, 100, 85},
 #undef VOX_PARAMS
 #undef MS_PARAMS
 };
@@ -253,6 +254,10 @@ void en_param_text(int i, int v, char *b)
         s = TSRC_NAME[(unsigned)v < 5u ? v : 0];
     else if (i == P_RL(SPEED) && v >= 48 && v <= 52)
         s = "Stop";
+    else if (i == P_RL(FX))
+        s = v ? "After" : "Before";
+    else if (i == P_RL(MIX) && (v == 0 || v == 100))
+        s = v ? "Wet" : "Dry";
     else if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_ENV)
         s = ENV_NAME[(unsigned)v < EN_NENV ? v : 0];
     else if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_ROLE)
@@ -2773,6 +2778,7 @@ static void drain(void)
 static float mixl[BLK], mixr[BLK], rsend[BLK], esend[BLK];
 static float vsrc[EN_NVOX][BLK], dsrc[BLK];     /* each voice alone, the pulse alone (the reel's SOURCE) */
 static float rl_in[BLK], rl_l[BLK], rl_r[BLK];  /* what the reel records, what it plays */
+static float dryv[BLK], dry_g = 1.0f;           /* the garden's part (MIX), ramped */
 
 /* the pad's bus: a 12 dB low-pass, darker than it sounds on paper (Brian Eno darkened everything: the
  * Synthi's filter below half, then tape). No chorus: a modulated delay against pure tones beats (on
@@ -3154,17 +3160,29 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
 {
     uint32_t j;
     const float rg = rev_send * rev_in_gain * (1.0f - 0.25f * arcm), eg = echo_send;
-    const int src = par[P_RL(SRC)];
+    const int src = par[P_RL(SRC)], fx_after = par[P_RL(FX)] != 0;
+    const float dry_t = fm_minf((float)(100 - par[P_RL(MIX)]) * 0.02f, 1.0f);   /* (the garden full to the middle) */
     for (j = 0; j < n; j++)
         mixl[j] = mixr[j] = rsend[j] = esend[j] = dsrc[j] = 0.0f;
     fm_pull(n);
     pad_bus(n);
     render_drums(n);
-    reel_play(rl_l, rl_r, n);                    /* the reel: to the mix, and a little to the space */
+    reel_play(rl_l, rl_r, n);
+    /* the reel and the garden: MIX (dry/wet), and FX: the space before the reel (the garden through it, the reel as it
+     * was recorded, dry) or after it (the garden and the reel both into it). SOURCE: the whole mix (its space too
+     * before, without after; the reel's own sound left out), one voice alone or the pulse, as they are made */
     for (j = 0; j < n; j++) {
-        const float m = (rl_l[j] + rl_r[j]) * (1.0f / 0.36f);
-        rsend[j] += m * 0.25f;
-        esend[j] += m * 0.1f;
+        dry_g += (dry_t - dry_g) * 0.002f;
+        if (fx_after) {
+            const float m = (rl_l[j] + rl_r[j]) * (1.0f / 0.36f);
+            if (src == 0)
+                rl_in[j] = 0.5f * (mixl[j] + mixr[j]) * 0.36f;
+            mixl[j] = mixl[j] * dry_g + rl_l[j] * (1.0f / 0.36f);
+            mixr[j] = mixr[j] * dry_g + rl_r[j] * (1.0f / 0.36f);
+            rsend[j] = rsend[j] * dry_g + m * 0.45f;
+            esend[j] = esend[j] * dry_g + m * 0.3f;
+        }
+        dryv[j] = dry_g;
     }
     for (j = 0; j < n; j++) {
         float wl, wr, l, r, el, er, xl, xr;
@@ -3172,10 +3190,16 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
         reverb((rsend[j] * rg + (el + er + xl + xr) * 0.35f * rev_send) * 0.8f, &wl, &wr);
         l = (mixl[j] + 0.75f * el + 0.3f * xl + 1.3f * wl) * 0.36f;
         r = (mixr[j] + 0.75f * er + 0.3f * xr + 1.3f * wr) * 0.36f;
-        /* SOURCE: the whole mix (its space too, the reel's own sound left out) or one voice, or the pulse, alone */
-        rl_in[j] = src == 0 ? 0.5f * (l + r) : src <= EN_NVOX ? vsrc[src - 1][j] * 0.36f : dsrc[j] * 0.36f;
-        out[2 * j] = (int32_t)(fm_tanhf((l + rl_l[j]) * gain) * 8300000.0f);
-        out[2 * j + 1] = (int32_t)(fm_tanhf((r + rl_r[j]) * gain) * 8300000.0f);
+        if (src > 0)
+            rl_in[j] = src <= EN_NVOX ? vsrc[src - 1][j] * 0.36f : dsrc[j] * 0.36f;
+        if (!fx_after) {                         /* (before: the garden with its space, then the reel beside it) */
+            if (src == 0)
+                rl_in[j] = 0.5f * (l + r);
+            l = l * dryv[j] + rl_l[j];
+            r = r * dryv[j] + rl_r[j];
+        }
+        out[2 * j] = (int32_t)(fm_tanhf(l * gain) * 8300000.0f);
+        out[2 * j + 1] = (int32_t)(fm_tanhf(r * gain) * 8300000.0f);
     }
     reel_record(rl_in, n);
 }

@@ -130,6 +130,7 @@ static int patches_valid(void)                  /* (a byte past its range: held 
 #define V7_NPARAMS P_PLAY
 #define V8_NPARAMS (P_PLAY + 3 * 2)
 #define V9_NPARAMS P_TAPE
+#define V10_NPARAMS (P_TAPE + 8)
 static int16_t mig6[NPIECES + 1][EN_NVOX][6];   /* format 6's ratio, feedback, attack, decay, sustain, release */
 static int mig_n, mig6_on;
 static void fix_none(int16_t *par, const int16_t *o) { (void)par, (void)o; }
@@ -222,6 +223,7 @@ OLD_PROJECT(project_v6, V6_NPARAMS, P_BELLPATCH, fix_v6, 6u)
 OLD_PROJECT(project_v7, V7_NPARAMS, V7_NPARAMS, fix_none, 7u)
 OLD_PROJECT(project_v8, V8_NPARAMS, P_PLAY, fix_v8, 8u)
 OLD_PROJECT(project_v9, V9_NPARAMS, V9_NPARAMS, fix_none, 9u)
+OLD_PROJECT(project_v10, V10_NPARAMS, V10_NPARAMS, fix_none, 10u)
 
 int project_load(void)
 {
@@ -234,6 +236,7 @@ int project_load(void)
         project_v7_t v7;
         project_v8_t v8;
         project_v9_t v9;
+        project_v10_t v10;
     } buf;
     int n, i, v, migrated = 1;
     memset(&buf, 0, sizeof buf);
@@ -258,6 +261,9 @@ int project_load(void)
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 9u) {
         keep_fmt = 9u;
         from_project_v9(&buf.v9);
+    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 10u) {
+        keep_fmt = 10u;
+        from_project_v10(&buf.v10);
     } else {
         proj = buf.now;
         migrated = 0;
