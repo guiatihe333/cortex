@@ -17,10 +17,12 @@
 
 /* the store: the project at 0xFC000 and the panel calibration at 0xDC000, where AMB-1 0.9 kept them (an update keeps
  * the pieces) */
-enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_NOBJ };
-#define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u}   /* the pieces' patches after the panel, in the data area */
+enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_TAPE, OBJ_NOBJ };
+#define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u, 0xDA000u}   /* the pieces' patches after the panel; the pieces'
+                                                                   * reel settings before it, in the data area */
 #define PROJ_MAGIC 0x314F4E45u           /* "ENO1" */
-#define PROJ_FORMAT 12u                  /* 12: the reel's modulators, no pulse; 11: the reel's dry/wet and deck; 10: the reel's settings; 9: the voices
+#define PROJ_FORMAT 13u                  /* 13: the reel's five modulators, its settings in OBJ_TAPE (P_SPLIT);
+                                          * 12: the reel's modulators, no pulse; 11: the reel's dry/wet and deck; 10: the reel's settings; 9: the voices
                                           * alike (a ROLE each, its own octave, density, pace, glide,
                                           * an ADSR), AMB-1's eighteen patches; 8: how each voice plays (ENV, GATE); 7:
                                           * each voice's own patch
@@ -61,6 +63,9 @@ typedef struct {
     int16_t par[P_NPARAMS];
     uint16_t pool;
 } slot_t;
+/* in the store, the settings from P_SPLIT (the reel's) go in an object of their own (OBJ_TAPE): a store object holds
+ * 3840 bytes, nine pieces' worth of everything does not fit one */
+#define P_SPLIT P_TAPE
 
 typedef struct {
     uint32_t magic, format;

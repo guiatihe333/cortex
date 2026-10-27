@@ -293,24 +293,38 @@ static int16_t gene_at(gene_t *g, uint32_t i)    /* the tape's sample i, through
     return g->cache[s][i % RL_BLK];
 }
 /* ------------------------------------------------------- the reel's modulators --- */
-/* two, after the voices' MOD: each a shape at its RATE (60 s .. 0.12 s a cycle), DEPTH of its TARGET's range (half of
- * it either way at 100), added to the knob's value while it plays: Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow,
- * Drive, SOS, Organize (in splices) */
-static const uint8_t TM_PAR[EN_NTMDEST] = {TP_SPEED, TP_GENE, TP_SLIDE, TP_MORPH, TP_MIX, TP_TONE, TP_WOW, TP_DRIVE,
-                                           TP_SOS, TP_ORG};
+/* five, as a voice's: each a shape at its RATE (60 s .. 0.12 s a cycle, or with SYNC Tempo a note value), SMOOTH'ed,
+ * DEPTH of its TARGET's range (half of it either way at 100), added to the knob's value while it plays: Speed, Gene,
+ * Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize (in splices); or another modulator's depth (+-50) or rate
+ * (+-2 octaves), by its value a chunk before */
+static const uint8_t TM_PAR[EN_NTMSET] = {TP_SPEED, TP_GENE, TP_SLIDE, TP_MORPH, TP_MIX, TP_TONE, TP_WOW, TP_DRIVE,
+                                          TP_SOS, TP_ORG};
 static struct {
-    float ph, hold, from, to, lx;
+    float ph, hold, from, to, lx, vs;            /* vs: what it gives, smoothed, -1 .. 1 times its depth */
 } tmg[EN_NTMOD];
 static float tm_off[TP_N];                       /* each tape setting's offset now (its own units) */
 static void tape_mods(uint32_t n)                /* once a chunk */
 {
+    float dd[EN_NTMOD] = {0}, rr[EN_NTMOD] = {0};
     int s, k;
     for (k = 0; k < TP_N; k++)
         tm_off[k] = 0.0f;
+    for (s = 0; s < EN_NTMOD; s++) {             /* the modulators on others: their value a chunk ago */
+        const int t = par[P_TM(s, TARGET)];
+        if (t >= EN_NTMSET && t < EN_NTMDEST) {
+            if (t - EN_NTMSET < EN_NTMOD)
+                dd[t - EN_NTMSET] += 50.0f * tmg[s].vs;
+            else
+                rr[t - EN_NTMSET - EN_NTMOD] += 2.0f * tmg[s].vs;
+        }
+    }
     for (s = 0; s < EN_NTMOD; s++) {
-        const int d = par[P_TM(s, DEPTH)], t = par[P_TM(s, TARGET)], sh = par[P_TM(s, SHAPE)];
+        const int t = par[P_TM(s, TARGET)], sh = par[P_TM(s, SHAPE)], rv = par[P_TM(s, RATE)];
+        const float d = fm_clampf((float)par[P_TM(s, DEPTH)] + dd[s], 0.0f, 100.0f),
+                    secs = par[P_TM(s, SYNC)] ? DIV_BEATS[div_of(rv)] * 60.0f / tempo_bpm() : mod_secs(rv),
+                    sm = fm_minf((float)n / (smooth_secs(par[P_TM(s, SMOOTH)]) * EN_SR), 1.0f);
         float v, ph;
-        tmg[s].ph += (float)n / (mod_secs(par[P_TM(s, RATE)]) * EN_SR);
+        tmg[s].ph += (float)n / (secs * EN_SR) * fm_exp2f(rr[s]);
         if (tmg[s].ph >= 1.0f) {                 /* a cycle's end: S&H's next, the walk's next end, the map's step */
             tmg[s].ph -= (float)(int)tmg[s].ph;
             tmg[s].hold = rl_rand() * 2.0f - 1.0f;
@@ -320,8 +334,6 @@ static void tape_mods(uint32_t n)                /* once a chunk */
             if (tmg[s].lx < 0.001f || tmg[s].lx > 0.999f)
                 tmg[s].lx = 0.2f + 0.6f * rl_rand();
         }
-        if (!d || (unsigned)t >= EN_NTMDEST)
-            continue;
         ph = tmg[s].ph;
         switch (sh) {
         case SHAPE_TRI: v = ph < 0.5f ? 4.0f * ph - 1.0f : 3.0f - 4.0f * ph; break;
@@ -333,8 +345,10 @@ static void tape_mods(uint32_t n)                /* once a chunk */
         case SHAPE_CHAOS: v = tmg[s].lx * 2.0f - 1.0f; break;
         default: v = sine(ph); break;
         }
-        tm_off[TM_PAR[t]] += v * (float)d * 0.005f * (TM_PAR[t] == TP_ORG ? 7.0f : 100.0f);
-        en_reel_mod[s] = v * (float)d * 0.01f;
+        tmg[s].vs += (v * d * 0.01f - tmg[s].vs) * sm;   /* SMOOTH */
+        en_reel_mod[s] = tmg[s].vs;
+        if (t >= 0 && t < EN_NTMSET)
+            tm_off[TM_PAR[t]] += tmg[s].vs * 0.5f * (TM_PAR[t] == TP_ORG ? 7.0f : 100.0f);
     }
 }
 static float rl_pf(int k)                        /* tape setting k (TP_*) as it plays: the knob and its modulators */
@@ -523,8 +537,8 @@ static void reel_init(void)                      /* (the reel itself stays: a re
     rl_cursor = rl_spawn = rl_gain = rl_lpl = rl_lpr = 0.0f;
     rl_al = rl_ar = rl_bl = rl_br = 0.0f;
     for (i = 0; i < EN_NTMOD; i++) {
-        tmg[i].ph = tmg[i].hold = tmg[i].from = tmg[i].to = 0.0f;
-        tmg[i].lx = 0.3f + 0.2f * (float)i;
+        tmg[i].ph = tmg[i].hold = tmg[i].from = tmg[i].to = tmg[i].vs = 0.0f;
+        tmg[i].lx = 0.3f + 0.1f * (float)i;
         en_reel_mod[i] = 0.0f;
     }
     for (i = 0; i < TP_N; i++)

@@ -52,3 +52,13 @@ tap SEQ
 wait 100
 expect view 9
 shot tape_mod.png
+# the reel's five, as a voice's MOD: KNOB 1 picks the modulator (the second: its target at par207), and they are kept
+# (OBJ_TAPE) across a restart
+turn K1 1 10
+spin K2 4
+expect par207 7
+tap SAVE
+wait 300
+reboot
+wait 300
+expect par207 7

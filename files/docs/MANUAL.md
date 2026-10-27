@@ -41,11 +41,11 @@ M-VAVE's firmware **V15** first: a V16 goes back to V15 with M-VAVE's updater, M
 runtime too), connect the FM-1 with a USB data cable and run, from the package's folder:
 
 ```
-python fm1_install.py amb-1.4.0-fm6.fwsc
+python fm1_install.py amb-1.4.1-fm6.fwsc
 ```
 
 Don't unplug it while it's writing; when it finishes, the FM-1 restarts into AMB-1 FM6 and the script checks the
-identity it reports (`FM-1_76010400`). `python fm1_install.py --info` shows what an FM-1 runs.
+identity it reports (`FM-1_76010401`). `python fm1_install.py --info` shows what an FM-1 runs.
 
 **Go back:** AMB-1's [web installer](https://charlesvestal.github.io/fm1-amb/install/) has "Back to the stock
 firmware" at the bottom, for any FM-1 whatever it runs: choose the V15 file and press the button. M-VAVE's
@@ -91,7 +91,7 @@ Not sure what a button does? Hold it for a second: a card says. Let go and nothi
 | EDIT | The next chord, at the start of the next bar. On the reel's pages: a new splice. |
 | HOME | The Garden page. |
 | ENV · ARP · LFO | Voices 1, 2 and 3. Again: the voice's PATCH, OPERATOR and MOD pages, then back. |
-| SEQ | The reel: Tape. Again: Gene, Deck, Tape Mod 1, Tape Mod 2, and round. |
+| SEQ | The reel: Tape. Again: Gene, Deck, Tape Mod, Tape Mod 2, and round. |
 | FX · GLO | The Space and Setup pages. |
 | SEL | **The dice.** Tapped: the page shown rolled. Held with ENV, ARP, LFO, HOME, SEQ, FX or GLO: that whole layer (with HOME and SEQ, the loops and patterns grown anew too). With EDIT: new loops, the settings kept. With SAVE: **init** (see below). Held alone a second: **undo** the last roll, init or recipe. |
 | SELECT | The previous or next page. Hold HOME and turn it for the tempo. |
@@ -186,7 +186,7 @@ recipe. Tune, MIDI out and Lights are the same for all.
 ## 7. The pages
 
 A page on each button, four values on KNOB 1–4; SELECT steps through them: Garden, Voice 1, 2, 3, Space, Setup, Tape,
-Gene, Deck, Tape Mod 1, Tape Mod 2. Each voice has more pages of its own (ENV, ARP or LFO again).
+Gene, Deck, Tape Mod, Tape Mod 2. Each voice has more pages of its own (ENV, ARP or LFO again).
 
 ### HOME: Garden
 
@@ -296,7 +296,8 @@ are summed; the arc deepens them when the garden is full and calms them when spa
   **Metal** (the modulators out of tune with each other), **Feedback**, **Decay** (each new note's envelopes),
   **Pitch** (±30 cents), **Space** (the stereo field), **All**, **Level** (a tremolo, to −10 dB), **LFO PM** (the
   patch's vibrato, deeper). And any operator's own, **OP1**..**OP6**: **Level**, **Ratio**, **Fine**, **Atk**,
-  **Dec**, **Sus**, **Rel**.
+  **Dec**, **Sus**, **Rel**. And the voice's own modulators: **M1**..**M5** **depth** (±50) or **rate** (±2
+  octaves): one modulator moving another.
 - **Spread:** 100: each note its own way. 0: the voice's notes move as one.
 - **Fade:** the modulation coming in after each note, at once (Off) to 8 seconds.
 - **Sync:** Free; Note (each note starts the shape again); Tempo (Rate a note value).
@@ -307,7 +308,7 @@ are summed; the arc deepens them when the garden is full and calms them when spa
 ## 8. The reel
 
 A track of tape, 11.8 seconds, mono, after a TASCAM portastudio's tape and Make Noise's Morphagene's genes (the idea,
-not their code). SEQ opens **Tape**; again **Gene**, **Deck**, **Tape Mod 1**, **Tape Mod 2**, and round.
+not their code). SEQ opens **Tape**; again **Gene**, **Deck**, **Tape Mod**, **Tape Mod 2**, and round.
 
 ![The Tape page: a cassette with its spools, the reel as a strip with two splices and the cursor; 4.2 / 11.8 s, FX BEFORE, 2 SPLICES; SOURCE Mix, DRY/WET 50, SOS 70, SPEED +1.00x](img/screen-tape.png "The Tape page")
 
@@ -320,7 +321,8 @@ the splices.
 | Tape | Source (Mix, Voice 1, 2, 3) | Dry/Wet | SOS | Speed (−2x .. Stop .. +2x) |
 | Gene | Gene (the whole splice .. 1/256) | Slide | Morph | Organize (splice 1–8) |
 | Deck | FX (Before, After) | Wow | Drive | Tone |
-| Tape Mod 1, 2 | Target | Depth | Rate | Shape |
+| Tape Mod | Mod (1–5) | Target | Depth | Rate |
+| Tape Mod 2 | Mod (1–5) | Shape | Sync | Smooth |
 
 **Recording** (on these three pages):
 
@@ -352,13 +354,15 @@ the space, as the garden does.
 
 ![The Deck page: FX Before, WOW 25, DRIVE 20, TONE 85](img/screen-deck.png "The Deck page")
 
-**Tape Mod 1 and 2:** two modulators of the reel's settings, as the voices' MOD: **Target** (Speed, Gene, Slide, Morph,
-Dry/Wet, Tone, Wow, Drive, SOS, Organize), **Depth** (of the setting's range, half either way at 100: at 100 on Speed,
-−2x to +2x), **Rate** (60 s to an eighth of a second a cycle), **Shape** (Sine, Triangle, Saw up, Saw down, Square,
-S&H, Walk, Chaos). They move the setting while the reel plays (and records: Drive, SOS); the knob stays where you put
-it. Each piece has its own first one.
+**Tape Mod:** five modulators of the reel's settings, as a voice's MOD (KNOB 1 picks one, on both pages): **Target**
+(Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize; or another modulator's **depth** or **rate**,
+M1..M5), **Depth** (of the setting's range, half either way at 100: at 100 on Speed, −2x to +2x; on a modulator's
+depth ±50, on its rate ±2 octaves), **Rate** (60 s to an eighth of a second a cycle; with Sync at Tempo a note value),
+**Shape** (Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos), **Sync** (Free, Tempo), **Smooth** (a glide,
+2 to 500 ms). They move the setting while the reel plays (and records: Drive, SOS); the knob stays where you put it.
+Each piece has its own first one.
 
-![The Tape Mod 1 page: TARGET Morph, DEPTH 25, RATE 28s, SHAPE Sine](img/screen-tapemod.png "The Tape Mod 1 page")
+![The Tape Mod page: MOD 1, TARGET Morph, DEPTH 25, RATE 28s](img/screen-tapemod.png "The Tape Mod page")
 
 ---
 
@@ -381,7 +385,7 @@ What the knobs set comes and goes as MIDI CC (out with MIDI out on; what comes i
 | --- | --- | --- |
 | 16 | 20–49 | the parameters 0–29 (the layers, the space, setup; a patch source as its number) |
 | 16 | 50–61 | the reel: Source, Dry/Wet, SOS, Speed, Gene, Slide, Morph, Organize, FX, Wow, Drive, Tone |
-| 16 | 62–69 | the reel's modulators: Target, Depth, Rate, Shape of the first, then the second's |
+| 16 | 62–91 | the reel's five modulators: Target, Depth, Rate, Shape, Sync, Smooth of the first, then the next's |
 | 1, 2, 3 (the voices) | 20 | the voice's Index |
 | 1, 2, 3 | 21–60 | its five modulators, eight each: Depth, Rate, Shape, Target, Spread, Fade, Sync, Smooth |
 | 1, 2, 3 | 102–112 | how it plays: Envelope, Gate, Role, Octave, Density, Pace, Glide, Attack, Decay, Sustain, Release |
@@ -500,8 +504,9 @@ The defaults are Garden's; each piece has its own.
 | Gene | Organize | 1–8 | 1 |
 | Deck | FX | Before, After | Before |
 | Deck | Wow, Drive, Tone | 0–100 | 25, 20, 85 |
-| Tape Mod 1, 2 | Target | Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize | Slide (Garden), Morph |
-| Tape Mod 1, 2 | Depth, Rate, Shape | 0–100, 60 s – 0.12 s, the MOD's shapes | 30 (the first, Garden), 0 |
+| Tape Mod (×5) | Target | Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize, M1–M5 depth, M1–M5 rate | Slide (Garden), Morph, Gene, Tone, Speed |
+| Tape Mod (×5) | Depth, Rate, Shape | 0–100, 60 s – 0.12 s (Tempo: 8 bars – 1/16), the MOD's shapes | 30 (the first, Garden), 0 |
+| Tape Mod (×5) | Sync, Smooth | Free, Tempo; 2–500 ms | Free, 2 ms |
 | A voice's PATCH | Patch | the eighteen, then the banks' voices | Rhodes, Bell, Sine |
 | A voice's PATCH | Algorithm, Feedback, LFO, Pitch EG, Transpose | as a DX7 | as the patch |
 | A voice's PATCH | Index | −24 – +24 dB | 0 dB |
@@ -514,7 +519,7 @@ The defaults are Garden's; each piece has its own.
 | A voice's MOD (×5) | Depth | 0–100 | 20 (the first), 0 |
 | A voice's MOD (×5) | Rate | 0–100 (60 s – 0.12 s; Tempo: 8 bars – 1/16) | 27 (11 s) |
 | A voice's MOD (×5) | Shape | Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos, Env | Sine |
-| A voice's MOD (×5) | Target | the voice's ten, then each operator's seven | Timbre |
+| A voice's MOD (×5) | Target | the voice's ten, each operator's seven, M1–M5 depth and rate | Timbre |
 | A voice's MOD (×5) | Spread, Fade, Sync, Smooth | 0–100, Off – 8 s, Free/Note/Tempo, 2–500 ms | 100, Off, Free, 2 ms |
 | ALGORITHM | Mode | 8 modes, or Custom | Dorian |
 
