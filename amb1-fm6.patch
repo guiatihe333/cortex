@@ -1,7 +1,7 @@
 From 24d57710967d7a4baed2d9f20a9436aa23e66dda Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 04:28:26 +0000
-Subject: [PATCH 01/18] Voices on JIANT FM's FM6 engine: pad, bells and bass as
+Subject: [PATCH 01/19] Voices on JIANT FM's FM6 engine: pad, bells and bass as
  6-operator FM (msfa)
 
 ---
@@ -1911,7 +1911,7 @@ index 0000000..a25fcf6
 From 4ea9e9a121d75a369e25838a3fc13839bf207582 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 04:36:48 +0000
-Subject: [PATCH 02/18] MOD: generative modulation of the voices (depth, rate,
+Subject: [PATCH 02/19] MOD: generative modulation of the voices (depth, rate,
  chaos, target), a generator a voice
 
 ---
@@ -2717,7 +2717,7 @@ index 0713a37..ef94667 100644
 From e6e98ea437d92f8390a894222ca85b8aea2b1292 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 05:00:53 +0000
-Subject: [PATCH 03/18] MOD: FM targets (ratio, feedback, decay), continuous
+Subject: [PATCH 03/19] MOD: FM targets (ratio, feedback, decay), continuous
  FM6 feedback, shaped modulation, levels measured
 
 ---
@@ -3474,7 +3474,7 @@ index ef94667..9ddebda 100644
 From fc67b6d38c04b5b8f155d7b56e9b4672a935527f Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 05:26:48 +0000
-Subject: [PATCH 04/18] MOD Metal: the modulators apart by count (algorithm 5's
+Subject: [PATCH 04/19] MOD Metal: the modulators apart by count (algorithm 5's
  are all even operators)
 
 ---
@@ -3513,7 +3513,7 @@ index b495e78..44d0338 100644
 From 582a1081317953ebf2179313caa08167a5a3f18a Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 04:12:31 -0300
-Subject: [PATCH 05/18] Each voice its own: a bank of FM6 patches, FM edits,
+Subject: [PATCH 05/19] Each voice its own: a bank of FM6 patches, FM edits,
  envelopes and modulation
 
 The pad, the bells and the bass each get four pages (FM, Env, Mod, Mod 2), reached by pressing the voice's page
@@ -5677,7 +5677,7 @@ index 9ddebda..58f12b2 100644
 From 051d7189e84deea2b0bab90c3dba6a480942ac7e Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 17:31:38 -0300
-Subject: [PATCH 06/18] Each voice's patch edited operator by operator, DX7
+Subject: [PATCH 06/19] Each voice's patch edited operator by operator, DX7
  banks over SysEx, five modulators a voice, MIDI CC
 
 - VOICE, OPERATOR and MOD groups of pages for the pad, the bells and the bass: algorithm, feedback, LFO, pitch
@@ -9701,7 +9701,7 @@ index 58f12b2..d41d32c 100644
 From 68b21d952b04dad178934289ed29ab35b5485c26 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 19:07:23 -0300
-Subject: [PATCH 07/18] amb_syx.py: old banks' out-of-range values held to the
+Subject: [PATCH 07/19] amb_syx.py: old banks' out-of-range values held to the
  DX7's ranges, a lost answer's chunk sent again
 
 The FM-1 refuses a voice with a value past the DX7's range; banks from the 80s have stray 127s (ROM3A's TIMPANI,
@@ -9820,7 +9820,7 @@ index 8986a5c..996075c 100644
 From 50b1e574e7694be282daf18407dcf2cd6f03ef86 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 19:18:19 -0300
-Subject: [PATCH 08/18] The voices named Voice 1, 2 and 3; which voice and
+Subject: [PATCH 08/19] The voices named Voice 1, 2 and 3; which voice and
  group, large at the screen's top on each press
 
 The pad, the bells and the bass are Voice 1, 2 and 3 on the screen, in the help cards, the parameters' names and the
@@ -10005,7 +10005,7 @@ index d41d32c..dec20ad 100644
 From ca3c175f1bd1ed35ee1d896a510cab538a11faac Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 19:28:21 -0300
-Subject: [PATCH 09/18] Each voice plays its patch's envelopes if asked: a Play
+Subject: [PATCH 09/19] Each voice plays its patch's envelopes if asked: a Play
  page, Envelope and Gate
 
 The pad breathed (a swell of seconds, Swell's) and the bass was one note held and faded in over 2.5 s, so a patch's
@@ -10701,7 +10701,7 @@ index 17f5f48..950bd86 100644
 From 5a4a4bb8fb714310863e3385eeff8c6b2c1bd631 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 19:43:28 -0300
-Subject: [PATCH 10/18] 1.3.95: the patch's Transpose heard, a patch sent whole
+Subject: [PATCH 10/19] 1.3.95: the patch's Transpose heard, a patch sent whole
  in one command, values past their range held
 
 - TRANSPOSE (the DX7's TRNSP, 24 C3) moves the voice's pitch and its key scaling (fm_note_on, fm_voice): 214 of the
@@ -11358,7 +11358,7 @@ index 156d43a..3919651 100644
 From 5f25447d9c1a0e5bc5d24160b9a8b115efa9ed6a Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 20:04:18 -0300
-Subject: [PATCH 11/18] The dice: SEL rolls the page shown, SEL with a page's
+Subject: [PATCH 11/19] The dice: SEL rolls the page shown, SEL with a page's
  button its layer, with EDIT new loops; held, undo
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -11725,7 +11725,7 @@ index 0000000..4d5642a
 From b1fe4dd4d8cefc9ee01b2aa0248189b361576943 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 20:22:09 -0300
-Subject: [PATCH 12/18] 1.3.96: the three voices alike, a ROLE each (Chord,
+Subject: [PATCH 12/19] 1.3.96: the three voices alike, a ROLE each (Chord,
  Loops, Bass); envelopes AMB, Patch or ADSR
 
 - every voice set the same way: its page Level, Role, Octave, Density; its Play page Envelope, Gate, Pace, Glide; a
@@ -14566,7 +14566,7 @@ index a1b2d25..da21c05 100644
 From 45a1cf6fc1e5a84e01fcc5f3d3e4d3666d0e18e4 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 20:48:50 -0300
-Subject: [PATCH 13/18] 1.3.97: the reel, one track of tape (11.8 s) with
+Subject: [PATCH 13/19] 1.3.97: the reel, one track of tape (11.8 s) with
  Morphagene-like genes
 
 - app/dsp/reel.c: mono, 22.05 kHz, IMA ADPCM in blocks of 256 (each with the coder's state: read anywhere, either
@@ -16176,7 +16176,7 @@ index 0000000..770c138
 From 1557eab6daaa7f8a82b1227a72fbedef1b56b3bf Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 21:11:18 -0300
-Subject: [PATCH 14/18] 1.3.98: the reel's dry/wet, the space before or after
+Subject: [PATCH 14/19] 1.3.98: the reel's dry/wet, the space before or after
  it, a deck page, the reel on the screen
 
 - Tape's LEVEL is DRY/WET: Dry the garden alone, 50 both full, Wet the reel alone (the garden recorded unheard)
@@ -17001,7 +17001,7 @@ index 0b0c518..cd1e32f 100644
 From 6d7f6bcc4ce96bdfc77b8492e0741facb0188118 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 22:32:35 -0300
-Subject: [PATCH 15/18] 1.3.99: reviewed for sharing: the reel read as it
+Subject: [PATCH 15/19] 1.3.99: reviewed for sharing: the reel read as it
  records, saved a sector a frame; its own identity
 
 - the reel: a gene reading the block being recorded reads it as written so far and the rest as it was (its bytes past
@@ -17415,7 +17415,7 @@ index eba1af8..cf1a425 100644
 From 8912bfaa748ecedefeb4857262143cdb0fd89d5c Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 23:39:27 -0300
-Subject: [PATCH 16/18] The manual rewritten for AMB-1 FM6, and in Portuguese
+Subject: [PATCH 16/19] The manual rewritten for AMB-1 FM6, and in Portuguese
  (docs/MANUAL-PT.md)
 
 - the voices alike, their roles and pages, the reel in a section of its own, the dice, the 18 patches, the echo's
@@ -20557,7 +20557,7 @@ AiU0rr
 From dcb3f35c0860cfc408896abe121b01b6d2689f26 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Tue, 27 Oct 2026 14:21:31 -0300
-Subject: [PATCH 17/18] 1.4.0: the pulse gone, the plate and the genes at 22
+Subject: [PATCH 17/19] 1.4.0: the pulse gone, the plate and the genes at 22
  kHz, the reel's modulators, init and undo
 
 - the pulse (its thump and hats, its page, its rings on the screen, its MIDI) gone: three voices; SEQ opens the reel,
@@ -23315,7 +23315,7 @@ index cd1e32f..b5c1072 100644
 From d6ddccf1ddc95b37d198ad9649fa285d33309639 Mon Sep 17 00:00:00 2001
 From: AMB-1 FM6 <noreply@anthropic.com>
 Date: Tue, 27 Oct 2026 14:30:01 -0300
-Subject: [PATCH 18/18] 1.4.1: the reel's five modulators, as a voice's; a
+Subject: [PATCH 18/19] 1.4.1: the reel's five modulators, as a voice's; a
  modulator's depth and rate a target, the voices' and the reel's
 
 - the reel's modulators five, each Target, Depth, Rate, Shape, Sync (Free, Tempo), Smooth; two pages as a voice's MOD,
@@ -24304,6 +24304,230 @@ index 4ba366a..5f063ac 100644
  reboot
  wait 300
  expect piece 6
+-- 
+2.53.0
+
+
+From c2cf310c4fd64694927726a5570290e69929bc4f Mon Sep 17 00:00:00 2001
+From: AMB-1 FM6 <noreply@anthropic.com>
+Date: Tue, 27 Oct 2026 15:04:08 -0300
+Subject: [PATCH 19/19] 1.4.2: the screen's look: each page an album's colours,
+ a bitmap face, the reel's spools as circles
+
+- a palette a page, after the records of Aphex Twin (their colours only: no names, no marks): the garden black and
+  white with a few gold details, voice 1 rust and gold, voice 2 warm orange on black, voice 3 green, the space a
+  blue sky, setup steel grey and yellow, the reel's five pages beige paper
+- the reel's spools as the circles on the back of Selected Ambient Works Volume II: a thin ring, three uneven
+  spokes turning with the tape, the tape wound on it a pale disc; the left olive, the right copper
+- the fonts Terminus (bitmap, OFL, in fm1-base): X0X_FONTSET=terminus in build.sh
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ app/ui.c | 117 ++++++++++++++++++++++++++++++++++++++-----------------
+ build.sh |   1 +
+ 2 files changed, 82 insertions(+), 36 deletions(-)
+
+diff --git a/app/ui.c b/app/ui.c
+index 90cbd83..ce78139 100644
+--- a/app/ui.c
++++ b/app/ui.c
+@@ -148,25 +148,66 @@ static int view_knob(int v, int i)             /* page v's knob i */
+ }
+ static const char *knob_label(int v, int i) { return v < V_MAIN ? MAIN_LABEL[v][i] : SUB_LABEL[view_sub(v)][i]; }
+ 
+-/* the screen's colours: the cover of Ambient 1: Music for Airports (1978), as the web app and the site.
+- * The map's paper, its ink; the land's greens for the pad (the chord) and the scale, its rivers for the
+- * bells; the bass and the pulse in darker inks. Each layer has a pale tint for the shapes at rest. */
+-#define K_BG RGB(246, 238, 181)
+-#define K_PANEL RGB(255, 251, 224)
+-#define K_LINE RGB(208, 214, 150)
+-#define K_DIM RGB(112, 106, 58)
+-#define K_TEXT RGB(29, 27, 2)
+-#define K_ACC RGB(64, 128, 124)          /* the accent: the page, the knob being turned, a message's word */
+-#define K_BELL RGB(84, 153, 149)
+-#define K_BELL_T RGB(176, 214, 206)
+-#define K_PAD RGB(112, 142, 62)
+-#define K_PAD_T RGB(208, 220, 146)
+-#define K_PULSE RGB(70, 66, 28)
+-#define K_PULSE_T RGB(214, 214, 160)
+-#define K_BASS RGB(138, 128, 52)
+-#define K_BASS_T RGB(222, 218, 160)
+-#define K_FROST RGB(60, 132, 160)
+-#define K_FROST_T RGB(170, 210, 216)
++/* the screen's colours: a palette a page, after the records of Aphex Twin (their colours only: no names, no marks).
++ * Each: the ground, a panel, rules, dim and plain ink, the accent (the page, the knob being turned, a message's
++ * word); then the layers (the chord, the loops, the bass, the reel), each with a pale tint for shapes at rest, and
++ * the frozen chord's. */
++typedef struct {
++    uint16_t bg, panel, line, dim, text, acc, pad, pad_t, bell, bell_t, bass, bass_t, pulse, pulse_t, frost, frost_t;
++} theme_t;
++static const theme_t THEMES[] = {
++    /* the garden: Selected Ambient Works 85-92, black and white; a few details (the accent, the chord) in Volume
++     * II's gold */
++    {RGB(0, 0, 0), RGB(28, 28, 28), RGB(64, 64, 64), RGB(140, 140, 140), RGB(244, 244, 240), RGB(218, 188, 128),
++     RGB(218, 188, 128), RGB(70, 60, 40), RGB(180, 180, 176), RGB(50, 50, 50), RGB(132, 132, 128), RGB(44, 44, 44),
++     RGB(100, 100, 98), RGB(40, 40, 40), RGB(210, 210, 210), RGB(80, 80, 80)},
++    /* the reel: the back of Selected Ambient Works Volume II, its paper and its circles */
++    {RGB(232, 228, 214), RGB(246, 244, 236), RGB(196, 190, 172), RGB(120, 112, 96), RGB(30, 28, 24), RGB(184, 100, 44),
++     RGB(150, 172, 50), RGB(214, 220, 170), RGB(98, 104, 44), RGB(200, 200, 168), RGB(184, 100, 44), RGB(226, 196, 166),
++     RGB(150, 36, 36), RGB(222, 180, 172), RGB(92, 64, 40), RGB(200, 184, 164)},
++    /* voice 1: its front, rust and gold */
++    {RGB(24, 16, 8), RGB(56, 38, 20), RGB(100, 72, 40), RGB(176, 146, 100), RGB(240, 226, 196), RGB(222, 184, 112),
++     RGB(222, 184, 112), RGB(86, 64, 32), RGB(244, 214, 156), RGB(92, 72, 44), RGB(176, 110, 52), RGB(72, 46, 22),
++     RGB(150, 110, 70), RGB(60, 40, 20), RGB(250, 214, 150), RGB(110, 80, 44)},
++    /* voice 2: drukqs, the prepared piano's warm light on black */
++    {RGB(8, 6, 4), RGB(40, 24, 12), RGB(84, 46, 18), RGB(176, 120, 70), RGB(252, 232, 204), RGB(255, 136, 32),
++     RGB(255, 136, 32), RGB(90, 42, 12), RGB(255, 196, 110), RGB(96, 64, 30), RGB(200, 72, 20), RGB(76, 28, 8),
++     RGB(150, 100, 60), RGB(60, 40, 22), RGB(255, 220, 160), RGB(110, 80, 50)},
++    /* voice 3: Syro, green ink on a dark green */
++    {RGB(6, 22, 14), RGB(18, 44, 28), RGB(36, 80, 52), RGB(110, 170, 126), RGB(214, 244, 214), RGB(130, 255, 140),
++     RGB(130, 255, 140), RGB(30, 80, 44), RGB(190, 240, 160), RGB(40, 76, 44), RGB(70, 190, 110), RGB(24, 64, 36),
++     RGB(150, 200, 160), RGB(40, 70, 50), RGB(220, 255, 220), RGB(60, 100, 70)},
++    /* the space: Richard D. James Album, its sky */
++    {RGB(4, 14, 34), RGB(14, 34, 70), RGB(34, 64, 112), RGB(124, 160, 210), RGB(226, 238, 255), RGB(96, 176, 255),
++     RGB(96, 176, 255), RGB(24, 56, 104), RGB(200, 226, 255), RGB(40, 66, 106), RGB(60, 120, 200), RGB(20, 44, 84),
++     RGB(150, 170, 200), RGB(40, 56, 84), RGB(220, 236, 255), RGB(70, 96, 140)},
++    /* setup: Collapse, steel grey and a warning yellow */
++    {RGB(22, 22, 24), RGB(46, 46, 50), RGB(78, 78, 84), RGB(150, 150, 156), RGB(236, 236, 240), RGB(255, 214, 0),
++     RGB(255, 214, 0), RGB(80, 70, 20), RGB(210, 210, 216), RGB(64, 64, 70), RGB(170, 170, 176), RGB(56, 56, 60),
++     RGB(130, 130, 136), RGB(50, 50, 54), RGB(240, 240, 244), RGB(90, 90, 96)},
++};
++static const theme_t *TH = &THEMES[0];
++static int theme_of(int v)                     /* a page's palette: the voices', their own pages too */
++{
++    static const uint8_t T[V_MAIN] = {0, 2, 3, 4, 5, 6, 1, 1, 1, 1, 1};
++    return T[view_main(v)];
++}
++#define K_BG (TH->bg)
++#define K_PANEL (TH->panel)
++#define K_LINE (TH->line)
++#define K_DIM (TH->dim)
++#define K_TEXT (TH->text)
++#define K_ACC (TH->acc)
++#define K_BELL (TH->bell)
++#define K_BELL_T (TH->bell_t)
++#define K_PAD (TH->pad)
++#define K_PAD_T (TH->pad_t)
++#define K_PULSE (TH->pulse)
++#define K_PULSE_T (TH->pulse_t)
++#define K_BASS (TH->bass)
++#define K_BASS_T (TH->bass_t)
++#define K_FROST (TH->frost)
++#define K_FROST_T (TH->frost_t)
+ 
+ static struct {
+     uint8_t view;
+@@ -1498,6 +1539,7 @@ static void draw_header(void)
+     uint32_t h = hash(hash(hash(2166136261u, proj.piece | (uint32_t)proj.par[P_ROOT] << 8 | (uint32_t)proj.pool << 12),
+                            en_playing | ui.dirty << 4 | (uint32_t)msg << 5 | (uint32_t)en_ext << 6 | (uint32_t)proj.par[P_MODE] << 8),
+                       (uint32_t)proj.par[P_TEMPO] | (ui.view == V_SETUP ? plat_cpu_pct() << 8 : 0u));
++    h = hash(h, (uint32_t)theme_of(ui.view));
+     if (msg)
+         h = hash(hash(h, (uint32_t)ui.msg[0][0] << 8 | ui.msg[0][1]), ui.msg_until);
+     if (en_playing)
+@@ -1621,7 +1663,7 @@ static void draw_ring(void)
+ 
+ static void draw_meters(void)                    /* left: the four layers */
+ {
+-    static const uint16_t C[4] = {K_PAD, K_BELL, K_BASS, K_PULSE}, T[4] = {K_PAD_T, K_BELL_T, K_BASS_T, K_PULSE_T};
++    const uint16_t C[4] = {K_PAD, K_BELL, K_BASS, K_PULSE}, T[4] = {K_PAD_T, K_BELL_T, K_BASS_T, K_PULSE_T};
+     /* (the fourth: the reel) */
+     float lv[4], bm = 0.0f, dm = 0.0f;
+     int i;
+@@ -1701,19 +1743,20 @@ static void cv_bigdisc(int32_t cx, int32_t cy, int32_t r, uint16_t c)   /* a fil
+             cv_rect(cx - hw, cy + dy, 2 * hw + 1, 1, c);
+     }
+ }
+-static void draw_spool(int32_t cx, int32_t cy, int32_t r, int turn)
++static void draw_spool(int32_t cx, int32_t cy, int32_t r, int turn, uint16_t ink)
+ {
++    static const uint8_t SPOKE[3] = {0, 7, 16};  /* in 24ths: three spokes, unevenly, as the circles have them */
+     int k;
+-    cv_bigdisc(cx, cy, 30, K_PANEL);
+-    cv_bigdisc(cx, cy, r, mix(K_BASS_T, K_BASS, 6));   /* the tape wound on it */
+-    cv_bigdisc(cx, cy, 11, K_PANEL);
+-    for (k = 0; k < 3; k++) {                    /* three spokes */
+-        int32_t x0, y0, x1, y1;
+-        polar(cx, cy, 4.0f, turn + k * 8, 24, &x0, &y0);
+-        polar(cx, cy, 10.0f, turn + k * 8, 24, &x1, &y1);
+-        cv_line(x0, y0, x1, y1, K_TEXT);
++    cv_bigdisc(cx, cy, 28, ink);                 /* the circle: a ring two pixels wide */
++    cv_bigdisc(cx, cy, 26, K_BG);
++    cv_bigdisc(cx, cy, r, mix(K_BG, ink, 3));    /* the tape wound on it */
++    for (k = 0; k < 3; k++) {
++        int32_t x1, y1, x2, y2;
++        polar(cx, cy, 27.0f, turn + SPOKE[k], 24, &x1, &y1);
++        polar(cx + 1, cy, 27.0f, turn + SPOKE[k], 24, &x2, &y2);
++        cv_line(cx, cy, x1, y1, ink);
++        cv_line(cx + 1, cy, x2, y2, ink);
+     }
+-    cv_disc(cx, cy, 3, K_TEXT);
+ }
+ static void draw_tape(void)
+ {
+@@ -1727,10 +1770,10 @@ static void draw_tape(void)
+         at = ((float)en_reel_s0[org] + en_reel_pos * (float)(en_reel_s1[org] - en_reel_s0[org])) / (float)EN_REEL_N;
+     if (en_reel_state)
+         at = (float)en_reel_w / (float)EN_REEL_N;
+-    draw_spool(72, 50, 12 + (int32_t)(16.0f * (1.0f - at)), (int)tape_ang % 24);
+-    draw_spool(168, 50, 12 + (int32_t)(16.0f * at), (int)tape_ang % 24);
++    draw_spool(72, 50, 8 + (int32_t)(18.0f * (1.0f - at)), (int)tape_ang % 24, K_PAD);
++    draw_spool(168, 50, 8 + (int32_t)(18.0f * at), (int)tape_ang % 24, K_BASS);
+     cv_line(72, 80, 168, 80, K_DIM);             /* the tape between, past the heads */
+-    cv_round(110, 74, 20, 10, 3, en_reel_state ? K_ACC : K_DIM);
++    cv_round(110, 74, 20, 10, 3, en_reel_state ? K_PULSE : K_DIM);
+     {                                            /* the reel as a strip: 16 .. 224 */
+         const int32_t x0 = 16, w = 208, y = 100, hgt = 14;
+         cv_round(x0, y, w, hgt, 3, K_LINE);
+@@ -1752,7 +1795,7 @@ static void draw_tape(void)
+         }
+         if (en_reel_state) {                     /* the record head */
+             int32_t rx = x0 + (int32_t)((float)en_reel_w * (float)w / (float)EN_REEL_N);
+-            cv_rect(rx - 1, y - 3, 3, hgt + 6, K_ACC);
++            cv_rect(rx - 1, y - 3, 3, hgt + 6, K_PULSE);
+         }
+     }
+     {                                            /* recorded / the reel, and what it does */
+@@ -1767,7 +1810,7 @@ static void draw_tape(void)
+         cv_text(16, 120, &FONT_XS, t, K_TEXT);
+         cv_text(16 + text_w(&FONT_XS, t) + 2, 120, &FONT_XS, "/ 11.8 s", K_DIM);
+         if (en_reel_state)
+-            text_c(120, 120, &FONT_XS, en_reel_state == 1 ? "RECORDING" : "OVERDUB", K_ACC);
++            text_c(120, 120, &FONT_XS, en_reel_state == 1 ? "RECORDING" : "OVERDUB", K_PULSE);
+         else if (n)
+             text_c(120, 120, &FONT_XS, proj.par[P_RL(FX)] ? "FX AFTER" : "FX BEFORE", K_DIM);
+         else
+@@ -1784,8 +1827,9 @@ static void draw_main(void)
+                                         (uint32_t)en_playing << 17 | (uint32_t)proj.par[P_MODE] << 20), i;
+     if (ui.frame % 3u)                           /* the garden moves slowly: 20 frames a second is plenty */
+         return;
++    h = hash(h, (uint32_t)theme_of(ui.view));
+     if (ui.help) {
+-        h = hash(0x48454C50u, ui.help);
++        h = hash(0x48454C50u, ui.help | (uint32_t)theme_of(ui.view) << 8);
+         if (h != ui.sig[1]) {
+             ui.sig[1] = h;
+             cv_begin(240, MAIN_H, K_BG);
+@@ -2434,6 +2478,7 @@ static void reel_saving(void)                  /* the reel being saved: a sector
+ void ui_frame(void)
+ {
+     input();
++    TH = &THEMES[theme_of(ui.view)];
+     reel_saving();
+     autosave();
+     draw_header();
+diff --git a/build.sh b/build.sh
+index 8760f7a..2ac1985 100755
+--- a/build.sh
++++ b/build.sh
+@@ -10,6 +10,7 @@ set -e
+ cd "$(dirname "$0")"
+ export JIELI_TOOLCHAIN="${JIELI_TOOLCHAIN:-$HOME/.jieli/toolchain}"
+ export AC79_SDK="${AC79_SDK:-$HOME/fw-AC79_AIoT_SDK}"
++export X0X_FONTSET="${X0X_FONTSET:-terminus}"   # AMB-1 FM6: the bitmap face (Terminus, in fm1-base)
+ PY="${PYTHON:-python3}"
+ [ -f base/tools/build.py ] || { echo "build.sh: no fm1-base in base/ (git submodule update --init --recursive)"; exit 1; }
+ "$PY" -c 'import PIL' 2>/dev/null || { echo "build.sh: $PY has no Pillow (pip3 install Pillow)"; exit 1; }
 -- 
 2.53.0
 

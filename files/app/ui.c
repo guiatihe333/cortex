@@ -148,25 +148,66 @@ static int view_knob(int v, int i)             /* page v's knob i */
 }
 static const char *knob_label(int v, int i) { return v < V_MAIN ? MAIN_LABEL[v][i] : SUB_LABEL[view_sub(v)][i]; }
 
-/* the screen's colours: the cover of Ambient 1: Music for Airports (1978), as the web app and the site.
- * The map's paper, its ink; the land's greens for the pad (the chord) and the scale, its rivers for the
- * bells; the bass and the pulse in darker inks. Each layer has a pale tint for the shapes at rest. */
-#define K_BG RGB(246, 238, 181)
-#define K_PANEL RGB(255, 251, 224)
-#define K_LINE RGB(208, 214, 150)
-#define K_DIM RGB(112, 106, 58)
-#define K_TEXT RGB(29, 27, 2)
-#define K_ACC RGB(64, 128, 124)          /* the accent: the page, the knob being turned, a message's word */
-#define K_BELL RGB(84, 153, 149)
-#define K_BELL_T RGB(176, 214, 206)
-#define K_PAD RGB(112, 142, 62)
-#define K_PAD_T RGB(208, 220, 146)
-#define K_PULSE RGB(70, 66, 28)
-#define K_PULSE_T RGB(214, 214, 160)
-#define K_BASS RGB(138, 128, 52)
-#define K_BASS_T RGB(222, 218, 160)
-#define K_FROST RGB(60, 132, 160)
-#define K_FROST_T RGB(170, 210, 216)
+/* the screen's colours: a palette a page, after the records of Aphex Twin (their colours only: no names, no marks).
+ * Each: the ground, a panel, rules, dim and plain ink, the accent (the page, the knob being turned, a message's
+ * word); then the layers (the chord, the loops, the bass, the reel), each with a pale tint for shapes at rest, and
+ * the frozen chord's. */
+typedef struct {
+    uint16_t bg, panel, line, dim, text, acc, pad, pad_t, bell, bell_t, bass, bass_t, pulse, pulse_t, frost, frost_t;
+} theme_t;
+static const theme_t THEMES[] = {
+    /* the garden: Selected Ambient Works 85-92, black and white; a few details (the accent, the chord) in Volume
+     * II's gold */
+    {RGB(0, 0, 0), RGB(28, 28, 28), RGB(64, 64, 64), RGB(140, 140, 140), RGB(244, 244, 240), RGB(218, 188, 128),
+     RGB(218, 188, 128), RGB(70, 60, 40), RGB(180, 180, 176), RGB(50, 50, 50), RGB(132, 132, 128), RGB(44, 44, 44),
+     RGB(100, 100, 98), RGB(40, 40, 40), RGB(210, 210, 210), RGB(80, 80, 80)},
+    /* the reel: the back of Selected Ambient Works Volume II, its paper and its circles */
+    {RGB(232, 228, 214), RGB(246, 244, 236), RGB(196, 190, 172), RGB(120, 112, 96), RGB(30, 28, 24), RGB(184, 100, 44),
+     RGB(150, 172, 50), RGB(214, 220, 170), RGB(98, 104, 44), RGB(200, 200, 168), RGB(184, 100, 44), RGB(226, 196, 166),
+     RGB(150, 36, 36), RGB(222, 180, 172), RGB(92, 64, 40), RGB(200, 184, 164)},
+    /* voice 1: its front, rust and gold */
+    {RGB(24, 16, 8), RGB(56, 38, 20), RGB(100, 72, 40), RGB(176, 146, 100), RGB(240, 226, 196), RGB(222, 184, 112),
+     RGB(222, 184, 112), RGB(86, 64, 32), RGB(244, 214, 156), RGB(92, 72, 44), RGB(176, 110, 52), RGB(72, 46, 22),
+     RGB(150, 110, 70), RGB(60, 40, 20), RGB(250, 214, 150), RGB(110, 80, 44)},
+    /* voice 2: drukqs, the prepared piano's warm light on black */
+    {RGB(8, 6, 4), RGB(40, 24, 12), RGB(84, 46, 18), RGB(176, 120, 70), RGB(252, 232, 204), RGB(255, 136, 32),
+     RGB(255, 136, 32), RGB(90, 42, 12), RGB(255, 196, 110), RGB(96, 64, 30), RGB(200, 72, 20), RGB(76, 28, 8),
+     RGB(150, 100, 60), RGB(60, 40, 22), RGB(255, 220, 160), RGB(110, 80, 50)},
+    /* voice 3: Syro, green ink on a dark green */
+    {RGB(6, 22, 14), RGB(18, 44, 28), RGB(36, 80, 52), RGB(110, 170, 126), RGB(214, 244, 214), RGB(130, 255, 140),
+     RGB(130, 255, 140), RGB(30, 80, 44), RGB(190, 240, 160), RGB(40, 76, 44), RGB(70, 190, 110), RGB(24, 64, 36),
+     RGB(150, 200, 160), RGB(40, 70, 50), RGB(220, 255, 220), RGB(60, 100, 70)},
+    /* the space: Richard D. James Album, its sky */
+    {RGB(4, 14, 34), RGB(14, 34, 70), RGB(34, 64, 112), RGB(124, 160, 210), RGB(226, 238, 255), RGB(96, 176, 255),
+     RGB(96, 176, 255), RGB(24, 56, 104), RGB(200, 226, 255), RGB(40, 66, 106), RGB(60, 120, 200), RGB(20, 44, 84),
+     RGB(150, 170, 200), RGB(40, 56, 84), RGB(220, 236, 255), RGB(70, 96, 140)},
+    /* setup: Collapse, steel grey and a warning yellow */
+    {RGB(22, 22, 24), RGB(46, 46, 50), RGB(78, 78, 84), RGB(150, 150, 156), RGB(236, 236, 240), RGB(255, 214, 0),
+     RGB(255, 214, 0), RGB(80, 70, 20), RGB(210, 210, 216), RGB(64, 64, 70), RGB(170, 170, 176), RGB(56, 56, 60),
+     RGB(130, 130, 136), RGB(50, 50, 54), RGB(240, 240, 244), RGB(90, 90, 96)},
+};
+static const theme_t *TH = &THEMES[0];
+static int theme_of(int v)                     /* a page's palette: the voices', their own pages too */
+{
+    static const uint8_t T[V_MAIN] = {0, 2, 3, 4, 5, 6, 1, 1, 1, 1, 1};
+    return T[view_main(v)];
+}
+#define K_BG (TH->bg)
+#define K_PANEL (TH->panel)
+#define K_LINE (TH->line)
+#define K_DIM (TH->dim)
+#define K_TEXT (TH->text)
+#define K_ACC (TH->acc)
+#define K_BELL (TH->bell)
+#define K_BELL_T (TH->bell_t)
+#define K_PAD (TH->pad)
+#define K_PAD_T (TH->pad_t)
+#define K_PULSE (TH->pulse)
+#define K_PULSE_T (TH->pulse_t)
+#define K_BASS (TH->bass)
+#define K_BASS_T (TH->bass_t)
+#define K_FROST (TH->frost)
+#define K_FROST_T (TH->frost_t)
 
 static struct {
     uint8_t view;
@@ -1498,6 +1539,7 @@ static void draw_header(void)
     uint32_t h = hash(hash(hash(2166136261u, proj.piece | (uint32_t)proj.par[P_ROOT] << 8 | (uint32_t)proj.pool << 12),
                            en_playing | ui.dirty << 4 | (uint32_t)msg << 5 | (uint32_t)en_ext << 6 | (uint32_t)proj.par[P_MODE] << 8),
                       (uint32_t)proj.par[P_TEMPO] | (ui.view == V_SETUP ? plat_cpu_pct() << 8 : 0u));
+    h = hash(h, (uint32_t)theme_of(ui.view));
     if (msg)
         h = hash(hash(h, (uint32_t)ui.msg[0][0] << 8 | ui.msg[0][1]), ui.msg_until);
     if (en_playing)
@@ -1621,7 +1663,7 @@ static void draw_ring(void)
 
 static void draw_meters(void)                    /* left: the four layers */
 {
-    static const uint16_t C[4] = {K_PAD, K_BELL, K_BASS, K_PULSE}, T[4] = {K_PAD_T, K_BELL_T, K_BASS_T, K_PULSE_T};
+    const uint16_t C[4] = {K_PAD, K_BELL, K_BASS, K_PULSE}, T[4] = {K_PAD_T, K_BELL_T, K_BASS_T, K_PULSE_T};
     /* (the fourth: the reel) */
     float lv[4], bm = 0.0f, dm = 0.0f;
     int i;
@@ -1701,19 +1743,20 @@ static void cv_bigdisc(int32_t cx, int32_t cy, int32_t r, uint16_t c)   /* a fil
             cv_rect(cx - hw, cy + dy, 2 * hw + 1, 1, c);
     }
 }
-static void draw_spool(int32_t cx, int32_t cy, int32_t r, int turn)
+static void draw_spool(int32_t cx, int32_t cy, int32_t r, int turn, uint16_t ink)
 {
+    static const uint8_t SPOKE[3] = {0, 7, 16};  /* in 24ths: three spokes, unevenly, as the circles have them */
     int k;
-    cv_bigdisc(cx, cy, 30, K_PANEL);
-    cv_bigdisc(cx, cy, r, mix(K_BASS_T, K_BASS, 6));   /* the tape wound on it */
-    cv_bigdisc(cx, cy, 11, K_PANEL);
-    for (k = 0; k < 3; k++) {                    /* three spokes */
-        int32_t x0, y0, x1, y1;
-        polar(cx, cy, 4.0f, turn + k * 8, 24, &x0, &y0);
-        polar(cx, cy, 10.0f, turn + k * 8, 24, &x1, &y1);
-        cv_line(x0, y0, x1, y1, K_TEXT);
+    cv_bigdisc(cx, cy, 28, ink);                 /* the circle: a ring two pixels wide */
+    cv_bigdisc(cx, cy, 26, K_BG);
+    cv_bigdisc(cx, cy, r, mix(K_BG, ink, 3));    /* the tape wound on it */
+    for (k = 0; k < 3; k++) {
+        int32_t x1, y1, x2, y2;
+        polar(cx, cy, 27.0f, turn + SPOKE[k], 24, &x1, &y1);
+        polar(cx + 1, cy, 27.0f, turn + SPOKE[k], 24, &x2, &y2);
+        cv_line(cx, cy, x1, y1, ink);
+        cv_line(cx + 1, cy, x2, y2, ink);
     }
-    cv_disc(cx, cy, 3, K_TEXT);
 }
 static void draw_tape(void)
 {
@@ -1727,10 +1770,10 @@ static void draw_tape(void)
         at = ((float)en_reel_s0[org] + en_reel_pos * (float)(en_reel_s1[org] - en_reel_s0[org])) / (float)EN_REEL_N;
     if (en_reel_state)
         at = (float)en_reel_w / (float)EN_REEL_N;
-    draw_spool(72, 50, 12 + (int32_t)(16.0f * (1.0f - at)), (int)tape_ang % 24);
-    draw_spool(168, 50, 12 + (int32_t)(16.0f * at), (int)tape_ang % 24);
+    draw_spool(72, 50, 8 + (int32_t)(18.0f * (1.0f - at)), (int)tape_ang % 24, K_PAD);
+    draw_spool(168, 50, 8 + (int32_t)(18.0f * at), (int)tape_ang % 24, K_BASS);
     cv_line(72, 80, 168, 80, K_DIM);             /* the tape between, past the heads */
-    cv_round(110, 74, 20, 10, 3, en_reel_state ? K_ACC : K_DIM);
+    cv_round(110, 74, 20, 10, 3, en_reel_state ? K_PULSE : K_DIM);
     {                                            /* the reel as a strip: 16 .. 224 */
         const int32_t x0 = 16, w = 208, y = 100, hgt = 14;
         cv_round(x0, y, w, hgt, 3, K_LINE);
@@ -1752,7 +1795,7 @@ static void draw_tape(void)
         }
         if (en_reel_state) {                     /* the record head */
             int32_t rx = x0 + (int32_t)((float)en_reel_w * (float)w / (float)EN_REEL_N);
-            cv_rect(rx - 1, y - 3, 3, hgt + 6, K_ACC);
+            cv_rect(rx - 1, y - 3, 3, hgt + 6, K_PULSE);
         }
     }
     {                                            /* recorded / the reel, and what it does */
@@ -1767,7 +1810,7 @@ static void draw_tape(void)
         cv_text(16, 120, &FONT_XS, t, K_TEXT);
         cv_text(16 + text_w(&FONT_XS, t) + 2, 120, &FONT_XS, "/ 11.8 s", K_DIM);
         if (en_reel_state)
-            text_c(120, 120, &FONT_XS, en_reel_state == 1 ? "RECORDING" : "OVERDUB", K_ACC);
+            text_c(120, 120, &FONT_XS, en_reel_state == 1 ? "RECORDING" : "OVERDUB", K_PULSE);
         else if (n)
             text_c(120, 120, &FONT_XS, proj.par[P_RL(FX)] ? "FX AFTER" : "FX BEFORE", K_DIM);
         else
@@ -1784,8 +1827,9 @@ static void draw_main(void)
                                         (uint32_t)en_playing << 17 | (uint32_t)proj.par[P_MODE] << 20), i;
     if (ui.frame % 3u)                           /* the garden moves slowly: 20 frames a second is plenty */
         return;
+    h = hash(h, (uint32_t)theme_of(ui.view));
     if (ui.help) {
-        h = hash(0x48454C50u, ui.help);
+        h = hash(0x48454C50u, ui.help | (uint32_t)theme_of(ui.view) << 8);
         if (h != ui.sig[1]) {
             ui.sig[1] = h;
             cv_begin(240, MAIN_H, K_BG);
@@ -2434,6 +2478,7 @@ static void reel_saving(void)                  /* the reel being saved: a sector
 void ui_frame(void)
 {
     input();
+    TH = &THEMES[theme_of(ui.view)];
     reel_saving();
     autosave();
     draw_header();
