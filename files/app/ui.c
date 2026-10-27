@@ -22,17 +22,17 @@
  * the bass) has NSUB more, in three groups (SUB_*), with no button of their own: its page's button pressed again goes
  * to the next group (the page it was left on) and from the last back to the layer's page; SELECT steps through the
  * voice's own pages; the voice's button stays lit on them */
-enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_TAPE, V_GENE, V_DECK, V_MAIN };
+enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_SPACE, V_SETUP, V_TAPE, V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_MAIN };
 enum { S_VOICE, S_PLAY, S_ADSR, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
 #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
 #define NGROUP 3
 static const uint8_t GROUP0[NGROUP + 1] = {S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
-static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Pulse", "Space", "Setup",
-                                              "Tape", "Gene", "Deck"};
+static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Space", "Setup", "Tape",
+                                              "Gene", "Deck", "Tape Mod 1", "Tape Mod 2"};
 static const char *const SUB_NAME[NSUB] = {"Patch", "Play", "ADSR", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
-static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO, B_SEQ, B_SEQ, B_SEQ};
-static int tape_view(int v) { return v == V_TAPE || v == V_GENE || v == V_DECK; }   /* the reel's (SEQ again) */
+static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_FX, B_GLO, B_SEQ, B_SEQ, B_SEQ, B_SEQ, B_SEQ};
+static int tape_view(int v) { return v >= V_TAPE && v <= V_TMOD2; }   /* the reel's five pages (SEQ, again ..) */
 static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
 static int view_vox(int v)                     /* the voice a page is of (its layer's or its own); -1 none */
 {
@@ -76,12 +76,13 @@ static const uint16_t MAIN_KNOB[V_MAIN][4] = {
     {P_PAD, KPL_(ROLE), KPL_(OCT), KPL_(DENS)},   /* the three voices alike */
     {P_BELLS, KPL_(ROLE), KPL_(OCT), KPL_(DENS)},
     {P_BASS, KPL_(ROLE), KPL_(OCT), KPL_(DENS)},
-    {P_PULSE, P_HITS, P_SWING, P_HATS},
     {P_ECHO, P_ETIME, P_REVERB, P_SIZE},
     {P_ROOT, P_TUNE, P_MIDI, K_LEDS},
     {P_RL(SRC), P_RL(MIX), P_RL(SOS), P_RL(SPEED)},
     {P_RL(GENE), P_RL(SLIDE), P_RL(MORPH), P_RL(ORG)},
     {P_RL(FX), P_RL(WOW), P_RL(DRIVE), P_RL(TONE)},
+    {P_TM(0, TARGET), P_TM(0, DEPTH), P_TM(0, RATE), P_TM(0, SHAPE)},
+    {P_TM(1, TARGET), P_TM(1, DEPTH), P_TM(1, RATE), P_TM(1, SHAPE)},
 };
 static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_SRC, KV(ALG), KV(FB), K_NONE},          /* (INDEX: P_VX, put in below) */
@@ -105,12 +106,13 @@ static const char *const MAIN_LABEL[V_MAIN][4] = {
     {"Level", "Role", "Octave", "Density"},
     {"Level", "Role", "Octave", "Density"},
     {"Level", "Role", "Octave", "Density"},
-    {"Level", "Hits", "Swing", "Hats"},
     {"Echo", "Echo time", "Reverb", "Size"},
     {"Root", "Tune", "MIDI out", "Lights"},
     {"Source", "Dry/Wet", "SOS", "Speed"},
     {"Gene", "Slide", "Morph", "Organize"},
     {"FX", "Wow", "Drive", "Tone"},
+    {"Target", "Depth", "Rate", "Shape"},
+    {"Target", "Depth", "Rate", "Shape"},
 };
 static const char *const SUB_LABEL[NSUB][4] = {
     {"Patch", "Algorithm", "Feedback", "Index"},
@@ -739,12 +741,14 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
         dice_par(P_PL(v, PL_DENS), r == ROLE_CHORD ? 40 : 15, r == ROLE_CHORD ? 100 : 80);
         break;
     }
-    case V_PULSE:
-        dice_par(P_PULSE, 0, 60);
-        dice_par(P_HITS, 10, 80);
-        dice_par(P_SWING, 0, 40);
-        dice_par(P_HATS, 0, 100);
+    case V_TMOD1: case V_TMOD2: {               /* a modulator of the reel: a target, a depth, a pace, a shape */
+        const int s = vw - V_TMOD1;
+        dice_par(P_TM(s, TARGET), 0, EN_NTMDEST - 1);
+        dice_par(P_TM(s, DEPTH), 10, 55);
+        dice_par(P_TM(s, RATE), 5, 70);
+        dice_par(P_TM(s, SHAPE), 0, SHAPE_CHAOS);
         break;
+    }
     case V_SPACE:
         dice_par(P_ECHO, 15, 70);
         dice_par(P_ETIME, 0, 5);
@@ -869,7 +873,7 @@ static void dice_roll(int b)                    /* SEL alone (b B_SEL), or held 
             dice_voice(view_vox(v));
         else
             dice_layer(v);
-        if (v == V_GARDEN || v == V_PULSE) {    /* the garden and the pulse: grown anew as well */
+        if (v == V_GARDEN) {                     /* the garden: grown anew as well */
             en_seed((uint32_t)dice(0, 65535));
             en_regrow();
         }
@@ -878,6 +882,50 @@ static void dice_roll(int b)                    /* SEL alone (b B_SEL), or held 
             caps(t, MAIN_NAME[v], sizeof t);
             say("DICE", t);
         }
+    }
+    mark_dirty();
+}
+static void par_init(int p)                     /* a parameter to its default */
+{
+    const int v = en_param_info(p)->def;
+    proj.par[p] = (int16_t)v;
+    en_set(p, v);
+    par_out(p);
+}
+/* SEL + SAVE: what the page is part of, to its defaults (SEL held undoes it): on a voice's MOD pages its five
+ * modulators; on its other pages how it plays (Envelope .. the ADSR, its role kept), its Index and modulators (its
+ * patch kept); on the reel's pages the reel's settings and modulators (its source kept); elsewhere every modulator */
+static void dice_init(void)
+{
+    const int v = view_vox(ui.view), sub = view_sub(ui.view);
+    int s, k;
+    dice_keep();
+    if (v >= 0 && sub >= S_MOD) {
+        for (s = 0; s < EN_NSLOT; s++)
+            for (k = 0; k < MS_N; k++)
+                par_init(P_MS(v, s, k));
+        say("INIT", "ITS MODULATORS");
+    } else if (v >= 0) {
+        for (k = 0; k < PL_N; k++)
+            if (k != PL_ROLE)
+                par_init(P_PL(v, k));
+        par_init(P_VX(v, VX_INDEX));
+        for (s = 0; s < EN_NSLOT; s++)
+            for (k = 0; k < MS_N; k++)
+                par_init(P_MS(v, s, k));
+        say("INIT", "THE VOICE");
+    } else if (tape_view(ui.view)) {
+        for (k = P_TAPE; k < P_NPARAMS; k++)
+            if (k != P_RL(SRC))
+                par_init(k);
+        say("INIT", "THE REEL");
+    } else {
+        for (s = 0; s < EN_NVOX; s++)
+            for (k = 0; k < EN_NSLOT * MS_N; k++)
+                par_init(P_VX(s, VX_SLOT) + k);
+        for (k = P_TMOD; k < P_NPARAMS; k++)
+            par_init(k);
+        say("INIT", "ALL MODULATION");
     }
     mark_dirty();
 }
@@ -996,10 +1044,9 @@ static void reel_button(int b)                  /* on the reel's pages: REC over
 static void button(int b)
 {
     int v;
-    if (b == B_SEQ && (ui.view == V_PULSE || tape_view(ui.view))) {   /* SEQ again: the tape, the genes, the pulse */
-        set_view(ui.view == V_PULSE ? V_TAPE : ui.view == V_TAPE ? V_GENE : ui.view == V_GENE ? V_DECK : V_PULSE);
-        if (tape_view(ui.view))
-            reel_say();
+    if (b == B_SEQ) {                            /* the reel; again: its next page, round */
+        set_view(tape_view(ui.view) ? (ui.view == V_TMOD2 ? V_TAPE : ui.view + 1) : V_TAPE);
+        reel_say();
         return;
     }
     for (v = 0; v < V_MAIN; v++)                 /* a page's button: its page; a voice's again: its next group */
@@ -1079,7 +1126,7 @@ static void midi_cc(int ch, int cc, int v)
         p = P_VX(ch, VX_INDEX + cc - CC0);
     } else if (ch < EN_NVOX && cc >= CC_PL && cc < CC_PL + PL_N) {
         p = P_PL(ch, cc - CC_PL);
-    } else if (ch == 15 && cc >= 50 && cc < 50 + TP_N) {   /* the reel's */
+    } else if (ch == 15 && cc >= 50 && cc < 50 + P_NPARAMS - P_TAPE) {   /* the reel's and its modulators' */
         p = P_TAPE + cc - 50;
     } else if (ch == 15 && cc >= CC0 && cc < CC0 + 30) {
         p = cc - CC0;
@@ -1183,10 +1230,13 @@ static void input(void)
         } else if (!(ui.btn_used & m) && i != B_PLAY) {
             if (i == B_SEL) {                    /* SEL alone: this page */
                 dice_roll(B_SEL);
-            } else if (btn >> B_SEL & 1u) {      /* with SEL held: the dice on its layer (SEL's own release then
-                                                  * does nothing) */
+            } else if (btn >> B_SEL & 1u) {      /* with SEL held: the dice on its layer, SAVE initialises (SEL's
+                                                  * own release then does nothing) */
                 ui.btn_used |= 1u << B_SEL;
-                dice_roll((int)i);
+                if (i == B_SAVE)
+                    dice_init();
+                else
+                    dice_roll((int)i);
             } else {
                 button((int)i);
             }
@@ -1235,7 +1285,8 @@ static void input(void)
         ui.turn_t = plat_ms();
     }
     if ((btn >> B_SAVE & 1u) && !ui.reset_done && plat_ms() - ui.down_t[B_SAVE] > RESET_HOLD) {
-        ui.reset_done = 1;                     /* held: the piece back to its recipe (not saved) */
+        ui.reset_done = 1;                     /* held: the piece back to its recipe (not saved; SEL held undoes it) */
+        dice_keep();
         ui.btn_used |= 1u << B_SAVE;
         ui.help = 0;
         project_piece_reset();
@@ -1559,46 +1610,21 @@ static void draw_ring(void)
 static void draw_meters(void)                    /* left: the four layers */
 {
     static const uint16_t C[4] = {K_PAD, K_BELL, K_BASS, K_PULSE}, T[4] = {K_PAD_T, K_BELL_T, K_BASS_T, K_PULSE_T};
+    /* (the fourth: the reel) */
     float lv[4], bm = 0.0f, dm = 0.0f;
     int i;
     for (i = 0; i < EN_NLOOP; i++)
         bm = fm_maxf(bm, en_loop_glow[i]);
-    for (i = 0; i < EN_NDRUM; i++)
-        dm = fm_maxf(dm, en_drum_glow[i]);
+    dm = en_reel_level;
     lv[0] = en_pad_level * (float)proj.par[P_PAD] * 0.01f;
     lv[1] = bm * (float)proj.par[P_BELLS] * 0.01f;
     lv[2] = en_bass_level * (float)proj.par[P_BASS] * 0.01f;
-    lv[3] = dm * (float)proj.par[P_PULSE] * 0.01f;
+    lv[3] = dm;
     for (i = 0; i < 4; i++) {
         int32_t x = 10 + i * 11, h = (int32_t)(fm_clampf(lv[i], 0.0f, 1.0f) * 80.0f + 0.5f);
         cv_round(x, 46, 7, 86, 3, T[i]);
         if (h > 0)
             cv_round(x, 46 + 86 - h - 2, 7, h + 2, 3, C[i]);
-    }
-}
-
-static void draw_pulse(void)                     /* right: the three Euclidean rings */
-{
-    int d;
-    for (d = 0; d < EN_NDRUM; d++) {
-        int32_t cx = 212, cy = 52 + d * 34, s, n = EN_DRUM_N[d];
-        int g = q16(en_drum_glow[d]);
-        uint32_t p = en_drum_pat[d];
-        for (s = 0; s < n; s++) {
-            int32_t x, y;
-            int cur = en_playing && s == en_drum_pos[d];
-            polar(cx, cy, 13.0f, s, n, &x, &y);
-            if ((p >> s & 1u) && en_pulse_rest)   /* sitting a few bars out: faded */
-                cv_disc(x, y, 2, K_LINE);
-            else if (p >> s & 1u)
-                cv_disc(x, y, cur ? 3 : 2, cur ? K_PULSE : mix(K_PULSE_T, K_PULSE, 10));
-            else if (cur)
-                cv_disc(x, y, 1, K_DIM);
-            else
-                cv_rect(x, y, 2, 2, K_LINE);
-        }
-        if (g)
-            cv_disc(cx, cy, 1 + g / 4, mix(K_BG, K_PULSE, g));
     }
 }
 
@@ -1616,14 +1642,15 @@ static int help_lines(int b, const char *l[HELP_LINES])
     case B_ENV: L("VOICE 1"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
     case B_ARP: L("VOICE 2"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
     case B_LFO: L("VOICE 3"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
-    case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); L("AGAIN: TAPE, GENE, DECK"); break;
+    case B_SEQ: L("THE TAPE"); L("SOURCE, DRY/WET, SOS, SPEED"); L("AGAIN: GENE, DECK, MOD 1, 2"); break;
     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
     case B_EDIT: L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); L("TAPE: A NEW SPLICE"); break;
     case B_REC: L("FREEZE: THE CHORD HOLDS"); L(" AND THE REVERB RINGS ON"); L("TAPE: OVERDUB, HELD: ERASE"); break;
     case B_OCTDN: L("THE VOICE SHOWN AN OCTAVE"); L(" DOWN"); L("WITH OCT+, 5 S: UPDATE MODE"); break;
     case B_OCTUP: L("THE VOICE SHOWN AN OCTAVE"); L(" UP"); L("WITH OCT-, 5 S: UPDATE MODE"); break;
-    case B_SAVE: L("SAVES ALL EIGHT PIECES"); L("KEEP HOLDING: THE PIECE"); L(" BACK TO ITS RECIPE"); break;
+    case B_SAVE: L("SAVES ALL EIGHT PIECES"); L("KEEP HOLDING: THE PIECE"); L(" BACK TO ITS RECIPE");
+        L("SEL + SAVE: INIT"); break;
     default: break;
     }
 #undef L
@@ -1732,7 +1759,7 @@ static void draw_tape(void)
         else if (n)
             text_c(120, 120, &FONT_XS, proj.par[P_RL(FX)] ? "FX AFTER" : "FX BEFORE", K_DIM);
         else
-            text_c(120, 120, &FONT_XS, "EMPTY: EDIT RECORDS", K_DIM);
+            text_c(120, 120, &FONT_XS, "EMPTY", K_DIM);
         itoa_u(n, t);
         cv_text(224 - text_w(&FONT_XS, "SPLICES") - 2 - text_w(&FONT_XS, t), 120, &FONT_XS, t, K_TEXT);
         cv_text(224 - text_w(&FONT_XS, "SPLICES"), 120, &FONT_XS, "SPLICES", K_DIM);
@@ -1785,8 +1812,7 @@ static void draw_main(void)
         for (s = 0; s < EN_LOOP_LEN[i]; s++)
             h = hash(h, (uint32_t)(en_loop_note[i][s] >= 0));
     }
-    for (i = 0; i < EN_NDRUM; i++)
-        h = hash(h, en_drum_pos[i] | (uint32_t)q16(en_drum_glow[i]) << 8 | en_drum_pat[i] << 13 | (uint32_t)en_pulse_rest << 31);
+    h = hash(h, (uint32_t)q16(en_reel_level));
     h = hash(h, (uint32_t)(en_drift * 40.0f) | (uint32_t)q16(en_pad_level) << 8 | (uint32_t)q16(en_bass_level) << 13);
     for (i = 0; i < 4; i++)
         h = hash(h, (uint32_t)proj.par[i]);
@@ -1804,7 +1830,6 @@ static void draw_main(void)
     }
     draw_ring();
     draw_meters();
-    draw_pulse();
     cv_blit(0, MAIN_Y);
 }
 
@@ -2081,8 +2106,6 @@ static void sp_garden(void)
             last = pc;
         }
     }
-    if (en_pulse_rest && proj.par[P_PULSE])
-        sp_cat(". Pulse resting");
 }
 
 /* a help card: its button, then its lines ("ENV button. THE PAD. LEVEL, SWELL, BRIGHT, COLOUR") */
@@ -2244,7 +2267,7 @@ static void speak_dump(void)
                                           {"NOT SAVED", "FLASH ERROR"}};
     project_t keep = proj;
     uint8_t keep_view = ui.view, keep_help = ui.help, keep_dirty = ui.dirty, keep_play = sp_tp.playing;
-    uint8_t keep_ext = en_ext, keep_frozen = en_frozen, keep_rest = en_pulse_rest;
+    uint8_t keep_ext = en_ext, keep_frozen = en_frozen;
     int v, i, x, lo, hi;
     char t[48];
     for (v = 0; v < NVIEWS; v++) {
@@ -2288,7 +2311,6 @@ static void speak_dump(void)
         ui.dirty = (uint8_t)(x >> 1 & 1);
         en_ext = (uint8_t)(x == 3);
         en_frozen = (uint8_t)(x == 5);
-        en_pulse_rest = (uint8_t)(x == 2);
         proj.pool = x == 6 ? 0xFFFu : x == 7 ? 0x91u : keep.pool;
         proj.par[P_ROOT] = (int16_t)(x * 5 % 12);
         sp_page(1);
@@ -2301,7 +2323,6 @@ static void speak_dump(void)
     sp_tp.playing = keep_play;
     en_ext = keep_ext;
     en_frozen = keep_frozen;
-    en_pulse_rest = keep_rest;
     ui.view = keep_view;
     for (i = 0; i < NB; i++) {
         const char *l[HELP_LINES];

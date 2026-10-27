@@ -2,8 +2,7 @@
 
 O AMB-1 FM6 transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
 de Brian Eno. Ele toca sozinho desde o momento em que é ligado: três vozes FM (cada uma respirando acordes, tocando
-loops ou deslizando um baixo, como você escolher), uma percussão euclidiana discreta, um eco curto, um loop de fita e
-um reverb de placa, e uma fita que grava tudo isso e toca de volta em grãos. Você não toca o AMB-1, você cuida dele:
+loops ou deslizando um baixo, como você escolher), um eco curto, um loop de fita e um reverb de placa, e uma fita que grava tudo isso e toca de volta em grãos. Você não toca o AMB-1, você cuida dele:
 escolhe uma peça e uma escala, tira notas, põe de volta, e deixa crescer.
 
 É um fork não oficial do AMB-1 de Charles Vestal: o mesmo jardim, com vozes FM no estilo DX7 (patches editados
@@ -41,11 +40,11 @@ da M-VAVE, o M-UPGRADE, usando o arquivo V15 (`firmware-original-M-VAVE/FM-1_V15
 C++ Redistributable), ligue o FM-1 com um cabo USB de dados e rode, na pasta do pacote:
 
 ```
-python fm1_install.py amb-1.3.99-fm6.fwsc
+python fm1_install.py amb-1.4.0-fm6.fwsc
 ```
 
 Não desconecte enquanto grava. No fim o FM-1 reinicia no AMB-1 FM6 e o instalador confere a identidade
-(`FM-1_76010399`). `python fm1_install.py --info` mostra o que um FM-1 está rodando.
+(`FM-1_76010400`). `python fm1_install.py --info` mostra o que um FM-1 está rodando.
 
 **Voltar ao original:** o [instalador web do AMB-1](https://charlesvestal.github.io/fm1-amb/install/) tem "Back to
 the stock firmware" no fim da página, para qualquer FM-1, rode ele o que rodar: escolha o arquivo V15 e aperte o
@@ -61,7 +60,7 @@ botão. O M-UPGRADE da M-VAVE também funciona.
 O AMB-1 FM6 começa a tocar assim que é ligado. Alguns minutos com ele:
 
 1. **Ouça.** A primeira peça, Garden, está tocando: Ré dórico, um acorde respirando (Voice 1), sinos em loops
-   (Voice 2), um baixo (Voice 3) e um pulso suave. MASTER é o volume.
+   (Voice 2) e um baixo (Voice 3). MASTER é o volume.
 2. **Experimente outra peça.** Gire PRESETS. Cada uma das oito peças tem tom, andamento, sons e movimento próprios.
 3. **Mude a escala.** Aperte uma tecla acesa: a nota sai da escala. Aperte de novo para trazê-la de volta. Uma tecla
    apagada acrescenta a nota dela.
@@ -71,8 +70,8 @@ O AMB-1 FM6 começa a tocar assim que é ligado. Alguns minutos com ele:
 6. **Molde uma voz.** ENV, ARP e LFO são as Voices 1, 2 e 3: Level, Role, Octave, Density. Aperte o botão de novo
    para o patch da voz, seus operadores e seus moduladores.
 7. **Role os dados.** Aperte SEL: a página na tela ganha valores novos, em faixas que continuam musicais. Segure o
-   SEL um segundo para desfazer.
-8. **Grave.** SEQ duas vezes abre a página Tape; EDIT grava, REC para, e a fita toca o que gravou.
+   SEL um segundo para desfazer. SEL + SAVE volta a parte da página ao padrão (desfeito do mesmo jeito).
+8. **Grave.** SEQ abre a página Tape; EDIT grava, REC para, e a fita toca o que gravou.
 9. **Descanse.** Aperte PLAY: o jardim para de crescer e os sons somem devagar. PLAY de novo e ele volta a crescer.
 
 O que você muda fica guardado com a peça. Ele salva sozinho enquanto descansa, ou aperte SAVE.
@@ -91,16 +90,22 @@ Não sabe o que um botão faz? Segure-o por um segundo: aparece um cartão expli
 | EDIT | O próximo acorde, no começo do próximo compasso. Nas páginas da fita: um splice novo. |
 | HOME | A página Garden. |
 | ENV · ARP · LFO | As Voices 1, 2 e 3. De novo: as páginas PATCH, OPERATOR e MOD da voz, e volta. |
-| SEQ | O Pulse. De novo: as páginas Tape, Gene e Deck da fita, e volta. |
+| SEQ | A fita: Tape. De novo: Gene, Deck, Tape Mod 1, Tape Mod 2, e dá a volta. |
 | FX · GLO | As páginas Space e Setup. |
-| SEL | **Os dados.** Um toque: a página na tela é sorteada. Segurado com ENV, ARP, LFO, HOME, SEQ, FX ou GLO: a camada inteira (com HOME e SEQ, os loops e padrões crescem de novo também). Com EDIT: loops e padrões novos, os ajustes mantidos. Segurado sozinho um segundo: desfaz a última rolagem. |
+| SEL | **Os dados.** Um toque: a página na tela é sorteada. Segurado com ENV, ARP, LFO, HOME, SEQ, FX ou GLO: a camada inteira (com HOME e SEQ, os loops e padrões crescem de novo também). Com EDIT: loops novos, os ajustes mantidos. Com SAVE: **init** (veja abaixo). Segurado sozinho um segundo: **desfaz** a última rolagem, init ou volta à receita. |
 | SELECT | A página anterior ou a próxima. Segure HOME e gire para o andamento. |
 | ALGORITHM | Modo: jônio, dórico, frígio, lídio, mixolídio, eólio, pentatônica maior e menor. Editar a escala pelas teclas a torna Custom. |
 | PRESETS | A peça (veja [As peças](#s6)). |
 | KNOB 1–4 | Os quatro valores na tela. Poucos cliques são passos de um em um; um giro rápido acelera. |
 | OCT− / OCT+ | A oitava da voz na tela (a Voice 1 nas outras páginas), de duas abaixo a duas acima. |
 | MASTER | Volume. |
-| SAVE | Salva as oito peças (nas páginas da fita, a fita também). Segurado 1,5 s: a peça volta à receita. |
+| SAVE | Salva as oito peças (nas páginas da fita, a fita também). Segurado 1,5 s: a peça volta à receita (SEL segurado desfaz). |
+
+**Init:** SEL + SAVE volta ao padrão aquilo de que a página faz parte: nas páginas MOD de uma voz, seus cinco
+moduladores; nas outras páginas da voz, como ela toca (do Envelope ao ADSR, mantendo o papel), seu Index e seus
+moduladores (mantendo o patch); nas páginas da fita, os ajustes e moduladores dela (mantendo a fonte); nas demais,
+todos os moduladores da peça. **Desfazer:** segure o SEL um segundo: a última rolagem, init ou volta à receita é
+desfeita.
 
 **Ajuda:** segure qualquer botão menos o PLAY por um segundo e um cartão diz o que ele faz. Uma tecla, um knob ou
 outro botão tira o cartão; soltar depois dele não faz mais nada.
@@ -111,7 +116,7 @@ outro botão tira o cartão; soltar depois dele não faz mais nada.
 
 ## 4. A tela
 
-![A página Garden: Garden, D Dorian, andamento 72; o anel com o acorde Dm7, as quatro barras de nível à esquerda, os anéis do pulso à direita](img/screen-garden.png "A página Garden (HOME)")
+![A página Garden: Garden, D Dorian, andamento 72; o anel com o acorde Dm7, as barras de nível à esquerda](img/screen-garden.png "A página Garden (HOME)")
 
 - **Linha de cima:** a peça, sua tônica e seu modo. À direita, uma luz lenta do tempo, o andamento (EXT quando segue
   o clock MIDI) e um ponto quando há mudanças não salvas. As mensagens ("ADDED F#", "VOICE 2 / PATCH") aparecem aqui
@@ -121,9 +126,8 @@ outro botão tira o cartão; soltar depois dele não faz mais nada.
   O nome do acorde no meio.
 - **Em volta:** os quatro loops da primeira voz em Loops, de 13, 17, 23 e 29 passos, de dentro para fora. Os pontos
   azuis têm nota; uma agulha percorre cada loop e brilha quando toca.
-- **Esquerda:** os níveis como soam: o acorde (verde), os loops (azul), o baixo (oliva), o pulso (escuro).
-- **Direita:** os três anéis do pulso: bumbo (16 passos), chimbal fechado (12), chimbal aberto (7).
-- **Embaixo:** o nome da página e um ponto para cada uma das dez páginas, depois seus quatro valores, um por knob: um
+- **Esquerda:** os níveis como soam: o acorde (verde), os loops (azul), o baixo (oliva), a fita (escuro).
+- **Embaixo:** o nome da página e um ponto para cada uma das onze páginas, depois seus quatro valores, um por knob: um
   dial (ou, para uma chave, suas posições) e o valor. O que você está girando acende.
 
 Nas páginas da fita, o jardim dá lugar à fita (veja [A fita](#s8)).
@@ -149,9 +153,6 @@ FM (seis operadores, como um DX7) num de três **papéis** (Role), e qualquer vo
 Por padrão a Voice 1 é um acorde, a Voice 2 os loops e a Voice 3 o baixo, como eram o pad, os sinos e o baixo do
 AMB-1.
 
-- **Pulse:** um bumbo suave afinado na tônica do acorde, um chimbal fechado e um aberto, cada um no seu padrão
-  euclidiano sobre 16, 12 e 7 semicolcheias. Os padrões giram devagar e ganham ou perdem um toque.
-
 Depois o espaço, como na cadeia de Eno em *Discreet Music*: um eco curto de fita, um loop de fita (até 2,8 segundos,
 duas cabeças, cada repetição mais escura e mais fina) e um reverb de placa. Com **Motion** alto, as cabeças do eco
 passeiam pelo estéreo e de vez em quando a segunda escorrega para outra parte do loop.
@@ -161,15 +162,15 @@ Por cima de tudo:
 - **O arco:** uma maré lenta, de alguns minutos de ponta a ponta, entre esparso (menos notas, mais escuro, pulso mais
   baixo, mais reverb) e cheio. **Motion** define o quanto ele oscila, e o quanto a afinação, o pan e as cabeças do eco
   passeiam.
-- **Pausas:** com **Evolve** alto, as vozes tomam fôlego: o pulso fica fora de dois a quatro compassos, um baixo pula
-  um acorde, um loop fica quieto por uma volta.
+- **Pausas:** com **Evolve** alto, as vozes tomam fôlego: um baixo pula um acorde, um loop fica quieto por uma volta.
 
 ---
 
 ## 6. As peças
 
 PRESETS escolhe uma de oito peças, cada uma uma receita para o jardim inteiro: as vozes e seus sons, andamento, tom e
-modo, o quanto é movimentada e o quanto muda. Cada uma lembra como você a deixou. Segure SAVE 1,5 s para a peça voltar
+modo, o quanto é movimentada e o quanto muda, e uma modulação própria (o segundo modulador de cada voz, o primeiro da
+fita). Cada uma lembra como você a deixou. Segure SAVE 1,5 s para a peça voltar
 à receita. Tune, MIDI out e Lights são os mesmos para todas.
 
 | Peça | O que é |
@@ -177,8 +178,8 @@ modo, o quanto é movimentada e o quanto muda. Cada uma lembra como você a deix
 | **Garden** | Ré dórico, 72: tudo, com calma. Rhodes. |
 | **Departures** | Dó# jônio, 60: sinos suaves uma oitava abaixo sobre um Rhodes quieto, como "1/1". |
 | **Voices** | Fá eólio, 56: só vozes cantadas e um baixo grave, como "2/1". |
-| **Afternoon** | Sol lídio, 84: um Rhodes brilhante, sinos mais ocupados, um pulso leve. |
-| **Night Bus** | Lá eólio, 96: o pulso na frente, sinos metálicos, ecos curtos. |
+| **Afternoon** | Sol lídio, 84: um Rhodes brilhante, sinos mais ocupados. |
+| **Night Bus** | Lá eólio, 96: sinos metálicos, ecos curtos, modulação caótica. |
 | **Shoreline** | Mi pentatônica maior, 64: sinos escuros e redondos perdidos em ecos longos, como "2/2". |
 | **Glass** | Mib pentatônica menor, 76: sinos metálicos uma oitava acima, densos. |
 | **Tides** | Sib mixolídio, 70: vozes cantadas, a que mais muda. |
@@ -187,8 +188,8 @@ modo, o quanto é movimentada e o quanto muda. Cada uma lembra como você a deix
 
 ## 7. As páginas
 
-Uma página em cada botão, quatro valores nos KNOB 1–4; o SELECT passa por elas: Garden, Voice 1, 2, 3, Pulse, Space,
-Setup, Tape, Gene, Deck. Cada voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
+Uma página em cada botão, quatro valores nos KNOB 1–4; o SELECT passa por elas: Garden, Voice 1, 2, 3, Space, Setup,
+Tape, Gene, Deck, Tape Mod 1, Tape Mod 2. Cada voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
 
 ### HOME: Garden
 
@@ -209,13 +210,6 @@ As três iguais:
 - **Octave:** de duas abaixo a duas acima (OCT− e OCT+ também).
 - **Density:** as notas de um acorde (1 a 4); as notas dos loops (nenhuma a cinco por loop); o quanto o baixo se
   apoia na quinta.
-
-### SEQ: Pulse
-
-- **Level.**
-- **Hits:** quantos toques os três anéis tocam. 0: sem pulso.
-- **Swing:** as semicolcheias de contratempo atrasadas, de reto (50%) a um balanço forte (75%).
-- **Hats:** de escuro e longo a brilhante e seco.
 
 ### FX: Space
 
@@ -318,8 +312,8 @@ Rate; os cinco se somam; o arco os aprofunda quando o jardim está cheio e os ac
 ## 8. A fita
 
 Uma faixa de fita, 11,8 segundos, mono, inspirada na fita de um portastudio TASCAM e nos genes do Morphagene da Make
-Noise (a ideia, não o código deles). SEQ na página Pulse abre a **Tape**, de novo a **Gene**, de novo a **Deck**, de
-novo volta ao Pulse.
+Noise (a ideia, não o código deles). SEQ abre a **Tape**; de novo **Gene**, **Deck**, **Tape Mod 1**, **Tape Mod 2**, e
+dá a volta.
 
 ![A página Tape: um cassete com seus carretéis, a fita como uma tira com dois splices e o cursor; 4.2 / 11.8 s, FX BEFORE, 2 SPLICES; SOURCE Mix, DRY/WET 50, SOS 70, SPEED +1.00x](img/screen-tape.png "A página Tape")
 
@@ -329,9 +323,10 @@ gravados e os splices.
 
 | Página | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
 | --- | --- | --- | --- | --- |
-| Tape | Source (Mix, Voice 1, 2, 3, Pulse) | Dry/Wet | SOS | Speed (−2x .. Stop .. +2x) |
+| Tape | Source (Mix, Voice 1, 2, 3) | Dry/Wet | SOS | Speed (−2x .. Stop .. +2x) |
 | Gene | Gene (o splice inteiro .. 1/256) | Slide | Morph | Organize (splice 1–8) |
 | Deck | FX (Before, After) | Wow | Drive | Tone |
+| Tape Mod 1, 2 | Target | Depth | Rate | Shape |
 
 **Gravar** (nessas três páginas):
 
@@ -343,8 +338,8 @@ gravados e os splices.
   1,5 s apaga a fita (salve depois para apagar também a salva).
 - Um splice não pode ser apagado sozinho: faça overdub nele com SOS 0, ou apague a fita.
 
-**O que grava** é o do **Source**: a mistura inteira (sem a própria fita), uma voz sozinha, ou o pulso, um pouco
-saturado como numa fita (**Drive**).
+**O que grava** é o do **Source**: a mistura inteira (sem a própria fita) ou uma voz sozinha, um pouco saturado
+como numa fita (**Drive**).
 
 **Como toca:** o splice escolhido no Organize, em **genes**: cada um uma janela do splice (**Gene**), começando onde
 a fita está, adiante dela pelo **Slide**, no **Speed** (altura e tempo juntos, como fita; 1x e −1x ficam presos; em
@@ -362,6 +357,14 @@ espaço e toca seca ao lado; **After** a fita, ela grava o jardim seco e toca at
 
 ![A página Deck: FX Before, WOW 25, DRIVE 20, TONE 85](img/screen-deck.png "A página Deck")
 
+**Tape Mod 1 e 2:** dois moduladores dos ajustes da fita, como o MOD das vozes: **Target** (Speed, Gene, Slide, Morph,
+Dry/Wet, Tone, Wow, Drive, SOS, Organize), **Depth** (da faixa do ajuste, metade para cada lado em 100: no Speed,
+de −2x a +2x), **Rate** (de 60 s a um oitavo de segundo por ciclo), **Shape** (Sine, Triangle, Saw up, Saw down,
+Square, S&H, Walk, Chaos). Eles movem o ajuste enquanto a fita toca (e grava: Drive, SOS); o knob fica onde você o
+deixou. Cada peça tem o seu primeiro.
+
+![A página Tape Mod 1: TARGET Morph, DEPTH 25, RATE 28s, SHAPE Sine](img/screen-tapemod.png "A página Tape Mod 1")
+
 ---
 
 ## 9. MIDI
@@ -372,8 +375,8 @@ O MIDI entra pelo USB e pelo conector TRS, e sai pelo USB.
 - **Entrada, clock:** o tempo segue o clock MIDI, e start / stop começam e param o jardim. A tela mostra EXT no
   andamento. O que depende do andamento o segue também, medido a cada tempo: o eco, os moduladores em Sync Tempo, o
   Gate dos loops, o swing.
-- **Saída** (ligada por padrão): as Voices 1, 2 e 3 nos canais 1, 2 e 3, o pulso no 10, e o clock com start / stop
-  quando roda no próprio andamento. Desligar o MIDI out manda todas as notas pararem.
+- **Saída** (ligada por padrão): as Voices 1, 2 e 3 nos canais 1, 2 e 3, e o clock com start / stop quando roda no
+  próprio andamento. Desligar o MIDI out manda todas as notas pararem.
 
 ### CC e NRPN, entrada e saída
 
@@ -383,6 +386,7 @@ O que os knobs ajustam entra e sai como MIDI CC (sai com MIDI out ligado; o que 
 | --- | --- | --- |
 | 16 | 20–49 | os parâmetros 0–29 (as camadas, o espaço, o setup; uma fonte de patch pelo seu número) |
 | 16 | 50–61 | a fita: Source, Dry/Wet, SOS, Speed, Gene, Slide, Morph, Organize, FX, Wow, Drive, Tone |
+| 16 | 62–69 | os moduladores da fita: Target, Depth, Rate, Shape do primeiro, depois os do segundo |
 | 1, 2, 3 (as vozes) | 20 | o Index da voz |
 | 1, 2, 3 | 21–60 | seus cinco moduladores, oito cada: Depth, Rate, Shape, Target, Spread, Fade, Sync, Smooth |
 | 1, 2, 3 | 102–112 | como toca: Envelope, Gate, Role, Octave, Density, Pace, Glide, Attack, Decay, Sustain, Release |
@@ -434,7 +438,8 @@ patch e os ajustes de cada voz, além de Tune, MIDI out e Lights.
 
 **Estalos com tudo ligado:** o som usa a maior parte do tempo do FM-1 com as três vozes ocupadas, os moduladores
 ligados e a fita tocando muitos genes (CPU na página Setup, canto de cima à direita). Menos genes sobrepostos (Morph
-mais baixo), menos moduladores ou uma Density menor ajudam.
+mais baixo), menos moduladores ou uma Density menor ajudam. (A 1.4.0 abriu espaço: sem o pulso, a placa e os genes
+a 22 kHz.)
 
 **Modo de atualização:** segure OCT- e OCT+ juntos por cinco segundos. Aparece uma contagem; solte antes do fim para
 cancelar.
@@ -487,10 +492,6 @@ Os padrões são os da Garden; cada peça tem os seus.
 | Voice 1, 2, 3 | Role | Chord, Loops, Bass | Chord, Loops, Bass |
 | Voice 1, 2, 3 | Octave | −2 – +2 | 0 |
 | Voice 1, 2, 3 | Density | 0–100 | 100, 40, 35 |
-| Pulse | Level | 0–100 | 40 |
-| Pulse | Hits | 0–100 | 35 |
-| Pulse | Swing | 50%–75% | 50% |
-| Pulse | Hats | 0–100 | 50 |
 | Space | Echo | 0–100 | 45 |
 | Space | Echo time | 1/4., 1/2, 1/2., 1 compasso, 2, 4 | 1 compasso |
 | Space | Reverb | 0–100 | 65 |
@@ -499,7 +500,7 @@ Os padrões são os da Garden; cada peça tem os seus.
 | Setup | Tune | −50 – +50 cents | 0 |
 | Setup | MIDI out | Off, On | On |
 | Setup | Lights | Off, On, Keys | On |
-| Tape | Source | Mix, Voice 1, 2, 3, Pulse | Mix |
+| Tape | Source | Mix, Voice 1, 2, 3 | Mix |
 | Tape | Dry/Wet | 0–100 | 50 |
 | Tape | SOS | 0–100 | 70 |
 | Tape | Speed | −2x .. Stop .. +2x | +1x |
@@ -507,6 +508,8 @@ Os padrões são os da Garden; cada peça tem os seus.
 | Gene | Organize | 1–8 | 1 |
 | Deck | FX | Before, After | Before |
 | Deck | Wow, Drive, Tone | 0–100 | 25, 20, 85 |
+| Tape Mod 1, 2 | Target | Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize | Slide (Garden), Morph |
+| Tape Mod 1, 2 | Depth, Rate, Shape | 0–100, 60 s – 0,12 s, as formas do MOD | 30 (o primeiro, Garden), 0 |
 | PATCH de uma voz | Patch | os dezoito, depois as vozes dos bancos | Rhodes, Bell, Sine |
 | PATCH de uma voz | Algorithm, Feedback, LFO, Pitch EG, Transpose | como no DX7 | os do patch |
 | PATCH de uma voz | Index | −24 – +24 dB | 0 dB |

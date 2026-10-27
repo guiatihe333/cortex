@@ -1,14 +1,14 @@
 # each voice's own pages, in three groups: its page button pressed again goes to VOICE, again to OPERATOR, again to
 # MOD, and back; SELECT steps through a group's pages. parN: amb.h (P_VOX 30, a voice's block of 42: OWN, INDEX, five
-# modulators of 8); patV_OFF: voice V's patch byte (amb.h EP_*). Views: the pad's own 10..24, the bells' 25.., the
-# bass's 40..
+# modulators of 8); patV_OFF: voice V's patch byte (amb.h EP_*). Views: the pad's own 11..25, the bells' 26.., the
+# bass's 41..
 wait 300
 tap ENV
 wait 100
 expect view 1
 tap ENV
 wait 100
-expect view 10
+expect view 11
 shot pad_voice.png
 # the patch: the next of the pad's own (Voices), as loaded
 expect par22 0
@@ -22,22 +22,23 @@ expect par30 1
 # OPERATOR: OP3's level, 80 -> 70 (OP3's bytes from 63: its level at 79)
 tap ENV
 wait 100
-expect view 16
+expect view 17
 shot pad_op.png
 turn K1 2 10
 spin K4 -10
 expect pat0_79 70
 # OP Env: its stage 2's rate, 30 -> 35 (at 64)
 turn SELECT 1 100
-expect view 17
+expect view 18
 turn K2 1 10
 spin K3 5
 expect pat0_64 35
 shot pad_openv.png
 # MOD: the first modulator's depth, Garden's 20 -> 23 (the bells' and the bass's untouched); the second's target
+# (Garden's recipe: Pitch, 5, to 14)
 tap ENV
 wait 100
-expect view 22
+expect view 23
 shot mod.png
 turn K3 3 10
 expect par32 23
@@ -45,9 +46,9 @@ expect par74 20
 expect par116 20
 turn K1 1 10
 turn K2 9 100
-expect par43 9
+expect par43 14
 turn SELECT 1 100
-expect view 23
+expect view 24
 # back to the pad's page
 tap ENV
 wait 100
@@ -57,14 +58,14 @@ tap ARP
 wait 100
 tap ARP
 wait 100
-expect view 25
+expect view 26
 turn K1 1 10
 expect par28 7
 tap LFO
 wait 100
 tap LFO
 wait 100
-expect view 40
+expect view 41
 turn K4 2 10
 expect par115 2
 # another voice's button from a voice's page: that voice's own first page
@@ -73,8 +74,8 @@ wait 100
 expect view 2
 tap SEQ
 wait 100
-expect view 4
-# SEQ again: the tape, the genes, the deck, the pulse
+expect view 6
+# SEQ again: the reel's pages, Tape, Gene, Deck, Tape Mod 1 and 2, round
 tap SEQ
 wait 100
 expect view 7
@@ -86,17 +87,20 @@ wait 100
 expect view 9
 tap SEQ
 wait 100
-expect view 4
+expect view 10
+tap SEQ
+wait 100
+expect view 6
 tap HOME
 wait 100
 tap HOME
 wait 100
 expect view 0
-# SELECT walks the layers' pages only (Setup, the tape, the genes, the deck, the last)
+# SELECT walks the layers' pages only (Setup, then the reel's five, the last)
 tap GLO
 wait 100
-turn SELECT 4 100
-expect view 9
+turn SELECT 6 100
+expect view 10
 wav mod.wav
 wait 20000
 wavstop
@@ -122,7 +126,7 @@ tap ARP
 wait 100
 tap ARP
 wait 100
-expect view 25
+expect view 26
 turn K1 11 10
 expect par28 82
 expect par72 0
@@ -145,7 +149,7 @@ midi B0 06 32
 wait 50
 expect pat0_121 50
 # MIDI CC out: a knob turned (the bells' INDEX, CC 20 on channel 2)
-expect view 25
+expect view 26
 out
 turn K4 24 100
 expect par73 24
@@ -157,9 +161,9 @@ tap ENV
 wait 100
 tap ENV
 wait 100
-expect view 10
-turn SELECT 1 100
 expect view 11
+turn SELECT 1 100
+expect view 12
 shot pad_play.png
 turn K1 1 10
 expect par156 2

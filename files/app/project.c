@@ -131,6 +131,7 @@ static int patches_valid(void)                  /* (a byte past its range: held 
 #define V8_NPARAMS (P_PLAY + 3 * 2)
 #define V9_NPARAMS P_TAPE
 #define V10_NPARAMS (P_TAPE + 8)
+#define V11_NPARAMS (P_TAPE + 12)
 static int16_t mig6[NPIECES + 1][EN_NVOX][6];   /* format 6's ratio, feedback, attack, decay, sustain, release */
 static int mig_n, mig6_on;
 static void fix_none(int16_t *par, const int16_t *o) { (void)par, (void)o; }
@@ -161,6 +162,12 @@ static void fix_v6(int16_t *par, const int16_t *o)
             mig6[n][v][2 + k] = b[3 + k];
         par[P_VX(v, VX_OWN)] = (int16_t)(b[0] || b[2] || b[3] || b[4] || b[5] || b[6]);
     }
+}
+static void fix_v11(int16_t *par, const int16_t *o)   /* the reel's source was the pulse: the mix now */
+{
+    (void)o;
+    if (par[P_RL(SRC)] > 3)
+        par[P_RL(SRC)] = 0;
 }
 static void fix_v8(int16_t *par, const int16_t *o)
 {
@@ -223,7 +230,8 @@ OLD_PROJECT(project_v6, V6_NPARAMS, P_BELLPATCH, fix_v6, 6u)
 OLD_PROJECT(project_v7, V7_NPARAMS, V7_NPARAMS, fix_none, 7u)
 OLD_PROJECT(project_v8, V8_NPARAMS, P_PLAY, fix_v8, 8u)
 OLD_PROJECT(project_v9, V9_NPARAMS, V9_NPARAMS, fix_none, 9u)
-OLD_PROJECT(project_v10, V10_NPARAMS, V10_NPARAMS, fix_none, 10u)
+OLD_PROJECT(project_v10, V10_NPARAMS, V10_NPARAMS, fix_v11, 10u)
+OLD_PROJECT(project_v11, V11_NPARAMS, V11_NPARAMS, fix_v11, 11u)
 
 int project_load(void)
 {
@@ -237,6 +245,7 @@ int project_load(void)
         project_v8_t v8;
         project_v9_t v9;
         project_v10_t v10;
+        project_v11_t v11;
     } buf;
     int n, i, v, migrated = 1;
     memset(&buf, 0, sizeof buf);
@@ -264,6 +273,9 @@ int project_load(void)
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 10u) {
         keep_fmt = 10u;
         from_project_v10(&buf.v10);
+    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 11u) {
+        keep_fmt = 11u;
+        from_project_v11(&buf.v11);
     } else {
         proj = buf.now;
         migrated = 0;

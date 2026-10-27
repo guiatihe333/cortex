@@ -41,6 +41,7 @@ volatile uint32_t en_reel_len, en_reel_w;        /* samples recorded; where it r
 volatile float en_reel_pos;                      /* the cursor in the splice playing, 0..1 */
 volatile uint32_t en_reel_s0[8], en_reel_s1[8];
 volatile int32_t en_reel_gene[4] = {-1, -1, -1, -1};
+volatile float en_reel_level, en_reel_mod[EN_NTMOD];
 
 /* ---------------------------------------------------------------- the coder --- */
 static const int16_t RL_STEP[89] = {
@@ -96,6 +97,9 @@ static void rl_decode(uint32_t b, int16_t *out)   /* block b whole */
         out[k] = (int16_t)pred;
     }
 }
+
+static float rl_pf(int k);
+static int rl_pi(int k);
 
 /* ------------------------------------------------------------- recording --- */
 static uint8_t rl_rec, rl_stopping;              /* rl_rec as en_reel_state; stopping: the block finished first */
@@ -154,7 +158,7 @@ static void reel_new(void)                       /* a new splice at the reel's e
 }
 static void reel_dub(void)                       /* the splice picked, overdubbed, looping; again: stop */
 {
-    int k = par[P_RL(ORG)];
+    int k = rl_pi(TP_ORG);
     if (rl_rec) {
         if (rl_rec == 2)
             rl_stopping = 1;                     /* (to the block's end, as it was) */
@@ -184,8 +188,8 @@ static void reel_erase(void)
 
 static float rl_drive(float x)                   /* DRIVE: onto tape, saturating sooner (its small gain kept, 1.1) */
 {
-    const float k = 1.1f + 0.04f * (float)par[P_RL(DRIVE)];
-    return fm_tanhf(x * k) * (1.1f / k) * (1.0f + 0.01f * (float)par[P_RL(DRIVE)]);
+    const float dr = rl_pf(TP_DRIVE), k = 1.1f + 0.04f * dr;
+    return fm_tanhf(x * k) * (1.1f / k) * (1.0f + 0.01f * dr);
 }
 
 /* one sample at 22.05 kHz onto the reel */
@@ -197,7 +201,7 @@ static void rl_put(float x)
     if (rl_stopping)
         y = o;                                   /* (finishing the block as it was) */
     else if (rl_rec == 2)
-        y = rl_drive(x) + o * (float)par[P_RL(SOS)] * 0.01f;
+        y = rl_drive(x) + o * rl_pf(TP_SOS) * 0.01f;
     else
         y = rl_drive(x);
     q = (int)(fm_clampf(y, -1.99f, 1.99f) * 16384.0f);
@@ -288,9 +292,60 @@ static int16_t gene_at(gene_t *g, uint32_t i)    /* the tape's sample i, through
     }
     return g->cache[s][i % RL_BLK];
 }
+/* ------------------------------------------------------- the reel's modulators --- */
+/* two, after the voices' MOD: each a shape at its RATE (60 s .. 0.12 s a cycle), DEPTH of its TARGET's range (half of
+ * it either way at 100), added to the knob's value while it plays: Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow,
+ * Drive, SOS, Organize (in splices) */
+static const uint8_t TM_PAR[EN_NTMDEST] = {TP_SPEED, TP_GENE, TP_SLIDE, TP_MORPH, TP_MIX, TP_TONE, TP_WOW, TP_DRIVE,
+                                           TP_SOS, TP_ORG};
+static struct {
+    float ph, hold, from, to, lx;
+} tmg[EN_NTMOD];
+static float tm_off[TP_N];                       /* each tape setting's offset now (its own units) */
+static void tape_mods(uint32_t n)                /* once a chunk */
+{
+    int s, k;
+    for (k = 0; k < TP_N; k++)
+        tm_off[k] = 0.0f;
+    for (s = 0; s < EN_NTMOD; s++) {
+        const int d = par[P_TM(s, DEPTH)], t = par[P_TM(s, TARGET)], sh = par[P_TM(s, SHAPE)];
+        float v, ph;
+        tmg[s].ph += (float)n / (mod_secs(par[P_TM(s, RATE)]) * EN_SR);
+        if (tmg[s].ph >= 1.0f) {                 /* a cycle's end: S&H's next, the walk's next end, the map's step */
+            tmg[s].ph -= (float)(int)tmg[s].ph;
+            tmg[s].hold = rl_rand() * 2.0f - 1.0f;
+            tmg[s].from = tmg[s].to;
+            tmg[s].to = rl_rand() * 2.0f - 1.0f;
+            tmg[s].lx = 3.95f * tmg[s].lx * (1.0f - tmg[s].lx);
+            if (tmg[s].lx < 0.001f || tmg[s].lx > 0.999f)
+                tmg[s].lx = 0.2f + 0.6f * rl_rand();
+        }
+        if (!d || (unsigned)t >= EN_NTMDEST)
+            continue;
+        ph = tmg[s].ph;
+        switch (sh) {
+        case SHAPE_TRI: v = ph < 0.5f ? 4.0f * ph - 1.0f : 3.0f - 4.0f * ph; break;
+        case SHAPE_UP: v = 2.0f * ph - 1.0f; break;
+        case SHAPE_DOWN: case SHAPE_ENV: v = 1.0f - 2.0f * ph; break;
+        case SHAPE_SQUARE: v = ph < 0.5f ? 1.0f : -1.0f; break;
+        case SHAPE_SH: v = tmg[s].hold; break;
+        case SHAPE_WALK: v = tmg[s].from + (tmg[s].to - tmg[s].from) * (0.5f - 0.5f * fm_cosf(FM_PI * ph)); break;
+        case SHAPE_CHAOS: v = tmg[s].lx * 2.0f - 1.0f; break;
+        default: v = sine(ph); break;
+        }
+        tm_off[TM_PAR[t]] += v * (float)d * 0.005f * (TM_PAR[t] == TP_ORG ? 7.0f : 100.0f);
+        en_reel_mod[s] = v * (float)d * 0.01f;
+    }
+}
+static float rl_pf(int k)                        /* tape setting k (TP_*) as it plays: the knob and its modulators */
+{
+    const en_param_t *pi = en_param_info(P_TAPE + k);
+    return fm_clampf((float)par[P_TAPE + k] + tm_off[k], (float)pi->lo, (float)pi->hi);
+}
+static int rl_pi(int k) { return (int)(rl_pf(k) + 0.5f); }
 static float rl_speed(void)                      /* SPEED: -2x .. 0 .. +2x, 1x and -1x sticking (+-2) */
 {
-    const int v = par[P_RL(SPEED)];
+    const int v = rl_pi(TP_SPEED);
     if (v >= 73 && v <= 77)
         return 1.0f;
     if (v >= 23 && v <= 27)
@@ -302,7 +357,7 @@ static float rl_speed(void)                      /* SPEED: -2x .. 0 .. +2x, 1x a
 static void gene_start(int k0, uint32_t s0, float L, float glen, float rate, int morph)
 {
     gene_t *g = &gn[k0];
-    float st = rl_cursor + (float)par[P_RL(SLIDE)] * 0.01f * L, pm = 1.0f, pan = 0.0f;
+    float st = rl_cursor + rl_pf(TP_SLIDE) * 0.01f * L, pm = 1.0f, pan = 0.0f;
     while (st >= L)
         st -= L;
     if (morph > 85 && rl_rand() < (float)(morph - 85) * (0.5f / 15.0f))
@@ -314,7 +369,7 @@ static void gene_start(int k0, uint32_t s0, float L, float glen, float rate, int
     g->dir = rate >= 0.0f;
     g->pos = (float)s0 + st;
     g->pitch = pm;
-    g->inc = rate * 0.5f * pm;
+    g->inc = rate * pm;
     g->life = 0.0f;
     g->len = glen;
     g->edge = morph <= 55 ? 0.03f : 0.03f + 0.47f * (float)(morph - 55) / 45.0f;
@@ -322,19 +377,24 @@ static void gene_start(int k0, uint32_t s0, float L, float glen, float rate, int
     g->gr = fm_sinf((pan + 1.0f) * (FM_PI / 4.0f)) * 1.4142f;
 }
 
-/* n samples of the reel's sound into l and r (the genes of the splice ORGANIZE picks, at SPEED) */
+/* n samples of the reel's sound into l and r (the genes of the splice ORGANIZE picks, at SPEED). The genes are made at
+ * the tape's own rate, 22.05 kHz (a sample of tape a step at 1x; half the work), each pair of the output's a line
+ * from the last to the next (a sample late) */
+static float rl_al, rl_ar, rl_bl, rl_br;        /* the last two made */
+static uint8_t rl_ph;
 static void reel_play(float *l, float *r, uint32_t n)
 {
-    const int k = par[P_RL(ORG)], morph = par[P_RL(MORPH)];
-    const float lvl = fm_minf((float)par[P_RL(MIX)] * 0.02f, 1.0f),   /* (MIX: the reel full from the middle up) */
-                wd = (float)par[P_RL(WOW)] * 0.0001f,
-                tc = par[P_RL(TONE)] >= 100 ? 1.0f
-                                            : 1.0f - fm_expf(-FM_TWO_PI * 1500.0f *
-                                                             fm_exp2f((float)par[P_RL(TONE)] * 0.03f) / EN_SR),
+    const int k = rl_pi(TP_ORG), morph = rl_pi(TP_MORPH);
+    const float lvl = fm_minf(rl_pf(TP_MIX) * 0.02f, 1.0f),   /* (MIX: the reel full from the middle up) */
+                wd = rl_pf(TP_WOW) * 0.0001f,
+                tc = rl_pf(TP_TONE) >= 99.5f ? 1.0f
+                                             : 1.0f - fm_expf(-FM_TWO_PI * 1500.0f *
+                                                              fm_exp2f(rl_pf(TP_TONE) * 0.03f) / EN_SR),
                 tgt = en_playing && rl_meta.nspl && lvl > 0.0f ? 1.0f : 0.0f, rate = rl_speed();
     uint32_t j, s0, s1;
-    float L, glen, iv;
+    float L, glen, iv, pk = 0.0f;
     int i;
+    tape_mods(n);
     for (j = 0; j < n; j++)
         l[j] = r[j] = 0.0f;
     if (!rl_meta.nspl || (tgt <= 0.0f && rl_gain < 1e-4f)) {
@@ -344,6 +404,7 @@ static void reel_play(float *l, float *r, uint32_t n)
             en_reel_gene[i] = -1;
         }
         en_reel_pos = 0.0f;
+        en_reel_level = 0.0f;
         return;
     }
     {
@@ -354,87 +415,103 @@ static void reel_play(float *l, float *r, uint32_t n)
     if (s1 <= s0 + 64u)
         return;
     L = (float)(s1 - s0);
-    glen = fm_maxf(L * fm_exp2f((float)(par[P_RL(GENE)] - 100) * 0.08f), 441.0f);
+    glen = fm_maxf(L * fm_exp2f((rl_pf(TP_GENE) - 100.0f) * 0.08f), 441.0f);
     if (glen > L)
         glen = L;
     iv = morph <= 40 ? glen * (1.0f + (float)(40 - morph) * 0.1f)            /* gaps */
          : morph <= 55 ? glen * 0.97f                                       /* one after another, joined */
                        : glen / (1.0f + (float)(morph - 55) / 15.0f);       /* overlapping, to four */
     for (j = 0; j < n; j++) {
-        float sl = 0.0f, sr = 0.0f, w, step;
+        float sl, sr;
         rl_gain += (tgt - rl_gain) * 0.0005f;
-        rl_wow += 0.5f / EN_SR;                  /* the tape's wow (0.5 Hz) and flutter (6.3 Hz) */
-        rl_flut += 6.3f / EN_SR;
-        if (rl_wow >= 1.0f)
-            rl_wow -= 1.0f;
-        if (rl_flut >= 1.0f)
-            rl_flut -= 1.0f;
-        w = 1.0f + wd * (sine(rl_wow) + 0.32f * sine(rl_flut));   /* WOW: 25 is 0.25 % and 0.08 % */
-        step = rate * 0.5f * w;
-        if (rate != 0.0f) {                      /* the cursor runs with the tape; a gene each interval */
-            rl_cursor += step;
-            while (rl_cursor >= L)
-                rl_cursor -= L;
-            while (rl_cursor < 0.0f)
-                rl_cursor += L;
-            rl_spawn -= fm_fabsf(step);
-            if (rl_spawn <= 0.0f) {
-                int best = 0;
-                float most = -1.0f;
-                rl_spawn += iv;
-                for (i = 0; i < RL_NG; i++) {    /* a free one, or the one furthest through */
-                    const float f = gn[i].on ? gn[i].life / gn[i].len : 2.0f;
-                    if (f > most) {
-                        most = f;
-                        best = i;
+        rl_ph ^= 1u;
+        if (rl_ph) {                             /* a tape sample: the genes' next */
+            float w, step;
+            sl = sr = 0.0f;
+            rl_wow += 1.0f / EN_SR;              /* the tape's wow (0.5 Hz) and flutter (6.3 Hz), two samples a step */
+            rl_flut += 12.6f / EN_SR;
+            if (rl_wow >= 1.0f)
+                rl_wow -= 1.0f;
+            if (rl_flut >= 1.0f)
+                rl_flut -= 1.0f;
+            w = 1.0f + wd * (sine(rl_wow) + 0.32f * sine(rl_flut));   /* WOW: 25 is 0.25 % and 0.08 % */
+            step = rate * w;
+            if (rate != 0.0f) {                  /* the cursor runs with the tape; a gene each interval */
+                rl_cursor += step;
+                while (rl_cursor >= L)
+                    rl_cursor -= L;
+                while (rl_cursor < 0.0f)
+                    rl_cursor += L;
+                rl_spawn -= fm_fabsf(step);
+                if (rl_spawn <= 0.0f) {
+                    int best = 0;
+                    float most = -1.0f;
+                    rl_spawn += iv;
+                    for (i = 0; i < RL_NG; i++) {   /* a free one, or the one furthest through */
+                        const float f = gn[i].on ? gn[i].life / gn[i].len : 2.0f;
+                        if (f > most) {
+                            most = f;
+                            best = i;
+                        }
                     }
+                    gene_start(best, s0, L, glen, rate, morph);
                 }
-                gene_start(best, s0, L, glen, rate, morph);
             }
-        }
-        for (i = 0; i < RL_NG; i++) {
-            gene_t *g = &gn[i];
-            float f, e, a, x, p;
-            uint32_t i0, i1;
-            if (!g->on)
-                continue;
-            if (rate == 0.0f) {                  /* the tape stopped: the genes die away (20 ms) */
-                g->life += g->len * 0.0011f;
-            } else {
-                g->inc = rate * 0.5f * g->pitch * w;
-                g->life += fm_fabsf(g->inc);
+            for (i = 0; i < RL_NG; i++) {
+                gene_t *g = &gn[i];
+                float f, e, a, x, p, x0;
+                uint32_t i0, i1;
+                if (!g->on)
+                    continue;
+                if (rate == 0.0f) {              /* the tape stopped: the genes die away (20 ms) */
+                    g->life += g->len * 0.0022f;
+                } else {
+                    g->inc = rate * g->pitch * w;
+                    g->life += fm_fabsf(g->inc);
+                }
+                f = g->life / g->len;
+                if (f >= 1.0f) {
+                    g->on = 0;
+                    continue;
+                }
+                e = g->edge;
+                a = f < e ? f / e : f > 1.0f - e ? (1.0f - f) / e : 1.0f;
+                a = a * a * (3.0f - 2.0f * a);   /* (smoothstep: no corner) */
+                if (rate != 0.0f) {
+                    g->pos += g->inc;
+                    while (g->pos >= (float)s1)
+                        g->pos -= L;
+                    while (g->pos < (float)s0)
+                        g->pos += L;
+                }
+                i0 = (uint32_t)g->pos;
+                i1 = i0 + 1u >= s1 ? s0 : i0 + 1u;
+                p = g->pos - (float)i0;
+                x0 = (float)gene_at(g, i0);
+                x = (x0 + ((float)gene_at(g, i1) - x0) * p) * (a * (1.0f / 16384.0f));
+                sl += x * g->gl;
+                sr += x * g->gr;
             }
-            f = g->life / g->len;
-            if (f >= 1.0f) {
-                g->on = 0;
-                continue;
-            }
-            e = g->edge;
-            a = f < e ? f / e : f > 1.0f - e ? (1.0f - f) / e : 1.0f;
-            a = a * a * (3.0f - 2.0f * a);       /* (smoothstep: no corner) */
-            if (rate != 0.0f) {
-                g->pos += g->inc;
-                while (g->pos >= (float)s1)
-                    g->pos -= L;
-                while (g->pos < (float)s0)
-                    g->pos += L;
-            }
-            i0 = (uint32_t)g->pos;
-            i1 = i0 + 1u >= s1 ? s0 : i0 + 1u;
-            p = g->pos - (float)i0;
-            x = ((float)gene_at(g, i0) + ((float)gene_at(g, i1) - (float)gene_at(g, i0)) * p) * (1.0f / 16384.0f);
-            x *= a;
-            sl += x * g->gl;
-            sr += x * g->gr;
+            rl_al = rl_bl;
+            rl_ar = rl_br;
+            rl_bl = sl;
+            rl_br = sr;
+            sl = rl_al;
+            sr = rl_ar;
+        } else {                                 /* between: halfway from the last to the next */
+            sl = 0.5f * (rl_al + rl_bl);
+            sr = 0.5f * (rl_ar + rl_br);
         }
         rl_lpl += (sl - rl_lpl) * tc;            /* TONE: 1.5 kHz .. open */
         rl_lpr += (sr - rl_lpr) * tc;
         l[j] = rl_lpl * lvl * rl_gain;
         r[j] = rl_lpr * lvl * rl_gain;
+        pk = fm_maxf(pk, fm_fabsf(l[j]) + fm_fabsf(r[j]));
     }
     rl_lpl = fm_flush(rl_lpl);
     rl_lpr = fm_flush(rl_lpr);
     en_reel_pos = rl_cursor / L;
+    en_reel_level += (pk * 2.0f - en_reel_level) * 0.2f;
     for (i = 0; i < RL_NG; i++)
         en_reel_gene[i] = gn[i].on ? (int32_t)gn[i].pos : -1;
 }
@@ -444,6 +521,14 @@ static void reel_init(void)                      /* (the reel itself stays: a re
     int i;
     rl_rec = rl_stopping = 0;
     rl_cursor = rl_spawn = rl_gain = rl_lpl = rl_lpr = 0.0f;
+    rl_al = rl_ar = rl_bl = rl_br = 0.0f;
+    for (i = 0; i < EN_NTMOD; i++) {
+        tmg[i].ph = tmg[i].hold = tmg[i].from = tmg[i].to = 0.0f;
+        tmg[i].lx = 0.3f + 0.2f * (float)i;
+        en_reel_mod[i] = 0.0f;
+    }
+    for (i = 0; i < TP_N; i++)
+        tm_off[i] = 0.0f;
     rl_d1 = rl_d2 = 0.0f;
     rl_half = 0;
     for (i = 0; i < RL_NG; i++) {
