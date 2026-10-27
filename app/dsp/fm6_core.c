@@ -2,6 +2,8 @@
  * Copyright 2012 Google Inc.
  * Copyright 2016-2025 Pascal Gauthier.
  * C port for Felucca (integer only, no float), 2026: Leo Kuroshita (@kurogedelic), Hügelton Instruments
+ * Modified for AMB-1 FM6, 2026: a sounding note takes its patch's edits (fm6_note_refresh, its key and velocity
+ * kept), a level offset per operator (fm6_note_compute's oplvl); each change marked "(AMB-1 FM6)"
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.

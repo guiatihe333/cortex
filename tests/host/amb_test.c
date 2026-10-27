@@ -998,6 +998,53 @@ int main(void)
         en_play(1);
     }
 
+    /* the reel, read as it is recorded: silence overdubbed (SOS 0) never sounds louder than what it replaces (no burst
+     * from the block being written, its bytes past the head of the coder's old state); after an erase, silence recorded plays silent (no gene hears what was there before) */
+    {
+        float before, during, ghost;
+        en_init();
+        en_set(P_ECHO, 0);
+        en_set(P_REVERB, 0);
+        en_play(1);
+        run(3.0f);
+        en_reel(EN_REEL_NEW);
+        run(2.0f);
+        en_reel(EN_REEL_DUB);
+        en_set(P_PAD, 0);
+        en_set(P_BELLS, 0);
+        en_set(P_BASS, 0);
+        en_set(P_PULSE, 0);
+        en_set(P_RL(MIX), 100);
+        en_set(P_RL(GENE), 30);
+        en_set(P_RL(MORPH), 70);
+        en_set(P_RL(SOS), 0);
+        run(2.0f);
+        peak = 0.0f;
+        run(3.0f);
+        before = peak;
+        en_reel(EN_REEL_DUB);                    /* silence over it (SOS 0: replacing it), the genes reading on */
+        run(0.2f);
+        peak = 0.0f;
+        run(3.0f);
+        during = peak;
+        en_reel(EN_REEL_DUB);
+        run(0.2f);
+        CHECK(during < 1.05f * before, "overdubbing silence: %f (before %f)", (double)during, (double)before);
+        en_reel(EN_REEL_ERASE);
+        run(0.1f);
+        en_reel(EN_REEL_NEW);                    /* silence onto the reel */
+        run(2.0f);
+        en_reel(EN_REEL_DUB);
+        run(1.0f);
+        peak = 0.0f;
+        run(2.0f);
+        ghost = peak;
+        CHECK(ghost < 0.05f * before, "after an erase, silence recorded: %f (what was there %f)", (double)ghost,
+              (double)before);
+        en_init();
+        en_play(1);
+    }
+
     /* stop: the tails die away */
     for (i = 0; i < P_NPARAMS; i++)
         en_set(i, en_param_info(i)->def);
