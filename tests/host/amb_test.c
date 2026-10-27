@@ -1074,6 +1074,39 @@ int main(void)
         en_play(1);
     }
 
+    /* 1.4.1: a modulator on another's depth: the voice's first modulator at depth 0, its second on M1's depth: the
+     * first moves; the reel's the same (its second on M1's depth, M1 at 0) */
+    {
+        float m1 = 0.0f, t1 = 0.0f;
+        int t;
+        en_init();
+        en_play(1);
+        en_set(P_MS(VOX_PAD, 0, MS_DEPTH), 0);
+        en_set(P_MS(VOX_PAD, 0, MS_RATE), 80);
+        en_set(P_MS(VOX_PAD, 1, MS_DEST), MOD_MSLOT + 0);
+        en_set(P_MS(VOX_PAD, 1, MS_DEPTH), 100);
+        en_set(P_MS(VOX_PAD, 1, MS_RATE), 60);
+        en_set(P_MS(VOX_PAD, 1, MS_SHAPE), SHAPE_SQUARE);
+        en_set(P_TM(0, DEPTH), 0);
+        en_set(P_TM(0, RATE), 80);
+        en_set(P_TM(1, TARGET), EN_NTMSET + 0);
+        en_set(P_TM(1, DEPTH), 100);
+        en_set(P_TM(1, RATE), 60);
+        en_set(P_TM(1, SHAPE), SHAPE_SQUARE);
+        en_reel(EN_REEL_NEW);
+        run(1.5f);
+        en_reel(EN_REEL_DUB);
+        for (t = 0; t < 60; t++) {
+            run(0.1f);
+            m1 = fabsf(en_mod[0][0]) > m1 ? fabsf(en_mod[0][0]) : m1;
+            t1 = fabsf(en_reel_mod[0]) > t1 ? fabsf(en_reel_mod[0]) : t1;
+        }
+        CHECK(m1 > 0.1f, "a voice's M1 moved by M2 on its depth: %f", (double)m1);
+        CHECK(t1 > 0.1f, "the reel's M1 moved by M2 on its depth: %f", (double)t1);
+        en_init();
+        en_play(1);
+    }
+
     /* stop: the tails die away */
     for (i = 0; i < P_NPARAMS; i++)
         en_set(i, en_param_info(i)->def);

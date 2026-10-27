@@ -51,7 +51,7 @@ expect par1 70
 turn PRESET 6
 expect piece 6
 tap SAVE
-expect store_writes 2
+expect store_writes 3
 reboot
 wait 300
 expect piece 6

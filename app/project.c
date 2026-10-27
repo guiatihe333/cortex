@@ -132,6 +132,7 @@ static int patches_valid(void)                  /* (a byte past its range: held 
 #define V9_NPARAMS P_TAPE
 #define V10_NPARAMS (P_TAPE + 8)
 #define V11_NPARAMS (P_TAPE + 12)
+#define V12_NPARAMS (P_TMOD + 2 * 4)
 static int16_t mig6[NPIECES + 1][EN_NVOX][6];   /* format 6's ratio, feedback, attack, decay, sustain, release */
 static int mig_n, mig6_on;
 static void fix_none(int16_t *par, const int16_t *o) { (void)par, (void)o; }
@@ -168,6 +169,13 @@ static void fix_v11(int16_t *par, const int16_t *o)   /* the reel's source was t
     (void)o;
     if (par[P_RL(SRC)] > 3)
         par[P_RL(SRC)] = 0;
+}
+static void fix_v12(int16_t *par, const int16_t *o)   /* format 12's two modulators of four into the five of six */
+{
+    int s, k;
+    for (s = 0; s < 2; s++)
+        for (k = 0; k < 4; k++)
+            par[P_TMOD + s * TM_N + k] = o[P_TMOD + s * 4 + k];
 }
 static void fix_v8(int16_t *par, const int16_t *o)
 {
@@ -232,11 +240,45 @@ OLD_PROJECT(project_v8, V8_NPARAMS, P_PLAY, fix_v8, 8u)
 OLD_PROJECT(project_v9, V9_NPARAMS, V9_NPARAMS, fix_none, 9u)
 OLD_PROJECT(project_v10, V10_NPARAMS, V10_NPARAMS, fix_v11, 10u)
 OLD_PROJECT(project_v11, V11_NPARAMS, V11_NPARAMS, fix_v11, 11u)
+OLD_PROJECT(project_v12, V12_NPARAMS, P_TMOD, fix_v12, 12u)
+
+/* format 13 as stored: the settings to P_SPLIT in OBJ_PROJ (as the formats before, fewer settings), the rest in
+ * OBJ_TAPE */
+OLD_PROJECT(projstore, P_SPLIT, P_SPLIT, fix_none, 13u)
+typedef struct {
+    uint32_t magic, format;
+    int16_t par[NPIECES + 1][P_NPARAMS - P_SPLIT];   /* each piece's, then the one playing's */
+} tapestore_t;
+_Static_assert(sizeof(projstore_t) <= PLAT_STORE_MAX && sizeof(tapestore_t) <= PLAT_STORE_MAX, "a store object");
+static projstore_t pst PLAT_POOL;
+static tapestore_t tst PLAT_POOL;
+static void tape_from_store(void)               /* the reel's settings from OBJ_TAPE, or the pieces' recipes */
+{
+    int i, p;
+    slot_t r;
+    memset(&tst, 0, sizeof tst);
+    if (plat_store_load(OBJ_TAPE, &tst, sizeof tst) < 8 || tst.magic != PROJ_MAGIC || tst.format != PROJ_FORMAT) {
+        for (i = 0; i < NPIECES; i++) {
+            recipe(i, &r);
+            for (p = P_SPLIT; p < P_NPARAMS; p++)
+                proj.slot[i].par[p] = r.par[p];
+        }
+        recipe(proj.piece, &r);
+        for (p = P_SPLIT; p < P_NPARAMS; p++)
+            proj.par[p] = r.par[p];
+        return;
+    }
+    for (i = 0; i < NPIECES; i++)
+        for (p = P_SPLIT; p < P_NPARAMS; p++)
+            proj.slot[i].par[p] = tst.par[i][p - P_SPLIT];
+    for (p = P_SPLIT; p < P_NPARAMS; p++)
+        proj.par[p] = tst.par[NPIECES][p - P_SPLIT];
+}
 
 int project_load(void)
 {
     static union {
-        project_t now;
+        projstore_t now;
         project_v3_t v3;
         project_v4_t v4;
         project_v5_t v5;
@@ -246,6 +288,7 @@ int project_load(void)
         project_v9_t v9;
         project_v10_t v10;
         project_v11_t v11;
+        project_v12_t v12;
     } buf;
     int n, i, v, migrated = 1;
     memset(&buf, 0, sizeof buf);
@@ -276,9 +319,16 @@ int project_load(void)
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 11u) {
         keep_fmt = 11u;
         from_project_v11(&buf.v11);
-    } else {
-        proj = buf.now;
+    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 12u) {
+        keep_fmt = 12u;
+        from_project_v12(&buf.v12);
+    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == PROJ_FORMAT) {
+        from_projstore(&buf.now);                /* (its settings to P_SPLIT; then the reel's from OBJ_TAPE) */
+        proj.leds = buf.now.leds;
+        tape_from_store();
         migrated = 0;
+    } else {
+        proj.magic = 0;                          /* (none, or another: the defaults below) */
     }
     if (n < 8 || !project_valid()) {
         project_defaults();
@@ -309,11 +359,34 @@ int project_load(void)
     return 0;
 }
 
-int project_save(void)
+int project_save(void)                          /* the settings in two objects (P_SPLIT), the patches in a third */
 {
-    int r;
+    int r, i, p;
     keep();
-    r = plat_store_save(OBJ_PROJ, &proj, sizeof proj);
+    memset(&pst, 0, sizeof pst);
+    pst.magic = PROJ_MAGIC;
+    pst.format = PROJ_FORMAT;
+    pst.pool = proj.pool;
+    pst.leds = proj.leds;
+    pst.piece = proj.piece;
+    tst.magic = PROJ_MAGIC;
+    tst.format = PROJ_FORMAT;
+    for (p = 0; p < P_NPARAMS; p++) {
+        if (p < P_SPLIT)
+            pst.par[p] = proj.par[p];
+        else
+            tst.par[NPIECES][p - P_SPLIT] = proj.par[p];
+        for (i = 0; i < NPIECES; i++) {
+            if (p < P_SPLIT)
+                pst.slot[i].par[p] = proj.slot[i].par[p];
+            else
+                tst.par[i][p - P_SPLIT] = proj.slot[i].par[p];
+        }
+    }
+    for (i = 0; i < NPIECES; i++)
+        pst.slot[i].pool = proj.slot[i].pool;
+    r = plat_store_save(OBJ_PROJ, &pst, sizeof pst);
+    r = r ? r : plat_store_save(OBJ_TAPE, &tst, sizeof tst);
     return r ? r : plat_store_save(OBJ_PATCH, &pstore, sizeof pstore);
 }
 

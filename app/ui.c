@@ -28,7 +28,7 @@ enum { S_VOICE, S_PLAY, S_ADSR, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP
 #define NGROUP 3
 static const uint8_t GROUP0[NGROUP + 1] = {S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
 static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Space", "Setup", "Tape",
-                                              "Gene", "Deck", "Tape Mod 1", "Tape Mod 2"};
+                                              "Gene", "Deck", "Tape Mod", "Tape Mod 2"};
 static const char *const SUB_NAME[NSUB] = {"Patch", "Play", "ADSR", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
 static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_FX, B_GLO, B_SEQ, B_SEQ, B_SEQ, B_SEQ, B_SEQ};
@@ -65,8 +65,10 @@ static void view_name(int v, char *b)          /* "Garden", "Bells OP Env" */
 /* the four knobs of each page: a parameter (< P_NPARAMS), or one of these: the panel's own, the voice's patch source,
  * the operator, envelope stage and modulator picked, a byte of the voice's patch (KP_V + its offset) or of the
  * operator picked (KP_O + its field), the stage picked's rate or level, the modulator picked's setting (KM + MS_*) */
-enum { K_LEDS = 1000, K_CPU, K_NONE, K_SRC, K_OP, K_STAGE, K_PSTAGE, K_SLOT, KP_OR, KP_OL, KP_PR, KP_PL,
-       KP_V = 1100, KP_O = 1300, KM = 1400, KPL = 1500 };   /* KPL + PL_*: how the page's voice plays (P_PL) */
+enum { K_LEDS = 1000, K_CPU, K_NONE, K_SRC, K_OP, K_STAGE, K_PSTAGE, K_SLOT, K_TSLOT, KP_OR, KP_OL, KP_PR, KP_PL,
+       KP_V = 1100, KP_O = 1300, KM = 1400, KPL = 1500, KTM = 1600 };   /* KPL + PL_*: how the page's voice plays
+                                                                          * (P_PL); KTM + TM_*: the reel's modulator
+                                                                          * picked (P_TM) */
 #define KPL_(k) (KPL + PL_##k)
 #define KO(f) (KP_O + EP_##f)
 #define KV(f) (KP_V + EP_##f)
@@ -81,8 +83,8 @@ static const uint16_t MAIN_KNOB[V_MAIN][4] = {
     {P_RL(SRC), P_RL(MIX), P_RL(SOS), P_RL(SPEED)},
     {P_RL(GENE), P_RL(SLIDE), P_RL(MORPH), P_RL(ORG)},
     {P_RL(FX), P_RL(WOW), P_RL(DRIVE), P_RL(TONE)},
-    {P_TM(0, TARGET), P_TM(0, DEPTH), P_TM(0, RATE), P_TM(0, SHAPE)},
-    {P_TM(1, TARGET), P_TM(1, DEPTH), P_TM(1, RATE), P_TM(1, SHAPE)},
+    {K_TSLOT, KTM + TM_TARGET, KTM + TM_DEPTH, KTM + TM_RATE},   /* the reel's five, as a voice's MOD */
+    {K_TSLOT, KTM + TM_SHAPE, KTM + TM_SYNC, KTM + TM_SMOOTH},
 };
 static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_SRC, KV(ALG), KV(FB), K_NONE},          /* (INDEX: P_VX, put in below) */
@@ -111,8 +113,8 @@ static const char *const MAIN_LABEL[V_MAIN][4] = {
     {"Source", "Dry/Wet", "SOS", "Speed"},
     {"Gene", "Slide", "Morph", "Organize"},
     {"FX", "Wow", "Drive", "Tone"},
-    {"Target", "Depth", "Rate", "Shape"},
-    {"Target", "Depth", "Rate", "Shape"},
+    {"Mod", "Target", "Depth", "Rate"},
+    {"Mod", "Shape", "Sync", "Smooth"},
 };
 static const char *const SUB_LABEL[NSUB][4] = {
     {"Patch", "Algorithm", "Feedback", "Index"},
@@ -184,6 +186,7 @@ static struct {
     uint32_t touch_until;
     uint32_t frame;
     uint32_t sig[3];                   /* what each band shows: redrawn when it changes */
+    uint8_t tslot;                     /* the reel's modulator picked (0..) */
     uint8_t op[EN_NVOX], stage[EN_NVOX], pstage[EN_NVOX], slot[EN_NVOX];   /* each voice's operator (1..6),
                                         * envelope stage, pitch envelope stage and modulator (0..) picked */
     uint8_t gsub[EN_NVOX][NGROUP];     /* each voice's group: the page it was left on */
@@ -296,6 +299,8 @@ static int knob_par(int k)                     /* a knob's parameter (a modulato
         return k;
     if (k >= KM && k < KM + MS_N)
         return P_MS(kvox(), ui.slot[kvox()], k - KM);
+    if (k >= KTM && k < KTM + TM_N)
+        return P_TMOD + ui.tslot * TM_N + (k - KTM);
     return -1;
 }
 static int knob_get(int k)
@@ -313,6 +318,8 @@ static int knob_get(int k)
         return ui.op[v] ? ui.op[v] : 1;
     if (k == K_STAGE || k == K_PSTAGE || k == K_SLOT)
         return 1 + (k == K_STAGE ? ui.stage[v] : k == K_PSTAGE ? ui.pstage[v] : ui.slot[v]);
+    if (k == K_TSLOT)
+        return 1 + ui.tslot;
     return 0;
 }
 static void knob_range(int k, int *lo, int *hi)
@@ -324,9 +331,9 @@ static void knob_range(int k, int *lo, int *hi)
         *hi = en_param_info(p)->hi;
     } else if (off >= 0) {
         *hi = en_patch_max(off);
-    } else if (k == K_OP || k == K_STAGE || k == K_PSTAGE || k == K_SLOT) {
+    } else if (k == K_OP || k == K_STAGE || k == K_PSTAGE || k == K_SLOT || k == K_TSLOT) {
         *lo = 1;
-        *hi = k == K_OP ? 6 : k == K_SLOT ? EN_NSLOT : 4;
+        *hi = k == K_OP ? 6 : k == K_SLOT ? EN_NSLOT : k == K_TSLOT ? EN_NTMOD : 4;
     } else {
         *hi = k == K_LEDS ? 2 : k == K_CPU ? 100 : 0;
     }
@@ -460,7 +467,7 @@ static void knob_text(int k, char *b)
     } else if (k == K_OP) {
         b = cat_s(b, "OP");
         cat_i(b, v, 0);
-    } else if (k == K_STAGE || k == K_PSTAGE || k == K_SLOT) {
+    } else if (k == K_STAGE || k == K_PSTAGE || k == K_SLOT || k == K_TSLOT) {
         cat_i(b, v, 0);
     } else {
         b[0] = 0;
@@ -528,6 +535,9 @@ static void knob_set(int k, int v)
     } else if (k == K_OP || k == K_STAGE || k == K_PSTAGE || k == K_SLOT) {   /* the page's pick: not the sound */
         uint8_t *s = k == K_OP ? ui.op : k == K_STAGE ? ui.stage : k == K_PSTAGE ? ui.pstage : ui.slot;
         s[kvox()] = (uint8_t)(k == K_OP ? v : v - 1);
+        return;
+    } else if (k == K_TSLOT) {
+        ui.tslot = (uint8_t)(v - 1);
         return;
     }
     mark_dirty();
@@ -741,14 +751,16 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
         dice_par(P_PL(v, PL_DENS), r == ROLE_CHORD ? 40 : 15, r == ROLE_CHORD ? 100 : 80);
         break;
     }
-    case V_TMOD1: case V_TMOD2: {               /* a modulator of the reel: a target, a depth, a pace, a shape */
-        const int s = vw - V_TMOD1;
-        dice_par(P_TM(s, TARGET), 0, EN_NTMDEST - 1);
-        dice_par(P_TM(s, DEPTH), 10, 55);
-        dice_par(P_TM(s, RATE), 5, 70);
-        dice_par(P_TM(s, SHAPE), 0, SHAPE_CHAOS);
+    case V_TMOD1:                               /* the reel's modulator picked: a target, a depth, a pace */
+        dice_par(P_TMOD + ui.tslot * TM_N + TM_TARGET, 0, EN_NTMDEST - 1);
+        dice_par(P_TMOD + ui.tslot * TM_N + TM_DEPTH, 10, 55);
+        dice_par(P_TMOD + ui.tslot * TM_N + TM_RATE, 5, 70);
         break;
-    }
+    case V_TMOD2:                               /* its shape, its sync, its smoothing */
+        dice_par(P_TMOD + ui.tslot * TM_N + TM_SHAPE, 0, SHAPE_CHAOS);
+        dice_par(P_TMOD + ui.tslot * TM_N + TM_SYNC, 0, 1);
+        dice_par(P_TMOD + ui.tslot * TM_N + TM_SMOOTH, 0, 60);
+        break;
     case V_SPACE:
         dice_par(P_ECHO, 15, 70);
         dice_par(P_ETIME, 0, 5);
@@ -1642,7 +1654,7 @@ static int help_lines(int b, const char *l[HELP_LINES])
     case B_ENV: L("VOICE 1"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
     case B_ARP: L("VOICE 2"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
     case B_LFO: L("VOICE 3"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
-    case B_SEQ: L("THE TAPE"); L("SOURCE, DRY/WET, SOS, SPEED"); L("AGAIN: GENE, DECK, MOD 1, 2"); break;
+    case B_SEQ: L("THE TAPE"); L("SOURCE, DRY/WET, SOS, SPEED"); L("AGAIN: GENE, DECK, ITS MOD"); break;
     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
     case B_EDIT: L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); L("TAPE: A NEW SPLICE"); break;
@@ -2295,6 +2307,8 @@ static void speak_dump(void)
                     ui.op[vx] = (uint8_t)x;
                 else if (k == K_STAGE || k == K_PSTAGE || k == K_SLOT)
                     (k == K_STAGE ? ui.stage : k == K_PSTAGE ? ui.pstage : ui.slot)[vx] = (uint8_t)(x - 1);
+                else if (k == K_TSLOT)
+                    ui.tslot = (uint8_t)(x - 1);
                 sp_n = 0;
                 sp_knob(v, i);
                 sp_print("KNOB", sp_buf);

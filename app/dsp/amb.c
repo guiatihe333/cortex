@@ -56,9 +56,12 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     {"Tape source", 0, 3, 0}, {"Dry/Wet", 0, 100, 50}, {"SOS", 0, 100, 70}, {"Speed", 0, 100, 75},
     {"Gene", 0, 100, 100}, {"Slide", 0, 100, 0}, {"Morph", 0, 100, 45}, {"Organize", 0, 7, 0},
     {"Tape FX", 0, 1, 0},     {"Wow", 0, 100, 25},      {"Drive", 0, 100, 20},    {"Tone", 0, 100, 85},
-    {"TM1 target", 0, EN_NTMDEST - 1, 2}, {"TM1 depth", 0, 100, 0}, {"TM1 rate", 0, 100, 20},
-    {"TM1 shape", 0, EN_NMODSHAPE - 1, SHAPE_WALK}, {"TM2 target", 0, EN_NTMDEST - 1, 3}, {"TM2 depth", 0, 100, 0},
-    {"TM2 rate", 0, 100, 30}, {"TM2 shape", 0, EN_NMODSHAPE - 1, SHAPE_SINE},
+#define TM_PARAMS(n, target, depth, rate, shape)                                                                   \
+    {"TM" n " target", 0, EN_NTMDEST - 1, target}, {"TM" n " depth", 0, 100, depth}, {"TM" n " rate", 0, 100, rate}, \
+    {"TM" n " shape", 0, EN_NMODSHAPE - 1, shape}, {"TM" n " sync", 0, 1, 0}, {"TM" n " smooth", 0, 100, 0}
+    TM_PARAMS("1", 2, 0, 20, SHAPE_WALK), TM_PARAMS("2", 3, 0, 30, SHAPE_SINE), TM_PARAMS("3", 1, 0, 40, SHAPE_TRI),
+    TM_PARAMS("4", 5, 0, 15, SHAPE_SINE), TM_PARAMS("5", 0, 0, 50, SHAPE_SH),
+#undef TM_PARAMS
 #undef VOX_PARAMS
 #undef MS_PARAMS
 };
@@ -76,8 +79,8 @@ static const char *const PATCH_NAME[EN_NFACT] = {
     "Sine", "Round", "Pick", "Sub", "Reed", "Fretless"};
 static const char *const ENV_NAME[EN_NENV] = {"AMB", "Patch", "ADSR"};
 static const char *const TSRC_NAME[4] = {"Mix", "Voice 1", "Voice 2", "Voice 3"};
-static const char *const TMDEST_NAME[EN_NTMDEST] = {"Speed", "Gene", "Slide", "Morph", "Dry/Wet", "Tone", "Wow",
-                                                    "Drive", "SOS", "Organize"};
+static const char *const TMDEST_NAME[EN_NTMSET] = {"Speed", "Gene", "Slide", "Morph", "Dry/Wet", "Tone", "Wow",
+                                                   "Drive", "SOS", "Organize"};
 static const char *const ROLE_NAME[EN_NROLE] = {"Chord", "Loops", "Bass"};
 /* format 6's FM Ratio: the modulators' frequency times these (log2), harmonic, then three inharmonic */
 #define NRATIO 9
@@ -101,8 +104,14 @@ static void copy9(const char *s, char *b)       /* a name of up to 9 characters 
     }
     b[k] = 0;
 }
-void en_moddest_text(int d, char *b)
+void en_moddest_text(int d, char *b)            /* (M1..M5 depth, rate: the voice's own modulators) */
 {
+    if (d >= MOD_MSLOT && d < EN_NMODDEST) {
+        b[0] = 'M';
+        b[1] = (char)('1' + (d - MOD_MSLOT) % 5);
+        copy9(d - MOD_MSLOT < 5 ? " depth" : " rate", b + 2);
+        return;
+    }
     d = (unsigned)d < EN_NMODDEST ? d : 0;
     if (d < MOD_OP) {
         copy9(DEST_NAME[d], b);
@@ -281,8 +290,17 @@ void en_param_text(int i, int v, char *b)
         s = "Off";
     else if (i == P_RL(SRC))
         s = TSRC_NAME[(unsigned)v < 4u ? v : 0];
-    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_TARGET)
-        s = TMDEST_NAME[(unsigned)v < EN_NTMDEST ? v : 0];
+    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_TARGET && v >= EN_NTMSET) {   /* another modulator's */
+        b[0] = 'M';
+        b[1] = (char)('1' + (v - EN_NTMSET) % EN_NTMOD);
+        copy9(v - EN_NTMSET < EN_NTMOD ? " depth" : " rate", b + 2);
+        return;
+    } else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_TARGET)
+        s = TMDEST_NAME[(unsigned)v < EN_NTMSET ? v : 0];
+    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_SYNC)
+        s = v ? "Tempo" : "Free";
+    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_RATE && par[i - TM_RATE + TM_SYNC])
+        s = DIV_NAME[div_of(v < 0 ? 0 : v > 100 ? 100 : v)];
     else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_SHAPE)
         s = EN_MODSHAPE_NAME[(unsigned)v < EN_NMODSHAPE ? v : 0];
     else if (i == P_RL(SPEED) && v >= 48 && v <= 52)
@@ -321,6 +339,13 @@ void en_param_text(int i, int v, char *b)
             *b++ = (char)('0' + sec % 10);
             *b = 0;
         }
+        return;
+    }
+    if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_SMOOTH) {   /* 2 ms .. 500 ms */
+        b = itoa_s((int)(smooth_secs(v) * 1000.0f + 0.5f), b);
+        *b++ = 'm';
+        *b++ = 's';
+        *b = 0;
         return;
     }
     if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_RATE) {   /* a cycle: 60 s .. 0.12 s */
@@ -1067,19 +1092,34 @@ static float gen_shape(const gen_t *g, const mslot_t *x)   /* a generator's shap
     }
 }
 
+static float mrate[EN_NVOX][EN_NSLOT];          /* each modulator's rate, times its modulators' (M depth, M rate) */
 static void mod_step(void)                      /* once an FM6 block */
 {
     const float dt = MOD_DT;
     int i, v, s;
-    for (v = 0; v < EN_NVOX; v++)
-        for (s = 0; s < EN_NSLOT; s++)
-            vx[v].s[s].deff = fm_clampf(vx[v].s[s].depth * (1.0f + 0.35f * arcm), 0.0f, 1.0f);
+    for (v = 0; v < EN_NVOX; v++) {
+        float dd[EN_NSLOT] = {0}, rr[EN_NSLOT] = {0};
+        for (s = 0; s < EN_NSLOT; s++) {        /* the modulators aimed at others: their value at the voice's first */
+            const int d = vx[v].s[s].dest;
+            if (d >= MOD_MSLOT && d < EN_NMODDEST) {
+                const float m = en_mod[s][VOX_GEN0[v]];
+                if (d - MOD_MSLOT < EN_NSLOT)
+                    dd[d - MOD_MSLOT] += 0.5f * m;   /* depth: +-50 */
+                else
+                    rr[d - MOD_MSLOT - EN_NSLOT] += 2.0f * m;   /* rate: +-2 octaves */
+            }
+        }
+        for (s = 0; s < EN_NSLOT; s++) {
+            vx[v].s[s].deff = fm_clampf((vx[v].s[s].depth + dd[s]) * (1.0f + 0.35f * arcm), 0.0f, 1.0f);
+            mrate[v][s] = vx[v].s[s].rate * fm_exp2f(rr[s]);
+        }
+    }
     for (s = 0; s < EN_NSLOT; s++) {
         float lead = 0.0f;
         for (i = 0; i < NGEN; i++) {
             const mslot_t *x = &vx[gen_vox[i]].s[s];
             gen_t *g = &gen[s][i];
-            float f = x->rate * (x->sync == SYNC_TEMPO ? 1.0f : g->pace), w, d, q, tau;
+            float f = mrate[gen_vox[i]][s] * (x->sync == SYNC_TEMPO ? 1.0f : g->pace), w, d, q, tau;
             if (x->deff <= 0.0f && g->vs == 0.0f) {   /* off: nothing to make (the phase waits) */
                 en_mod[s][i] = 0.0f;
                 g->pitch = g->pan = g->ratio = g->fine = 0.0f;
@@ -1184,7 +1224,7 @@ static void mod_of(int g, const uint8_t *p, mod_t *m, int32_t *dt, int32_t *ol)
                                                  * (counted: algorithm 5's are operators 6, 4 and 2, all even) */
                 if (!(car >> j & 1u))
                     dt[j] += ratio + ((nm++ & 1) ? -metal : metal);
-        if (x->dest >= MOD_OP) {                 /* an operator's own: operator n is the patch's (6 - n)th */
+        if (x->dest >= MOD_OP && x->dest < MOD_MSLOT) {   /* an operator's own: operator n is the patch's (6 - n)th */
             const int o = (x->dest - MOD_OP) / OPT_N, kind = (x->dest - MOD_OP) % OPT_N, kk = 5 - o;
             if (kind == OPT_LEVEL)              /* a carrier only down (never louder than the patch), a modulator
                                                  * either way: +-12 dB */
@@ -1221,7 +1261,7 @@ static const uint8_t *mod_patch(int g, const uint8_t *src, uint8_t *dst)
             dc += (int)(6.0f * k * d);
             any = 1;
         }
-        if (x->dest >= MOD_OP) {
+        if (x->dest >= MOD_OP && x->dest < MOD_MSLOT) {
             const int kind = (x->dest - MOD_OP) % OPT_N, kk = 5 - (x->dest - MOD_OP) / OPT_N;
             if (kind >= OPT_ATK) {
                 eo[kk][kind - OPT_ATK] += (int)(30.0f * d);

@@ -40,11 +40,11 @@ da M-VAVE, o M-UPGRADE, usando o arquivo V15 (`firmware-original-M-VAVE/FM-1_V15
 C++ Redistributable), ligue o FM-1 com um cabo USB de dados e rode, na pasta do pacote:
 
 ```
-python fm1_install.py amb-1.4.0-fm6.fwsc
+python fm1_install.py amb-1.4.1-fm6.fwsc
 ```
 
 Não desconecte enquanto grava. No fim o FM-1 reinicia no AMB-1 FM6 e o instalador confere a identidade
-(`FM-1_76010400`). `python fm1_install.py --info` mostra o que um FM-1 está rodando.
+(`FM-1_76010401`). `python fm1_install.py --info` mostra o que um FM-1 está rodando.
 
 **Voltar ao original:** o [instalador web do AMB-1](https://charlesvestal.github.io/fm1-amb/install/) tem "Back to
 the stock firmware" no fim da página, para qualquer FM-1, rode ele o que rodar: escolha o arquivo V15 e aperte o
@@ -90,7 +90,7 @@ Não sabe o que um botão faz? Segure-o por um segundo: aparece um cartão expli
 | EDIT | O próximo acorde, no começo do próximo compasso. Nas páginas da fita: um splice novo. |
 | HOME | A página Garden. |
 | ENV · ARP · LFO | As Voices 1, 2 e 3. De novo: as páginas PATCH, OPERATOR e MOD da voz, e volta. |
-| SEQ | A fita: Tape. De novo: Gene, Deck, Tape Mod 1, Tape Mod 2, e dá a volta. |
+| SEQ | A fita: Tape. De novo: Gene, Deck, Tape Mod, Tape Mod 2, e dá a volta. |
 | FX · GLO | As páginas Space e Setup. |
 | SEL | **Os dados.** Um toque: a página na tela é sorteada. Segurado com ENV, ARP, LFO, HOME, SEQ, FX ou GLO: a camada inteira (com HOME e SEQ, os loops e padrões crescem de novo também). Com EDIT: loops novos, os ajustes mantidos. Com SAVE: **init** (veja abaixo). Segurado sozinho um segundo: **desfaz** a última rolagem, init ou volta à receita. |
 | SELECT | A página anterior ou a próxima. Segure HOME e gire para o andamento. |
@@ -189,7 +189,7 @@ fita). Cada uma lembra como você a deixou. Segure SAVE 1,5 s para a peça volta
 ## 7. As páginas
 
 Uma página em cada botão, quatro valores nos KNOB 1–4; o SELECT passa por elas: Garden, Voice 1, 2, 3, Space, Setup,
-Tape, Gene, Deck, Tape Mod 1, Tape Mod 2. Cada voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
+Tape, Gene, Deck, Tape Mod, Tape Mod 2. Cada voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
 
 ### HOME: Garden
 
@@ -301,7 +301,8 @@ Rate; os cinco se somam; o arco os aprofunda quando o jardim está cheio e os ac
   **Metal** (os moduladores desafinados entre si), **Feedback**, **Decay** (os envelopes de cada nota nova),
   **Pitch** (±30 cents), **Space** (o estéreo), **All**, **Level** (um tremolo, até −10 dB), **LFO PM** (o vibrato
   do patch, mais fundo). E os de qualquer operador, **OP1**..**OP6**: **Level**, **Ratio**, **Fine**, **Atk**,
-  **Dec**, **Sus**, **Rel**.
+  **Dec**, **Sus**, **Rel**. E os próprios moduladores da voz: **M1**..**M5**, **depth** (±50) ou **rate** (±2
+  oitavas): um modulador movendo outro.
 - **Spread:** 100: cada nota do seu jeito. 0: as notas da voz se movem juntas.
 - **Fade:** a modulação entrando depois de cada nota, na hora (Off) até 8 segundos.
 - **Sync:** Free; Note (cada nota recomeça a forma); Tempo (o Rate é uma figura).
@@ -312,7 +313,7 @@ Rate; os cinco se somam; o arco os aprofunda quando o jardim está cheio e os ac
 ## 8. A fita
 
 Uma faixa de fita, 11,8 segundos, mono, inspirada na fita de um portastudio TASCAM e nos genes do Morphagene da Make
-Noise (a ideia, não o código deles). SEQ abre a **Tape**; de novo **Gene**, **Deck**, **Tape Mod 1**, **Tape Mod 2**, e
+Noise (a ideia, não o código deles). SEQ abre a **Tape**; de novo **Gene**, **Deck**, **Tape Mod**, **Tape Mod 2**, e
 dá a volta.
 
 ![A página Tape: um cassete com seus carretéis, a fita como uma tira com dois splices e o cursor; 4.2 / 11.8 s, FX BEFORE, 2 SPLICES; SOURCE Mix, DRY/WET 50, SOS 70, SPEED +1.00x](img/screen-tape.png "A página Tape")
@@ -326,7 +327,8 @@ gravados e os splices.
 | Tape | Source (Mix, Voice 1, 2, 3) | Dry/Wet | SOS | Speed (−2x .. Stop .. +2x) |
 | Gene | Gene (o splice inteiro .. 1/256) | Slide | Morph | Organize (splice 1–8) |
 | Deck | FX (Before, After) | Wow | Drive | Tone |
-| Tape Mod 1, 2 | Target | Depth | Rate | Shape |
+| Tape Mod | Mod (1–5) | Target | Depth | Rate |
+| Tape Mod 2 | Mod (1–5) | Shape | Sync | Smooth |
 
 **Gravar** (nessas três páginas):
 
@@ -357,13 +359,15 @@ espaço e toca seca ao lado; **After** a fita, ela grava o jardim seco e toca at
 
 ![A página Deck: FX Before, WOW 25, DRIVE 20, TONE 85](img/screen-deck.png "A página Deck")
 
-**Tape Mod 1 e 2:** dois moduladores dos ajustes da fita, como o MOD das vozes: **Target** (Speed, Gene, Slide, Morph,
-Dry/Wet, Tone, Wow, Drive, SOS, Organize), **Depth** (da faixa do ajuste, metade para cada lado em 100: no Speed,
-de −2x a +2x), **Rate** (de 60 s a um oitavo de segundo por ciclo), **Shape** (Sine, Triangle, Saw up, Saw down,
-Square, S&H, Walk, Chaos). Eles movem o ajuste enquanto a fita toca (e grava: Drive, SOS); o knob fica onde você o
-deixou. Cada peça tem o seu primeiro.
+**Tape Mod:** cinco moduladores dos ajustes da fita, como o MOD de uma voz (o KNOB 1 escolhe um, nas duas páginas):
+**Target** (Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize; ou a **profundidade** ou a
+**velocidade** de outro modulador, M1..M5), **Depth** (da faixa do ajuste, metade para cada lado em 100: no Speed, de
+−2x a +2x; na profundidade de um modulador ±50, na velocidade ±2 oitavas), **Rate** (de 60 s a um oitavo de segundo
+por ciclo; com Sync em Tempo, uma figura), **Shape** (Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos),
+**Sync** (Free, Tempo), **Smooth** (um deslize, de 2 a 500 ms). Eles movem o ajuste enquanto a fita toca (e grava:
+Drive, SOS); o knob fica onde você o deixou. Cada peça tem o seu primeiro.
 
-![A página Tape Mod 1: TARGET Morph, DEPTH 25, RATE 28s, SHAPE Sine](img/screen-tapemod.png "A página Tape Mod 1")
+![A página Tape Mod: MOD 1, TARGET Morph, DEPTH 25, RATE 28s](img/screen-tapemod.png "A página Tape Mod")
 
 ---
 
@@ -386,7 +390,7 @@ O que os knobs ajustam entra e sai como MIDI CC (sai com MIDI out ligado; o que 
 | --- | --- | --- |
 | 16 | 20–49 | os parâmetros 0–29 (as camadas, o espaço, o setup; uma fonte de patch pelo seu número) |
 | 16 | 50–61 | a fita: Source, Dry/Wet, SOS, Speed, Gene, Slide, Morph, Organize, FX, Wow, Drive, Tone |
-| 16 | 62–69 | os moduladores da fita: Target, Depth, Rate, Shape do primeiro, depois os do segundo |
+| 16 | 62–91 | os cinco moduladores da fita: Target, Depth, Rate, Shape, Sync, Smooth do primeiro, depois os do próximo |
 | 1, 2, 3 (as vozes) | 20 | o Index da voz |
 | 1, 2, 3 | 21–60 | seus cinco moduladores, oito cada: Depth, Rate, Shape, Target, Spread, Fade, Sync, Smooth |
 | 1, 2, 3 | 102–112 | como toca: Envelope, Gate, Role, Octave, Density, Pace, Glide, Attack, Decay, Sustain, Release |
@@ -508,8 +512,9 @@ Os padrões são os da Garden; cada peça tem os seus.
 | Gene | Organize | 1–8 | 1 |
 | Deck | FX | Before, After | Before |
 | Deck | Wow, Drive, Tone | 0–100 | 25, 20, 85 |
-| Tape Mod 1, 2 | Target | Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize | Slide (Garden), Morph |
-| Tape Mod 1, 2 | Depth, Rate, Shape | 0–100, 60 s – 0,12 s, as formas do MOD | 30 (o primeiro, Garden), 0 |
+| Tape Mod (×5) | Target | Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize, M1–M5 depth, M1–M5 rate | Slide (Garden), Morph, Gene, Tone, Speed |
+| Tape Mod (×5) | Depth, Rate, Shape | 0–100, 60 s – 0,12 s (Tempo: 8 compassos – 1/16), as formas do MOD | 30 (o primeiro, Garden), 0 |
+| Tape Mod (×5) | Sync, Smooth | Free, Tempo; 2–500 ms | Free, 2 ms |
 | PATCH de uma voz | Patch | os dezoito, depois as vozes dos bancos | Rhodes, Bell, Sine |
 | PATCH de uma voz | Algorithm, Feedback, LFO, Pitch EG, Transpose | como no DX7 | os do patch |
 | PATCH de uma voz | Index | −24 – +24 dB | 0 dB |
@@ -522,7 +527,7 @@ Os padrões são os da Garden; cada peça tem os seus.
 | MOD de uma voz (×5) | Depth | 0–100 | 20 (o primeiro), 0 |
 | MOD de uma voz (×5) | Rate | 0–100 (60 s – 0,12 s; Tempo: 8 compassos – 1/16) | 27 (11 s) |
 | MOD de uma voz (×5) | Shape | Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos, Env | Sine |
-| MOD de uma voz (×5) | Target | os dez da voz, depois os sete de cada operador | Timbre |
+| MOD de uma voz (×5) | Target | os dez da voz, os sete de cada operador, M1–M5 depth e rate | Timbre |
 | MOD de uma voz (×5) | Spread, Fade, Sync, Smooth | 0–100, Off – 8 s, Free/Note/Tempo, 2–500 ms | 100, Off, Free, 2 ms |
 | ALGORITHM | Modo | 8 modos, ou Custom | Dórico |
 

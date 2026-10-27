@@ -58,8 +58,8 @@ enum {
     P_VOX,                                            /* then each voice's own: EN_NVOX blocks of VX_N (P_VX) */
     P_PLAY = P_VOX + 3 * 42,                          /* then how each voice plays its notes: EN_NVOX of PL_N (P_PL) */
     P_TAPE = P_PLAY + 3 * 11,                         /* then the reel's (TP_*, P_RL) */
-    P_TMOD = P_TAPE + 12,                             /* then the reel's two modulators (TM_*, P_TM) */
-    P_NPARAMS = P_TMOD + 2 * 4
+    P_TMOD = P_TAPE + 12,                             /* then the reel's five modulators (TM_*, P_TM) */
+    P_NPARAMS = P_TMOD + 5 * 6
 };
 /* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
  * index and five generative modulators */
@@ -100,11 +100,13 @@ void en_upgrade(int16_t *par);
  * it, or after it, the reel through it), WOW (and flutter), DRIVE (onto tape), TONE (its highs) */
 enum { TP_SRC, TP_MIX, TP_SOS, TP_SPEED, TP_GENE, TP_SLIDE, TP_MORPH, TP_ORG, TP_FX, TP_WOW, TP_DRIVE, TP_TONE, TP_N };
 #define EN_REEL_N 260096u                         /* the reel's samples (22.05 kHz): 11.8 s */
-/* the reel's modulators: TARGET (one of its settings), DEPTH (of its range, half either way at 100), RATE (60 s ..
- * 0.12 s a cycle), SHAPE (the voices' MOD's) */
-#define EN_NTMOD 2
-enum { TM_TARGET, TM_DEPTH, TM_RATE, TM_SHAPE, TM_N };
-#define EN_NTMDEST 10                             /* Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize */
+/* the reel's modulators, five as a voice's: TARGET (one of its settings, or another modulator's depth or rate), DEPTH
+ * (of its range, half either way at 100), RATE (60 s .. 0.12 s a cycle; with SYNC Tempo a note value), SHAPE (the
+ * voices' MOD's), SYNC (Free, Tempo), SMOOTH (a glide, 2 .. 500 ms) */
+#define EN_NTMOD 5
+enum { TM_TARGET, TM_DEPTH, TM_RATE, TM_SHAPE, TM_SYNC, TM_SMOOTH, TM_N };
+#define EN_NTMSET 10                              /* Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize */
+#define EN_NTMDEST (EN_NTMSET + 2 * EN_NTMOD)     /* then M1..M5's depth, M1..M5's rate */
 #define P_TM(s, k) (P_TMOD + (s) * TM_N + TM_##k)
 #define P_RL(k) (P_TAPE + TP_##k)
 _Static_assert(P_TMOD == P_TAPE + TP_N, "the reel's");
@@ -207,7 +209,8 @@ enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD
        MOD_LFOPM, MOD_OP };
 /* then each operator's own, MOD_OP + (n - 1) * OPT_N + kind for operator n (1..6): */
 enum { OPT_LEVEL, OPT_RATIO, OPT_FINE, OPT_ATK, OPT_DEC, OPT_SUS, OPT_REL, OPT_N };
-#define EN_NMODDEST (MOD_OP + 6 * OPT_N)
+#define MOD_MSLOT (MOD_OP + 6 * OPT_N)            /* then the voice's own modulators: M1..M5's depth, M1..M5's rate */
+#define EN_NMODDEST (MOD_MSLOT + 2 * 5)
 /*   TIMBRE    the modulators' output level (+-12 dB): the FM index, brighter and darker
  *   RATIO     the modulators' frequency ratio, in harmonic steps up (x1, x2, x3, x4, x5), gliding 15 ms
  *   METAL     the modulators' ratio pulled apart (+-80 cents, one up, the next down): inharmonic sidebands
