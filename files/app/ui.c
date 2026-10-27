@@ -846,6 +846,12 @@ static void dice_voice(int v)                   /* a voice whole: its patch, how
 static void dice_roll(int b)                    /* SEL alone (b B_SEL), or held with button b */
 {
     int v;
+    if (b != B_SEL && b != B_EDIT) {             /* (a button with no layer: nothing rolled, the undo kept) */
+        for (v = 0; v < V_MAIN && VIEW_BTN[v] != b; v++)
+            ;
+        if (v >= V_MAIN)
+            return;
+    }
     dice_keep();
     if (b == B_SEL) {
         dice_page(ui.view);
@@ -942,22 +948,24 @@ static void reel_say(void)                     /* the reel as it is: recording, 
     }
     say("TAPE", t);
 }
-int project_reel_save(void);
 static void reel_button(int b)                  /* on the reel's pages: REC overdubs the splice picked (again: stop),
                                                  * EDIT records a new one at the end, SAVE keeps the reel too */
 {
+    if (project_reel_progress() >= 0) {         /* (the reel being saved: it stays as it is meanwhile) */
+        warn("SAVING", "THE REEL");
+        return;
+    }
     if (b == B_SAVE) {
         if (en_reel_state) {
             warn("STOP THE TAPE", "FIRST");
             return;
         }
-        say("SAVING", "THE REEL");
-        if (project_save() == 0 && project_reel_save() == 0) {
-            ui.dirty = 0;
-            say("SAVED", "PIECES AND REEL");
-        } else {
+        if (project_save() != 0 || project_reel_save() != 0) {
             warn("NOT SAVED", "FLASH ERROR");
+            return;
         }
+        ui.dirty = 0;
+        say("SAVING", "THE REEL");                /* (a sector a frame: reel_saving) */
         return;
     }
     if (b == B_EDIT) {
@@ -2367,9 +2375,31 @@ void ui_init(void)
     sp_tp.play_t = plat_ms();
 }
 
+static void reel_saving(void)                  /* the reel being saved: a sector a frame, how far it is */
+{
+    int r = project_reel_step(), pc;
+    char t[12];
+    if (r == 2) {
+        say("SAVED", "PIECES AND REEL");
+    } else if (r < 0) {
+        warn("REEL NOT SAVED", "FLASH ERROR");
+    } else if (r == 1 && (pc = project_reel_progress()) >= 0 && ui.frame % 8u == 0u) {
+        itoa_u((uint32_t)pc, t);
+        {
+            int k = 0;
+            while (t[k])
+                k++;
+            t[k++] = '%';
+            t[k] = 0;
+        }
+        say_as("SAVING THE REEL", t, 0);
+    }
+}
+
 void ui_frame(void)
 {
     input();
+    reel_saving();
     autosave();
     draw_header();
     draw_main();

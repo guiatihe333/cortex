@@ -103,6 +103,7 @@ static uint32_t rl_w;                            /* where it records */
 static int rl_spl;                               /* the splice recorded */
 static int rl_ep, rl_ei;                         /* the coder's state */
 static int16_t rl_old[RL_BLK];                   /* the block being written, as it was (sound on sound) */
+static int16_t rl_new[RL_BLK];                   /* and as it is written so far (what the genes read of it) */
 static float rl_d1, rl_d2;                       /* the 2:1 decimator's last two in */
 static uint8_t rl_half;
 
@@ -201,6 +202,7 @@ static void rl_put(float x)
         y = rl_drive(x);
     q = (int)(fm_clampf(y, -1.99f, 1.99f) * 16384.0f);
     q = rl_code(&rl_ep, &rl_ei, q);
+    rl_new[k] = (int16_t)rl_ep;
     if (rl_w & 1u)
         rl_nib[rl_w >> 1] = (uint8_t)((rl_nib[rl_w >> 1] & 15) | q << 4);
     else
@@ -270,7 +272,13 @@ static float rl_rand(void)
 static int16_t gene_at(gene_t *g, uint32_t i)    /* the tape's sample i, through the gene's two blocks */
 {
     const uint32_t b = i / RL_BLK;
-    int s = g->cb[0] == b + 1u ? 0 : g->cb[1] == b + 1u ? 1 : -1;
+    int s;
+    if (rl_rec && b == rl_w / RL_BLK) {          /* the block being recorded: as written so far, the rest as it was (its
+                                                  * bytes past the head are of the coder's old state: not decodable) */
+        const uint32_t k = i % RL_BLK;
+        return k < rl_w % RL_BLK ? rl_new[k] : rl_old[k];
+    }
+    s = g->cb[0] == b + 1u ? 0 : g->cb[1] == b + 1u ? 1 : -1;
     if (s < 0) {                                 /* an empty one, or the one further from b */
         const uint32_t d0 = g->cb[0] ? (g->cb[0] - 1u > b ? g->cb[0] - 1u - b : b - (g->cb[0] - 1u)) : 0xFFFFFFFFu,
                        d1 = g->cb[1] ? (g->cb[1] - 1u > b ? g->cb[1] - 1u - b : b - (g->cb[1] - 1u)) : 0xFFFFFFFFu;
@@ -302,6 +310,7 @@ static void gene_start(int k0, uint32_t s0, float L, float glen, float rate, int
     if (morph > 75)
         pan = (rl_rand() * 2.0f - 1.0f) * (float)(morph - 75) * 0.04f;
     g->on = 1;
+    g->cb[0] = g->cb[1] = 0u;                    /* (decoded afresh: what was recorded since is heard) */
     g->dir = rate >= 0.0f;
     g->pos = (float)s0 + st;
     g->pitch = pm;

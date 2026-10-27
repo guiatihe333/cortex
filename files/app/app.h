@@ -36,7 +36,9 @@ enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_NOBJ };
 /* the reel (amb.h en_reel_mem): its splices at REEL_BASE, its blocks' states a sector on, its samples three on; the
  * splices written last (a reel half written has none) */
 #define REEL_BASE 0xA7000u
-int project_reel_save(void);
+int project_reel_save(void);              /* starts saving the reel (-1: it already is) */
+int project_reel_step(void);              /* a sector more: 0 nothing to do, 1 going on, 2 done, -1 a flash error */
+int project_reel_progress(void);          /* 0..100 while saving, -1 not */
 void project_reel_load(void);
 int bank_voice(int voice, int src, uint8_t *p);   /* source src's patch for the voice (a bank's: from the flash);
                                                  * 0: none there */

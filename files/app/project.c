@@ -370,27 +370,70 @@ void project_apply(void)
 }
 
 /* ------------------------------------------------------------- the reel --- */
-static int flash_put(uint32_t off, const uint8_t *src, uint32_t n)   /* n bytes into the sectors from off, erased */
+/* the reel is saved a sector a call (project_reel_step, a UI frame each): an erase stops everything for a moment, and
+ * the main loop, between, keeps the watchdog fed and the screen showing how far it is. Its samples, its blocks' states,
+ * then its splices (the seal: a reel half saved has none) */
+static struct {
+    uint8_t stage;                               /* 0 none, 1 the seal's sector, 2 the samples, 3 the states, 4 the seal */
+    uint32_t k;
+} rsv;
+int project_reel_save(void)
+{
+    if (rsv.stage)
+        return -1;
+    rsv.stage = 1;
+    rsv.k = 0;
+    return 0;
+}
+static int sector_put(uint32_t off, const uint8_t *src, uint32_t n)   /* a sector erased, n (<= 4096) bytes into it */
 {
     uint32_t k;
-    for (k = 0; k < n; k += 4096u)
-        if (plat_data_erase(off + k))
-            return -1;
+    if (plat_data_erase(off))
+        return -1;
     for (k = 0; k < n; k += 256u)
         if (plat_data_write(off + k, src + k, n - k < 256u ? n - k : 256u))
             return -1;
     return 0;
 }
-int project_reel_save(void)                     /* its samples, its blocks' states, then its splices (the seal) */
+int project_reel_step(void)
 {
-    uint32_t n0, n1, n2;
-    const uint8_t *m = (const uint8_t *)en_reel_mem(0, &n0), *h = (const uint8_t *)en_reel_mem(1, &n1),
-                  *s = (const uint8_t *)en_reel_mem(2, &n2);
-    if (plat_data_erase(REEL_BASE))
+    uint32_t n;
+    const uint8_t *src;
+    int part = rsv.stage == 2 ? 2 : 1;
+    if (!rsv.stage)
+        return 0;
+    if (rsv.stage == 1) {
+        rsv.stage = plat_data_erase(REEL_BASE) ? 0 : 2;
+        return rsv.stage ? 1 : -1;
+    }
+    if (rsv.stage == 4) {
+        src = (const uint8_t *)en_reel_mem(0, &n);
+        rsv.stage = 0;
+        return plat_data_write(REEL_BASE, src, n) ? -1 : 2;
+    }
+    src = (const uint8_t *)en_reel_mem(part, &n);
+    if (rsv.k < n) {
+        const uint32_t base = REEL_BASE + (rsv.stage == 2 ? 0x3000u : 0x1000u);
+        if (sector_put(base + rsv.k, src + rsv.k, n - rsv.k < 4096u ? n - rsv.k : 4096u)) {
+            rsv.stage = 0;
+            return -1;
+        }
+        rsv.k += 4096u;
+        return 1;
+    }
+    rsv.stage++;
+    rsv.k = 0;
+    return 1;
+}
+int project_reel_progress(void)                 /* 0..100 while saving; -1 not saving */
+{
+    uint32_t n;
+    if (!rsv.stage)
         return -1;
-    if (flash_put(REEL_BASE + 0x3000u, s, n2) || flash_put(REEL_BASE + 0x1000u, h, n1))
-        return -1;
-    return plat_data_write(REEL_BASE, m, n0) ? -1 : 0;
+    if (rsv.stage != 2)
+        return rsv.stage < 2 ? 0 : 95;
+    en_reel_mem(2, &n);
+    return n ? (int)(rsv.k * 95u / (n + 4095u)) : 95;
 }
 void project_reel_load(void)                    /* at the start: the reel kept, if one is */
 {

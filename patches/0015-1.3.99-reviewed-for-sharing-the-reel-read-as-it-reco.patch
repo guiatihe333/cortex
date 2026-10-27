@@ -1,0 +1,413 @@
+From 6d7f6bcc4ce96bdfc77b8492e0741facb0188118 Mon Sep 17 00:00:00 2001
+From: AMB-1 FM6 <noreply@anthropic.com>
+Date: Mon, 26 Oct 2026 22:32:35 -0300
+Subject: [PATCH] 1.3.99: reviewed for sharing: the reel read as it records,
+ saved a sector a frame; its own identity
+
+- the reel: a gene reading the block being recorded reads it as written so far and the rest as it was (its bytes past
+  the head are of the coder's old state); a gene decodes afresh as it starts (what was recorded since is heard, no
+  gene hears a reel erased)
+- the reel saved a sector a UI frame (project_reel_step): the main loop between keeps the watchdog fed (8 s) and the
+  screen shows how far it is; REC and EDIT wait for it
+- the dice: SEL with a button that has no layer rolls nothing and keeps the undo
+- AMB-1 FM6's own package identity (FM-1_76XXYYZZ), its repository, an unofficial fork's credits; the manual's install
+  for this package; LICENSING: bank.c, reel.c, amb_syx.py, fm6_core.c's changes marked (Apache-2.0 4b), no DX7 voices
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ LICENSING.md          |  7 +++--
+ app/app.h             |  4 ++-
+ app/dsp/fm6_core.c    |  2 ++
+ app/dsp/reel.c        | 11 ++++++-
+ app/fm1.toml          |  8 +++---
+ app/project.c         | 67 +++++++++++++++++++++++++++++++++++--------
+ app/ui.c              | 42 +++++++++++++++++++++++----
+ docs/MANUAL.md        | 22 ++++++++------
+ tests/host/amb_test.c | 47 ++++++++++++++++++++++++++++++
+ 9 files changed, 176 insertions(+), 34 deletions(-)
+
+diff --git a/LICENSING.md b/LICENSING.md
+index 7157b4a..5fa2ea3 100644
+--- a/LICENSING.md
++++ b/LICENSING.md
+@@ -15,6 +15,7 @@ earlier stay under the GPL.
+ | --- | --- | --- |
+ | The platform: `base/` (boot, USB and USB audio, the TRS jack, storage, the update path, screen, panel, the screen reader, the host simulator and the browser emulator, build and install tools) | [fm1-base](https://github.com/charlesvestal/fm1-base) and [felucca-bsp](https://github.com/hugelton/felucca-bsp), from [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita (@kurogedelic), Hügelton Instruments, under MPL-2.0 with his permission ([felucca-bsp#4](https://github.com/hugelton/felucca-bsp/issues/4)) | MPL-2.0 |
+ | `app/` (`app.c`, `app.h`, `ui.c`, `project.c`, `host.c`, `dsp/amb.c` with its Dattorro plate from FoMni-1, `dsp/fm6_tables.h` made by `tools/gen_fm6_tables.py`), `web/app/`, `tests/`, `tools/` | AMB-1, Charles Vestal | MPL-2.0 |
++| AMB-1 FM6's own: `app/bank.c` (the DX7 banks over SysEx), `app/dsp/reel.c` (the reel: IMA ADPCM, after the public IMA/DVI algorithm; its genes after Make Noise's Morphagene, the idea only, no code), `tools/amb_syx.py`, and the changes through `app/` | AMB-1 FM6 | MPL-2.0 |
+ | The idea of a browser emulator for FM-1 firmware (fm1-base's emulator) | [Groove OS](https://www.groove-os.com/) by Peter Gombos, whose site runs its firmware in the browser; no code from it | credit only |
+ 
+ ## Third-party material
+@@ -23,11 +24,13 @@ earlier stay under the GPL.
+ | --- | --- | --- |
+ | Fonts: Barlow Semi Condensed (The Barlow Project Authors), Terminus (Dimitar Toshkov Zhekov) | SIL OFL 1.1 | `base/assets/fonts/` |
+ | JieLi AC79 SDK: `uboot.boot`, `cfg_tool.bin`, `eq_cfg_hw.bin` are read from your SDK checkout at build time and placed in the package; no SDK files are in this tree | Apache-2.0 | <https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK> |
+-| The FM6 engine of the voices (pad, bells, bass): msfa by Google Inc. and Pascal Gauthier, from [Dexed](https://github.com/asb2m10/dexed), as ported to integer C by Leo Kuroshita (Hügelton Instruments) and carried in [JIANT FM](https://github.com/juanjiant-bit/JIANT) by Juan Ignacio Antonucci (`firmware/src/fm6_core.c` at 8580aea), changed here to keep 64-bit multiplies out of line (its header says how). Only this file is taken: none of JIANT's or Felucca's GPL code (the FM6 engine around it, its factory patches, its table generator) is in this tree; AMB-1's patches and `tools/gen_fm6_tables.py` are written anew | Apache-2.0 | `app/dsp/fm6_core.c`, `LICENSES/Apache-2.0-msfa.txt` |
++| The FM6 engine of the voices (pad, bells, bass): msfa by Google Inc. and Pascal Gauthier, from [Dexed](https://github.com/asb2m10/dexed), as ported to integer C by Leo Kuroshita (Hügelton Instruments) and carried in [JIANT FM](https://github.com/juanjiant-bit/JIANT) by Juan Ignacio Antonucci (`firmware/src/fm6_core.c` at 8580aea), changed here to keep 64-bit multiplies out of line, and by AMB-1 FM6 to let a sounding note take its patch's edits (its header says how). Only this file is taken: none of JIANT's or Felucca's GPL code (the FM6 engine around it, its factory patches, its table generator) is in this tree; AMB-1's patches and `tools/gen_fm6_tables.py` are written anew | Apache-2.0 | `app/dsp/fm6_core.c`, `LICENSES/Apache-2.0-msfa.txt` |
++
++DX7 voices are not in this tree or in the firmware: the banks are the user's own, sent over USB (`tools/amb_syx.py`).
+ 
+ ## Trademarks
+ 
+-"Felucca" and "Hügelton Instruments" are names of Hügelton Instruments. "M-VAVE" and "FM-1" are trademarks of their
++"Felucca" and "Hügelton Instruments" are names of Hügelton Instruments. "M-VAVE" and "FM-1", "Yamaha" and "DX7", "Make Noise" and "Morphagene", "TASCAM" are trademarks of their
+ respective owners, used here only to say what hardware AMB-1 runs on. AMB-1 is independent firmware; it is not
+ affiliated with, endorsed by or supported by any of them.
+ 
+diff --git a/app/app.h b/app/app.h
+index 11e3917..1722eb3 100644
+--- a/app/app.h
++++ b/app/app.h
+@@ -36,7 +36,9 @@ enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_NOBJ };
+ /* the reel (amb.h en_reel_mem): its splices at REEL_BASE, its blocks' states a sector on, its samples three on; the
+  * splices written last (a reel half written has none) */
+ #define REEL_BASE 0xA7000u
+-int project_reel_save(void);
++int project_reel_save(void);              /* starts saving the reel (-1: it already is) */
++int project_reel_step(void);              /* a sector more: 0 nothing to do, 1 going on, 2 done, -1 a flash error */
++int project_reel_progress(void);          /* 0..100 while saving, -1 not */
+ void project_reel_load(void);
+ int bank_voice(int voice, int src, uint8_t *p);   /* source src's patch for the voice (a bank's: from the flash);
+                                                  * 0: none there */
+diff --git a/app/dsp/fm6_core.c b/app/dsp/fm6_core.c
+index 5d2a5c2..8a7131c 100644
+--- a/app/dsp/fm6_core.c
++++ b/app/dsp/fm6_core.c
+@@ -2,6 +2,8 @@
+  * Copyright 2012 Google Inc.
+  * Copyright 2016-2025 Pascal Gauthier.
+  * C port for Felucca (integer only, no float), 2026: Leo Kuroshita (@kurogedelic), Hügelton Instruments
++ * Modified for AMB-1 FM6, 2026: a sounding note takes its patch's edits (fm6_note_refresh, its key and velocity
++ * kept), a level offset per operator (fm6_note_compute's oplvl); each change marked "(AMB-1 FM6)"
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+diff --git a/app/dsp/reel.c b/app/dsp/reel.c
+index 450ab8b..32bda01 100644
+--- a/app/dsp/reel.c
++++ b/app/dsp/reel.c
+@@ -103,6 +103,7 @@ static uint32_t rl_w;                            /* where it records */
+ static int rl_spl;                               /* the splice recorded */
+ static int rl_ep, rl_ei;                         /* the coder's state */
+ static int16_t rl_old[RL_BLK];                   /* the block being written, as it was (sound on sound) */
++static int16_t rl_new[RL_BLK];                   /* and as it is written so far (what the genes read of it) */
+ static float rl_d1, rl_d2;                       /* the 2:1 decimator's last two in */
+ static uint8_t rl_half;
+ 
+@@ -201,6 +202,7 @@ static void rl_put(float x)
+         y = rl_drive(x);
+     q = (int)(fm_clampf(y, -1.99f, 1.99f) * 16384.0f);
+     q = rl_code(&rl_ep, &rl_ei, q);
++    rl_new[k] = (int16_t)rl_ep;
+     if (rl_w & 1u)
+         rl_nib[rl_w >> 1] = (uint8_t)((rl_nib[rl_w >> 1] & 15) | q << 4);
+     else
+@@ -270,7 +272,13 @@ static float rl_rand(void)
+ static int16_t gene_at(gene_t *g, uint32_t i)    /* the tape's sample i, through the gene's two blocks */
+ {
+     const uint32_t b = i / RL_BLK;
+-    int s = g->cb[0] == b + 1u ? 0 : g->cb[1] == b + 1u ? 1 : -1;
++    int s;
++    if (rl_rec && b == rl_w / RL_BLK) {          /* the block being recorded: as written so far, the rest as it was (its
++                                                  * bytes past the head are of the coder's old state: not decodable) */
++        const uint32_t k = i % RL_BLK;
++        return k < rl_w % RL_BLK ? rl_new[k] : rl_old[k];
++    }
++    s = g->cb[0] == b + 1u ? 0 : g->cb[1] == b + 1u ? 1 : -1;
+     if (s < 0) {                                 /* an empty one, or the one further from b */
+         const uint32_t d0 = g->cb[0] ? (g->cb[0] - 1u > b ? g->cb[0] - 1u - b : b - (g->cb[0] - 1u)) : 0xFFFFFFFFu,
+                        d1 = g->cb[1] ? (g->cb[1] - 1u > b ? g->cb[1] - 1u - b : b - (g->cb[1] - 1u)) : 0xFFFFFFFFu;
+@@ -302,6 +310,7 @@ static void gene_start(int k0, uint32_t s0, float L, float glen, float rate, int
+     if (morph > 75)
+         pan = (rl_rand() * 2.0f - 1.0f) * (float)(morph - 75) * 0.04f;
+     g->on = 1;
++    g->cb[0] = g->cb[1] = 0u;                    /* (decoded afresh: what was recorded since is heard) */
+     g->dir = rate >= 0.0f;
+     g->pos = (float)s0 + st;
+     g->pitch = pm;
+diff --git a/app/fm1.toml b/app/fm1.toml
+index 8933a3c..4503e46 100644
+--- a/app/fm1.toml
++++ b/app/fm1.toml
+@@ -1,6 +1,6 @@
+ # AMB-1's build settings (fm1-base's tools/build.py: ./build.sh)
+ name = "AMB"                   # the build's files: amb.fwsc, amb-X.Y.fwsc
+-id_prefix = "FM-1_7"           # package identity: dev FM-1_700, releases FM-1_7XXYYZZ (as AMB-1 0.9)
++id_prefix = "FM-1_76"          # package identity, AMB-1 FM6's own (AMB-1's is FM-1_7): releases FM-1_76XXYYZZ
+ usb_manufacturer = "AMB-1"
+ usb_product = "AMB-1 FM-1"
+ ble = false                    # AMB-1 never uses the radio
+@@ -10,7 +10,7 @@ words = "words.tsv"
+ include = ["dsp"]
+ o2 = ["dsp/amb.c"]             # the engine, at -O2
+ # the site
+-tagline = "A generative ambient machine for the FM-1"
+-repo = "https://github.com/charlesvestal/fm1-amb"
++tagline = "AMB-1 FM6: AMB-1 with FM6 voices, DX7 banks and a reel of tape (unofficial)"
++repo = "https://github.com/guiatihe333/lostgear/tree/claude/amb1-jiant-fm6/fm1-amb-fm6"
+ licence = "MPL-2.0"
+-credits = "Built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
++credits = "An unofficial fork of AMB-1 by Charles Vestal; the FM6 core is msfa (Dexed), by way of JIANT FM. Built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
+diff --git a/app/project.c b/app/project.c
+index 8fe7af8..eca8f54 100644
+--- a/app/project.c
++++ b/app/project.c
+@@ -370,27 +370,70 @@ void project_apply(void)
+ }
+ 
+ /* ------------------------------------------------------------- the reel --- */
+-static int flash_put(uint32_t off, const uint8_t *src, uint32_t n)   /* n bytes into the sectors from off, erased */
++/* the reel is saved a sector a call (project_reel_step, a UI frame each): an erase stops everything for a moment, and
++ * the main loop, between, keeps the watchdog fed and the screen showing how far it is. Its samples, its blocks' states,
++ * then its splices (the seal: a reel half saved has none) */
++static struct {
++    uint8_t stage;                               /* 0 none, 1 the seal's sector, 2 the samples, 3 the states, 4 the seal */
++    uint32_t k;
++} rsv;
++int project_reel_save(void)
++{
++    if (rsv.stage)
++        return -1;
++    rsv.stage = 1;
++    rsv.k = 0;
++    return 0;
++}
++static int sector_put(uint32_t off, const uint8_t *src, uint32_t n)   /* a sector erased, n (<= 4096) bytes into it */
+ {
+     uint32_t k;
+-    for (k = 0; k < n; k += 4096u)
+-        if (plat_data_erase(off + k))
+-            return -1;
++    if (plat_data_erase(off))
++        return -1;
+     for (k = 0; k < n; k += 256u)
+         if (plat_data_write(off + k, src + k, n - k < 256u ? n - k : 256u))
+             return -1;
+     return 0;
+ }
+-int project_reel_save(void)                     /* its samples, its blocks' states, then its splices (the seal) */
++int project_reel_step(void)
+ {
+-    uint32_t n0, n1, n2;
+-    const uint8_t *m = (const uint8_t *)en_reel_mem(0, &n0), *h = (const uint8_t *)en_reel_mem(1, &n1),
+-                  *s = (const uint8_t *)en_reel_mem(2, &n2);
+-    if (plat_data_erase(REEL_BASE))
+-        return -1;
+-    if (flash_put(REEL_BASE + 0x3000u, s, n2) || flash_put(REEL_BASE + 0x1000u, h, n1))
++    uint32_t n;
++    const uint8_t *src;
++    int part = rsv.stage == 2 ? 2 : 1;
++    if (!rsv.stage)
++        return 0;
++    if (rsv.stage == 1) {
++        rsv.stage = plat_data_erase(REEL_BASE) ? 0 : 2;
++        return rsv.stage ? 1 : -1;
++    }
++    if (rsv.stage == 4) {
++        src = (const uint8_t *)en_reel_mem(0, &n);
++        rsv.stage = 0;
++        return plat_data_write(REEL_BASE, src, n) ? -1 : 2;
++    }
++    src = (const uint8_t *)en_reel_mem(part, &n);
++    if (rsv.k < n) {
++        const uint32_t base = REEL_BASE + (rsv.stage == 2 ? 0x3000u : 0x1000u);
++        if (sector_put(base + rsv.k, src + rsv.k, n - rsv.k < 4096u ? n - rsv.k : 4096u)) {
++            rsv.stage = 0;
++            return -1;
++        }
++        rsv.k += 4096u;
++        return 1;
++    }
++    rsv.stage++;
++    rsv.k = 0;
++    return 1;
++}
++int project_reel_progress(void)                 /* 0..100 while saving; -1 not saving */
++{
++    uint32_t n;
++    if (!rsv.stage)
+         return -1;
+-    return plat_data_write(REEL_BASE, m, n0) ? -1 : 0;
++    if (rsv.stage != 2)
++        return rsv.stage < 2 ? 0 : 95;
++    en_reel_mem(2, &n);
++    return n ? (int)(rsv.k * 95u / (n + 4095u)) : 95;
+ }
+ void project_reel_load(void)                    /* at the start: the reel kept, if one is */
+ {
+diff --git a/app/ui.c b/app/ui.c
+index 6e56385..20d0028 100644
+--- a/app/ui.c
++++ b/app/ui.c
+@@ -846,6 +846,12 @@ static void dice_voice(int v)                   /* a voice whole: its patch, how
+ static void dice_roll(int b)                    /* SEL alone (b B_SEL), or held with button b */
+ {
+     int v;
++    if (b != B_SEL && b != B_EDIT) {             /* (a button with no layer: nothing rolled, the undo kept) */
++        for (v = 0; v < V_MAIN && VIEW_BTN[v] != b; v++)
++            ;
++        if (v >= V_MAIN)
++            return;
++    }
+     dice_keep();
+     if (b == B_SEL) {
+         dice_page(ui.view);
+@@ -942,22 +948,24 @@ static void reel_say(void)                     /* the reel as it is: recording,
+     }
+     say("TAPE", t);
+ }
+-int project_reel_save(void);
+ static void reel_button(int b)                  /* on the reel's pages: REC overdubs the splice picked (again: stop),
+                                                  * EDIT records a new one at the end, SAVE keeps the reel too */
+ {
++    if (project_reel_progress() >= 0) {         /* (the reel being saved: it stays as it is meanwhile) */
++        warn("SAVING", "THE REEL");
++        return;
++    }
+     if (b == B_SAVE) {
+         if (en_reel_state) {
+             warn("STOP THE TAPE", "FIRST");
+             return;
+         }
+-        say("SAVING", "THE REEL");
+-        if (project_save() == 0 && project_reel_save() == 0) {
+-            ui.dirty = 0;
+-            say("SAVED", "PIECES AND REEL");
+-        } else {
++        if (project_save() != 0 || project_reel_save() != 0) {
+             warn("NOT SAVED", "FLASH ERROR");
++            return;
+         }
++        ui.dirty = 0;
++        say("SAVING", "THE REEL");                /* (a sector a frame: reel_saving) */
+         return;
+     }
+     if (b == B_EDIT) {
+@@ -2367,9 +2375,31 @@ void ui_init(void)
+     sp_tp.play_t = plat_ms();
+ }
+ 
++static void reel_saving(void)                  /* the reel being saved: a sector a frame, how far it is */
++{
++    int r = project_reel_step(), pc;
++    char t[12];
++    if (r == 2) {
++        say("SAVED", "PIECES AND REEL");
++    } else if (r < 0) {
++        warn("REEL NOT SAVED", "FLASH ERROR");
++    } else if (r == 1 && (pc = project_reel_progress()) >= 0 && ui.frame % 8u == 0u) {
++        itoa_u((uint32_t)pc, t);
++        {
++            int k = 0;
++            while (t[k])
++                k++;
++            t[k++] = '%';
++            t[k] = 0;
++        }
++        say_as("SAVING THE REEL", t, 0);
++    }
++}
++
+ void ui_frame(void)
+ {
+     input();
++    reel_saving();
+     autosave();
+     draw_header();
+     draw_main();
+diff --git a/docs/MANUAL.md b/docs/MANUAL.md
+index 7807095..32f0728 100644
+--- a/docs/MANUAL.md
++++ b/docs/MANUAL.md
+@@ -29,16 +29,22 @@ and a scale, take notes out, put them back, and let it grow.
+ 
+ ## 1. Install
+ 
+-**Try it first:** the [AMB-1 emulator](https://charlesvestal.github.io/fm1-amb/emu/) runs the same
+-code in the browser, with sound, played with the mouse, a touch screen or the keyboard.
++This is **AMB-1 FM6**, an unofficial fork of AMB-1: its own package (identity `FM-1_76…`), not the one on AMB-1's
++site. The FM-1 must run M-VAVE's firmware **V15** first (a V16 goes back to V15 with M-VAVE's updater, M-UPGRADE).
+ 
+-**Install:** open the [web installer](https://charlesvestal.github.io/fm1-amb/install/) in Chrome or
+-Edge, connect the FM-1 with a USB data cable and press Install. Don't unplug it while it's
+-writing; when it finishes, the FM-1 restarts into AMB-1.
++**Install:** with Python 3 and its MIDI modules (`pip install mido python-rtmidi`; on Windows the Visual C++
++runtime too), connect the FM-1 with a USB data cable and run, from the folder the package came in:
+ 
+-**Go back:** "Back to the stock firmware", at the bottom of the same page, puts M-VAVE's firmware
+-back (download the FM-1 V15 file from the link there, choose it, press the button). M-VAVE's own
+-updater, M-UPGRADE, works too.
++```
++python fm1_install.py amb-1.3.99-fm6.fwsc
++```
++
++Don't unplug it while it's writing; when it finishes, the FM-1 restarts into AMB-1 FM6 and the script checks the
++identity it reports. `python fm1_install.py --info` shows what an FM-1 runs.
++
++**Go back:** AMB-1's [web installer](https://charlesvestal.github.io/fm1-amb/install/) has "Back to the stock
++firmware" at the bottom, for any FM-1 whatever it runs (download the FM-1 V15 file from the link there, choose it,
++press the button). M-VAVE's own updater, M-UPGRADE, works too.
+ 
+ > Installing other firmware is at your own risk. If the FM-1 ever won't start, see
+ > [Recovering an FM-1 that won't start](#recovering-an-fm-1-that-won-t-start).
+diff --git a/tests/host/amb_test.c b/tests/host/amb_test.c
+index eba1af8..cf1a425 100644
+--- a/tests/host/amb_test.c
++++ b/tests/host/amb_test.c
+@@ -998,6 +998,53 @@ int main(void)
+         en_play(1);
+     }
+ 
++    /* the reel, read as it is recorded: silence overdubbed (SOS 0) never sounds louder than what it replaces (no burst
++     * from the block being written, its bytes past the head of the coder's old state); after an erase, silence recorded plays silent (no gene hears what was there before) */
++    {
++        float before, during, ghost;
++        en_init();
++        en_set(P_ECHO, 0);
++        en_set(P_REVERB, 0);
++        en_play(1);
++        run(3.0f);
++        en_reel(EN_REEL_NEW);
++        run(2.0f);
++        en_reel(EN_REEL_DUB);
++        en_set(P_PAD, 0);
++        en_set(P_BELLS, 0);
++        en_set(P_BASS, 0);
++        en_set(P_PULSE, 0);
++        en_set(P_RL(MIX), 100);
++        en_set(P_RL(GENE), 30);
++        en_set(P_RL(MORPH), 70);
++        en_set(P_RL(SOS), 0);
++        run(2.0f);
++        peak = 0.0f;
++        run(3.0f);
++        before = peak;
++        en_reel(EN_REEL_DUB);                    /* silence over it (SOS 0: replacing it), the genes reading on */
++        run(0.2f);
++        peak = 0.0f;
++        run(3.0f);
++        during = peak;
++        en_reel(EN_REEL_DUB);
++        run(0.2f);
++        CHECK(during < 1.05f * before, "overdubbing silence: %f (before %f)", (double)during, (double)before);
++        en_reel(EN_REEL_ERASE);
++        run(0.1f);
++        en_reel(EN_REEL_NEW);                    /* silence onto the reel */
++        run(2.0f);
++        en_reel(EN_REEL_DUB);
++        run(1.0f);
++        peak = 0.0f;
++        run(2.0f);
++        ghost = peak;
++        CHECK(ghost < 0.05f * before, "after an erase, silence recorded: %f (what was there %f)", (double)ghost,
++              (double)before);
++        en_init();
++        en_play(1);
++    }
++
+     /* stop: the tails die away */
+     for (i = 0; i < P_NPARAMS; i++)
+         en_set(i, en_param_info(i)->def);
+-- 
+2.53.0
+

@@ -29,16 +29,22 @@ and a scale, take notes out, put them back, and let it grow.
 
 ## 1. Install
 
-**Try it first:** the [AMB-1 emulator](https://charlesvestal.github.io/fm1-amb/emu/) runs the same
-code in the browser, with sound, played with the mouse, a touch screen or the keyboard.
+This is **AMB-1 FM6**, an unofficial fork of AMB-1: its own package (identity `FM-1_76…`), not the one on AMB-1's
+site. The FM-1 must run M-VAVE's firmware **V15** first (a V16 goes back to V15 with M-VAVE's updater, M-UPGRADE).
 
-**Install:** open the [web installer](https://charlesvestal.github.io/fm1-amb/install/) in Chrome or
-Edge, connect the FM-1 with a USB data cable and press Install. Don't unplug it while it's
-writing; when it finishes, the FM-1 restarts into AMB-1.
+**Install:** with Python 3 and its MIDI modules (`pip install mido python-rtmidi`; on Windows the Visual C++
+runtime too), connect the FM-1 with a USB data cable and run, from the folder the package came in:
 
-**Go back:** "Back to the stock firmware", at the bottom of the same page, puts M-VAVE's firmware
-back (download the FM-1 V15 file from the link there, choose it, press the button). M-VAVE's own
-updater, M-UPGRADE, works too.
+```
+python fm1_install.py amb-1.3.99-fm6.fwsc
+```
+
+Don't unplug it while it's writing; when it finishes, the FM-1 restarts into AMB-1 FM6 and the script checks the
+identity it reports. `python fm1_install.py --info` shows what an FM-1 runs.
+
+**Go back:** AMB-1's [web installer](https://charlesvestal.github.io/fm1-amb/install/) has "Back to the stock
+firmware" at the bottom, for any FM-1 whatever it runs (download the FM-1 V15 file from the link there, choose it,
+press the button). M-VAVE's own updater, M-UPGRADE, works too.
 
 > Installing other firmware is at your own risk. If the FM-1 ever won't start, see
 > [Recovering an FM-1 that won't start](#recovering-an-fm-1-that-won-t-start).
