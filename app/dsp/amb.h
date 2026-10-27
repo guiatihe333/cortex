@@ -43,7 +43,6 @@ extern const char *const EN_MODE_NAME[EN_NMODES];
 extern const uint16_t EN_MODE_POOL[EN_NMODES];
 extern const char *const EN_NOTE_NAME[12];
 extern const uint8_t EN_LOOP_LEN[EN_NLOOP];
-extern const uint8_t EN_DRUM_N[EN_NDRUM];
 
 /* parameters: value ranges in en_param_info() */
 enum {
@@ -59,7 +58,8 @@ enum {
     P_VOX,                                            /* then each voice's own: EN_NVOX blocks of VX_N (P_VX) */
     P_PLAY = P_VOX + 3 * 42,                          /* then how each voice plays its notes: EN_NVOX of PL_N (P_PL) */
     P_TAPE = P_PLAY + 3 * 11,                         /* then the reel's (TP_*, P_RL) */
-    P_NPARAMS = P_TAPE + 12
+    P_TMOD = P_TAPE + 12,                             /* then the reel's two modulators (TM_*, P_TM) */
+    P_NPARAMS = P_TMOD + 2 * 4
 };
 /* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
  * index and five generative modulators */
@@ -100,8 +100,15 @@ void en_upgrade(int16_t *par);
  * it, or after it, the reel through it), WOW (and flutter), DRIVE (onto tape), TONE (its highs) */
 enum { TP_SRC, TP_MIX, TP_SOS, TP_SPEED, TP_GENE, TP_SLIDE, TP_MORPH, TP_ORG, TP_FX, TP_WOW, TP_DRIVE, TP_TONE, TP_N };
 #define EN_REEL_N 260096u                         /* the reel's samples (22.05 kHz): 11.8 s */
+/* the reel's modulators: TARGET (one of its settings), DEPTH (of its range, half either way at 100), RATE (60 s ..
+ * 0.12 s a cycle), SHAPE (the voices' MOD's) */
+#define EN_NTMOD 2
+enum { TM_TARGET, TM_DEPTH, TM_RATE, TM_SHAPE, TM_N };
+#define EN_NTMDEST 10                             /* Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize */
+#define P_TM(s, k) (P_TMOD + (s) * TM_N + TM_##k)
 #define P_RL(k) (P_TAPE + TP_##k)
-_Static_assert(P_NPARAMS == P_TAPE + TP_N, "the reel's");
+_Static_assert(P_TMOD == P_TAPE + TP_N, "the reel's");
+_Static_assert(P_NPARAMS == P_TMOD + EN_NTMOD * TM_N, "the reel's modulators");
 enum { EN_REEL_NEW = 1, EN_REEL_DUB, EN_REEL_ERASE };
 void en_reel(int op);                             /* a new splice at the end; overdub the one picked (again: stop); erase */
 extern volatile uint8_t en_reel_state, en_reel_nspl;   /* 0 resting, 1 recording a new splice, 2 overdubbing; splices */
@@ -109,6 +116,8 @@ extern volatile uint32_t en_reel_len, en_reel_w;  /* samples recorded (22.05 kHz
 extern volatile float en_reel_pos;                /* the cursor in the splice playing, 0..1 */
 extern volatile uint32_t en_reel_s0[8], en_reel_s1[8];   /* each splice's first sample, one past its last */
 extern volatile int32_t en_reel_gene[4];          /* where each gene reads (a sample of the reel); -1 none */
+extern volatile float en_reel_level;              /* how loud the reel plays */
+extern volatile float en_reel_mod[EN_NTMOD];      /* each modulator now, -1 .. 1 times its depth */
 void *en_reel_mem(int part, uint32_t *n);         /* the reel's memory: 0 its splices, 1 its blocks' states, 2 its
                                                    * samples recorded (3: all of them), for saving and loading */
 int en_reel_valid(void);                          /* after loading: 1 a reel, 0 none (then empty) */
@@ -176,12 +185,8 @@ extern volatile float en_tempo;                   /* the tempo playing: Tempo's,
 extern volatile uint8_t en_loop_pos[EN_NLOOP];
 extern volatile int8_t en_loop_note[EN_NLOOP][EN_LOOP_MAX];   /* -1 rest, else the slot's offset */
 extern volatile float en_loop_glow[EN_NLOOP];  /* 0..1: a bell just rang from this loop */
-extern volatile uint8_t en_drum_pos[EN_NDRUM];
-extern volatile uint32_t en_drum_pat[EN_NDRUM];/* bit i: a hit on step i */
-extern volatile float en_drum_glow[EN_NDRUM];
 extern volatile uint32_t en_bars;              /* sixteenths played since start (for tests) */
 extern volatile float en_arc;                  /* the arc, -1 sparse .. +1 full (times Motion) */
-extern volatile uint8_t en_pulse_rest;         /* the pulse is sitting a few bars out */
 extern volatile uint8_t en_pad_note[EN_NPAD];  /* the note each voice sings now (MIDI) */
 extern volatile float en_pad_amp[EN_NPAD];     /* and how loud */
 
