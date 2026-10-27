@@ -868,7 +868,7 @@ int main(void)
         en_set(P_PULSE, 0);
         en_set(P_ECHO, 0);
         en_set(P_REVERB, 0);
-        en_set(P_RL(LEVEL), 100);
+        en_set(P_RL(MIX), 100);
         run(3.0f);
         peak = 0.0f;
         bad = 0;
@@ -918,7 +918,7 @@ int main(void)
         en_set(P_ECHO, 0);
         en_set(P_REVERB, 0);
         en_set(P_RL(SRC), 3);
-        en_set(P_RL(LEVEL), 0);                  /* (not heard while it records: the bass alone, live) */
+        en_set(P_RL(MIX), 0);                  /* (not heard while it records: the bass alone, live) */
         en_set(P_PL(VOX_BASS, PL_ENV), ENV_AMB);  /* (one note held: a steady pitch) */
         en_set(P_DRIFT, 100);
         en_play(1);
@@ -929,7 +929,7 @@ int main(void)
             if (t) {                             /* the reel back, the bass silenced */
                 en_reel(EN_REEL_DUB);
                 en_set(P_BASS, 0);
-                en_set(P_RL(LEVEL), 100);
+                en_set(P_RL(MIX), 100);
                 run(1.0f);
             }
             zc[t] = 0;
@@ -944,6 +944,56 @@ int main(void)
         }
         CHECK(zc[0] > 100 && labs(zc[1] - zc[0]) < zc[0] / 20, "the reel's pitch: %ld crossings back, %ld live", zc[1],
               zc[0]);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.3.98. MIX (dry/wet): at Wet the garden falls silent (the reel stopped: what is left is the space's tails), at
+     * the middle both; FX after the reel: the reel goes through the reverb (its tail, the reel stopped, louder than with
+     * the space before it, where the reel is dry) */
+    {
+        float both, wet, tail[2];
+        int f;
+        en_init();
+        en_play(1);
+        run(3.0f);
+        en_reel(EN_REEL_NEW);
+        run(2.0f);
+        en_reel(EN_REEL_DUB);
+        run(1.0f);
+        peak = 0.0f;
+        run(1.0f);
+        both = peak;
+        en_set(P_RL(SPEED), 50);                 /* the reel stopped; Wet: the garden out too */
+        en_set(P_RL(MIX), 100);
+        run(4.0f);
+        peak = 0.0f;
+        run(1.0f);
+        wet = peak;
+        CHECK(wet < 0.2f * both, "Wet, the reel stopped: %f (both %f)", (double)wet, (double)both);
+        en_set(P_PAD, 0);                        /* the garden silent, its tails gone */
+        en_set(P_BELLS, 0);
+        en_set(P_BASS, 0);
+        en_set(P_PULSE, 0);
+        en_set(P_ECHO, 0);
+        en_set(P_SIZE, 30);
+        run(12.0f);
+        for (f = 0; f < 2; f++) {               /* the reel alone, the reverb full: its tail */
+            en_set(P_RL(FX), f);
+            en_set(P_RL(MIX), 50);
+            en_set(P_REVERB, 100);
+            en_set(P_RL(SPEED), 75);
+            run(3.0f);
+            en_set(P_RL(SPEED), 50);
+            run(0.3f);
+            peak = 0.0f;
+            run(0.5f);
+            tail[f] = peak;
+            en_set(P_REVERB, 0);
+            run(8.0f);
+        }
+        CHECK(tail[1] > 2.0f * tail[0], "FX after: the reel's reverb tail %f (before %f)", (double)tail[1],
+              (double)tail[0]);
         en_init();
         en_play(1);
     }

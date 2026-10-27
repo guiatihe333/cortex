@@ -22,17 +22,17 @@
  * the bass) has NSUB more, in three groups (SUB_*), with no button of their own: its page's button pressed again goes
  * to the next group (the page it was left on) and from the last back to the layer's page; SELECT steps through the
  * voice's own pages; the voice's button stays lit on them */
-enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_TAPE, V_GENE, V_MAIN };
+enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_PULSE, V_SPACE, V_SETUP, V_TAPE, V_GENE, V_DECK, V_MAIN };
 enum { S_VOICE, S_PLAY, S_ADSR, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
 #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
 #define NGROUP 3
 static const uint8_t GROUP0[NGROUP + 1] = {S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
 static const char *const MAIN_NAME[V_MAIN] = {"Garden", "Voice 1", "Voice 2", "Voice 3", "Pulse", "Space", "Setup",
-                                              "Tape", "Gene"};
+                                              "Tape", "Gene", "Deck"};
 static const char *const SUB_NAME[NSUB] = {"Patch", "Play", "ADSR", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
-static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO, B_SEQ, B_SEQ};
-static int tape_view(int v) { return v == V_TAPE || v == V_GENE; }   /* the reel's pages (SEQ again, and again) */
+static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_SEQ, B_FX, B_GLO, B_SEQ, B_SEQ, B_SEQ};
+static int tape_view(int v) { return v == V_TAPE || v == V_GENE || v == V_DECK; }   /* the reel's (SEQ again) */
 static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
 static int view_vox(int v)                     /* the voice a page is of (its layer's or its own); -1 none */
 {
@@ -79,8 +79,9 @@ static const uint16_t MAIN_KNOB[V_MAIN][4] = {
     {P_PULSE, P_HITS, P_SWING, P_HATS},
     {P_ECHO, P_ETIME, P_REVERB, P_SIZE},
     {P_ROOT, P_TUNE, P_MIDI, K_LEDS},
-    {P_RL(SRC), P_RL(LEVEL), P_RL(SOS), P_RL(SPEED)},
+    {P_RL(SRC), P_RL(MIX), P_RL(SOS), P_RL(SPEED)},
     {P_RL(GENE), P_RL(SLIDE), P_RL(MORPH), P_RL(ORG)},
+    {P_RL(FX), P_RL(WOW), P_RL(DRIVE), P_RL(TONE)},
 };
 static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_SRC, KV(ALG), KV(FB), K_NONE},          /* (INDEX: P_VX, put in below) */
@@ -107,8 +108,9 @@ static const char *const MAIN_LABEL[V_MAIN][4] = {
     {"Level", "Hits", "Swing", "Hats"},
     {"Echo", "Echo time", "Reverb", "Size"},
     {"Root", "Tune", "MIDI out", "Lights"},
-    {"Source", "Level", "SOS", "Speed"},
+    {"Source", "Dry/Wet", "SOS", "Speed"},
     {"Gene", "Slide", "Morph", "Organize"},
+    {"FX", "Wow", "Drive", "Tone"},
 };
 static const char *const SUB_LABEL[NSUB][4] = {
     {"Patch", "Algorithm", "Feedback", "Index"},
@@ -752,7 +754,7 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
     case V_TAPE: {                              /* the tape: a level, a sound on sound, a speed (1x, -1x, or about) */
         static const int8_t SPEED[6] = {75, 75, 25, 62, 88, 38};
         const int sp = SPEED[dice(0, 5)];
-        dice_par(P_RL(LEVEL), 50, 90);
+        dice_par(P_RL(MIX), 30, 80);
         dice_par(P_RL(SOS), 30, 90);
         dice_par(P_RL(SPEED), sp, sp);
         break;
@@ -762,6 +764,12 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
         dice_par(P_RL(SLIDE), 0, 100);
         dice_par(P_RL(MORPH), 20, 95);
         dice_par(P_RL(ORG), 0, en_reel_nspl ? (int)en_reel_nspl - 1 : 0);
+        break;
+    case V_DECK:                                /* the deck: the space before or after, its wow, drive and tone */
+        dice_par(P_RL(FX), 0, 1);
+        dice_par(P_RL(WOW), 0, 60);
+        dice_par(P_RL(DRIVE), 0, 70);
+        dice_par(P_RL(TONE), 40, 100);
         break;
     default: {                                  /* SETUP: a new key (the root, a mode) */
         int m = dice(0, EN_NMODES - 1);
@@ -981,7 +989,7 @@ static void button(int b)
 {
     int v;
     if (b == B_SEQ && (ui.view == V_PULSE || tape_view(ui.view))) {   /* SEQ again: the tape, the genes, the pulse */
-        set_view(ui.view == V_PULSE ? V_TAPE : ui.view == V_TAPE ? V_GENE : V_PULSE);
+        set_view(ui.view == V_PULSE ? V_TAPE : ui.view == V_TAPE ? V_GENE : ui.view == V_GENE ? V_DECK : V_PULSE);
         if (tape_view(ui.view))
             reel_say();
         return;
@@ -1600,7 +1608,7 @@ static int help_lines(int b, const char *l[HELP_LINES])
     case B_ENV: L("VOICE 1"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
     case B_ARP: L("VOICE 2"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
     case B_LFO: L("VOICE 3"); L("LEVEL, ROLE, OCTAVE,"); L(" DENSITY"); L("AGAIN: PATCH, OPERATOR, MOD"); break;
-    case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); L("AGAIN: TAPE, GENE"); break;
+    case B_SEQ: L("THE PULSE"); L("LEVEL, HITS, SWING, HATS"); L("AGAIN: TAPE, GENE, DECK"); break;
     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); break;
     case B_EDIT: L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); L("TAPE: A NEW SPLICE"); break;
@@ -1626,6 +1634,103 @@ static void draw_help(void)
         text_c(120, 56 + k * 20, &FONT_S, l[k] + (l[k][0] == ' '), K_TEXT);
 }
 
+/* the reel's pages: a cassette (its two spools winding with the tape: the left full at the reel's start, spokes
+ * turning at SPEED, either way), the reel below as a strip (its splices, the one playing bright, the cursor in it,
+ * each gene where it reads, the record head), and how much is recorded */
+static float tape_ang;                           /* the spools' turn, in 1/24ths */
+static int tape_speed(void)                      /* SPEED as the engine has it, in hundredths (+-200) */
+{
+    const int v = proj.par[P_RL(SPEED)];
+    return v >= 73 && v <= 77 ? 100 : v >= 23 && v <= 27 ? -100 : v >= 48 && v <= 52 ? 0 : (v - 50) * 4;
+}
+static void cv_bigdisc(int32_t cx, int32_t cy, int32_t r, uint16_t c)   /* a filled circle of any radius */
+{
+    int32_t dy, hw = r;
+    for (dy = 0; dy <= r; dy++) {
+        while (hw > 0 && hw * hw + dy * dy > r * r)
+            hw--;
+        cv_rect(cx - hw, cy - dy, 2 * hw + 1, 1, c);
+        if (dy)
+            cv_rect(cx - hw, cy + dy, 2 * hw + 1, 1, c);
+    }
+}
+static void draw_spool(int32_t cx, int32_t cy, int32_t r, int turn)
+{
+    int k;
+    cv_bigdisc(cx, cy, 30, K_PANEL);
+    cv_bigdisc(cx, cy, r, mix(K_BASS_T, K_BASS, 6));   /* the tape wound on it */
+    cv_bigdisc(cx, cy, 11, K_PANEL);
+    for (k = 0; k < 3; k++) {                    /* three spokes */
+        int32_t x0, y0, x1, y1;
+        polar(cx, cy, 4.0f, turn + k * 8, 24, &x0, &y0);
+        polar(cx, cy, 10.0f, turn + k * 8, 24, &x1, &y1);
+        cv_line(x0, y0, x1, y1, K_TEXT);
+    }
+    cv_disc(cx, cy, 3, K_TEXT);
+}
+static void draw_tape(void)
+{
+    const uint32_t len = en_reel_len, n = en_reel_nspl;
+    const int org = proj.par[P_RL(ORG)] < (int)n ? proj.par[P_RL(ORG)] : (int)n - 1;
+    const float filled = (float)len / (float)EN_REEL_N;
+    float at = 0.0f;
+    char t[24];
+    int k;
+    if (n > 0u && org >= 0)                      /* the cursor in the reel: where the spools stand */
+        at = ((float)en_reel_s0[org] + en_reel_pos * (float)(en_reel_s1[org] - en_reel_s0[org])) / (float)EN_REEL_N;
+    if (en_reel_state)
+        at = (float)en_reel_w / (float)EN_REEL_N;
+    draw_spool(72, 50, 12 + (int32_t)(16.0f * (1.0f - at)), (int)tape_ang % 24);
+    draw_spool(168, 50, 12 + (int32_t)(16.0f * at), (int)tape_ang % 24);
+    cv_line(72, 80, 168, 80, K_DIM);             /* the tape between, past the heads */
+    cv_round(110, 74, 20, 10, 3, en_reel_state ? K_ACC : K_DIM);
+    {                                            /* the reel as a strip: 16 .. 224 */
+        const int32_t x0 = 16, w = 208, y = 100, hgt = 14;
+        cv_round(x0, y, w, hgt, 3, K_LINE);
+        for (k = 0; k < (int)n; k++) {
+            int32_t a = x0 + (int32_t)((float)en_reel_s0[k] * (float)w / (float)EN_REEL_N),
+                    b = x0 + (int32_t)((float)en_reel_s1[k] * (float)w / (float)EN_REEL_N);
+            if (b < a + 2)
+                b = a + 2;
+            cv_rect(a, y + 2, b - a - 1, hgt - 4, k == org ? K_BASS : (k & 1 ? K_BASS_T : mix(K_BASS_T, K_BASS, 5)));
+        }
+        for (k = 0; k < 4; k++)                  /* the genes */
+            if (en_reel_gene[k] >= 0) {
+                int32_t gx = x0 + (int32_t)((float)en_reel_gene[k] * (float)w / (float)EN_REEL_N);
+                cv_rect(gx, y - 3, 2, 4, K_ACC);
+            }
+        if (n > 0u && !en_reel_state) {          /* the cursor */
+            int32_t cxp = x0 + (int32_t)(at * (float)w);
+            cv_rect(cxp, y - 2, 1, hgt + 4, K_TEXT);
+        }
+        if (en_reel_state) {                     /* the record head */
+            int32_t rx = x0 + (int32_t)((float)en_reel_w * (float)w / (float)EN_REEL_N);
+            cv_rect(rx - 1, y - 3, 3, hgt + 6, K_ACC);
+        }
+    }
+    {                                            /* recorded / the reel, and what it does */
+        const uint32_t ds = (uint32_t)(filled * 118.0f + 0.5f);
+        int i = 0;
+        itoa_u(ds / 10u, t);
+        while (t[i])
+            i++;
+        t[i++] = '.';
+        t[i++] = (char)('0' + ds % 10u);
+        t[i] = 0;
+        cv_text(16, 120, &FONT_XS, t, K_TEXT);
+        cv_text(16 + text_w(&FONT_XS, t) + 2, 120, &FONT_XS, "/ 11.8 s", K_DIM);
+        if (en_reel_state)
+            text_c(120, 120, &FONT_XS, en_reel_state == 1 ? "RECORDING" : "OVERDUB", K_ACC);
+        else if (n)
+            text_c(120, 120, &FONT_XS, proj.par[P_RL(FX)] ? "FX AFTER" : "FX BEFORE", K_DIM);
+        else
+            text_c(120, 120, &FONT_XS, "EMPTY: EDIT RECORDS", K_DIM);
+        itoa_u(n, t);
+        cv_text(224 - text_w(&FONT_XS, "SPLICES") - 2 - text_w(&FONT_XS, t), 120, &FONT_XS, t, K_TEXT);
+        cv_text(224 - text_w(&FONT_XS, "SPLICES"), 120, &FONT_XS, "SPLICES", K_DIM);
+    }
+}
+
 static void draw_main(void)
 {
     uint32_t h = hash(2166136261u, pool_abs() | (uint32_t)proj.par[P_ROOT] << 12 | (uint32_t)en_frozen << 16 | proj.piece << 24 |
@@ -1640,6 +1745,28 @@ static void draw_main(void)
             draw_help();
             cv_blit(0, MAIN_Y);
         }
+        return;
+    }
+    if (tape_view(ui.view)) {                   /* the reel's pages: the reel */
+        if (en_playing && en_reel_nspl)
+            tape_ang += (float)tape_speed() * 0.006f;
+        if (en_reel_state)
+            tape_ang += 0.6f;
+        while (tape_ang < 0.0f)
+            tape_ang += 24.0f;
+        while (tape_ang >= 240.0f)
+            tape_ang -= 240.0f;
+        h = hash(0x5441504Eu, (uint32_t)tape_ang | en_reel_state << 8 | en_reel_nspl << 10 |
+                                  (uint32_t)proj.par[P_RL(ORG)] << 14 | (uint32_t)proj.par[P_RL(FX)] << 18);
+        h = hash(h, en_reel_len ^ en_reel_w << 1 ^ (uint32_t)(en_reel_pos * 200.0f) << 20);
+        for (i = 0; i < 4u; i++)
+            h = hash(h, (uint32_t)en_reel_gene[i] >> 9);
+        if (h == ui.sig[1])
+            return;
+        ui.sig[1] = h;
+        cv_begin(240, MAIN_H, K_BG);
+        draw_tape();
+        cv_blit(0, MAIN_Y);
         return;
     }
     for (i = 0; i < EN_NPAD; i++)

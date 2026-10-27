@@ -19,6 +19,7 @@
 #define RL_BLK 256
 #define RL_NBLK 1016
 #define RL_N (RL_BLK * RL_NBLK)                 /* 260096 samples: 11.8 s */
+_Static_assert(RL_N == EN_REEL_N, "amb.h's reel length");
 #define RL_SR 22050.0f
 #define RL_NSPL 8
 #define RL_NG 4                                  /* genes sounding at once */
@@ -38,6 +39,8 @@ static rl_meta_t rl_meta;
 volatile uint8_t en_reel_state, en_reel_nspl;    /* 0 resting, 1 recording a new splice, 2 overdubbing */
 volatile uint32_t en_reel_len, en_reel_w;        /* samples recorded; where it records */
 volatile float en_reel_pos;                      /* the cursor in the splice playing, 0..1 */
+volatile uint32_t en_reel_s0[8], en_reel_s1[8];
+volatile int32_t en_reel_gene[4] = {-1, -1, -1, -1};
 
 /* ---------------------------------------------------------------- the coder --- */
 static const int16_t RL_STEP[89] = {
@@ -105,6 +108,11 @@ static uint8_t rl_half;
 
 static void rl_publish(void)
 {
+    int k;
+    for (k = 0; k < RL_NSPL; k++) {
+        en_reel_s0[k] = k < (int)rl_meta.nspl ? rl_meta.s0[k] : 0u;
+        en_reel_s1[k] = k < (int)rl_meta.nspl ? rl_meta.s1[k] : 0u;
+    }
     en_reel_state = rl_rec;
     en_reel_nspl = (uint8_t)rl_meta.nspl;
     en_reel_len = rl_meta.len;
@@ -173,6 +181,12 @@ static void reel_erase(void)
     rl_publish();
 }
 
+static float rl_drive(float x)                   /* DRIVE: onto tape, saturating sooner (its small gain kept, 1.1) */
+{
+    const float k = 1.1f + 0.04f * (float)par[P_RL(DRIVE)];
+    return fm_tanhf(x * k) * (1.1f / k) * (1.0f + 0.01f * (float)par[P_RL(DRIVE)]);
+}
+
 /* one sample at 22.05 kHz onto the reel */
 static void rl_put(float x)
 {
@@ -182,9 +196,9 @@ static void rl_put(float x)
     if (rl_stopping)
         y = o;                                   /* (finishing the block as it was) */
     else if (rl_rec == 2)
-        y = fm_tanhf(x * 1.1f) + o * (float)par[P_RL(SOS)] * 0.01f;
+        y = rl_drive(x) + o * (float)par[P_RL(SOS)] * 0.01f;
     else
-        y = fm_tanhf(x * 1.1f);
+        y = rl_drive(x);
     q = (int)(fm_clampf(y, -1.99f, 1.99f) * 16384.0f);
     q = rl_code(&rl_ep, &rl_ei, q);
     if (rl_w & 1u)
@@ -244,7 +258,7 @@ typedef struct {
     int16_t cache[2][RL_BLK];
 } gene_t;
 static gene_t gn[RL_NG];
-static float rl_cursor, rl_spawn, rl_gain, rl_wow, rl_flut;
+static float rl_cursor, rl_spawn, rl_gain, rl_wow, rl_flut, rl_lpl, rl_lpr;
 static uint32_t rl_rng = 0x1234567u;
 static float rl_rand(void)
 {
@@ -303,7 +317,11 @@ static void gene_start(int k0, uint32_t s0, float L, float glen, float rate, int
 static void reel_play(float *l, float *r, uint32_t n)
 {
     const int k = par[P_RL(ORG)], morph = par[P_RL(MORPH)];
-    const float lvl = (float)(par[P_RL(LEVEL)] * par[P_RL(LEVEL)]) * 0.0001f,
+    const float lvl = fm_minf((float)par[P_RL(MIX)] * 0.02f, 1.0f),   /* (MIX: the reel full from the middle up) */
+                wd = (float)par[P_RL(WOW)] * 0.0001f,
+                tc = par[P_RL(TONE)] >= 100 ? 1.0f
+                                            : 1.0f - fm_expf(-FM_TWO_PI * 1500.0f *
+                                                             fm_exp2f((float)par[P_RL(TONE)] * 0.03f) / EN_SR),
                 tgt = en_playing && rl_meta.nspl && lvl > 0.0f ? 1.0f : 0.0f, rate = rl_speed();
     uint32_t j, s0, s1;
     float L, glen, iv;
@@ -312,8 +330,10 @@ static void reel_play(float *l, float *r, uint32_t n)
         l[j] = r[j] = 0.0f;
     if (!rl_meta.nspl || (tgt <= 0.0f && rl_gain < 1e-4f)) {
         rl_gain = 0.0f;
-        for (i = 0; i < RL_NG; i++)
+        for (i = 0; i < RL_NG; i++) {
             gn[i].on = 0;
+            en_reel_gene[i] = -1;
+        }
         en_reel_pos = 0.0f;
         return;
     }
@@ -340,7 +360,7 @@ static void reel_play(float *l, float *r, uint32_t n)
             rl_wow -= 1.0f;
         if (rl_flut >= 1.0f)
             rl_flut -= 1.0f;
-        w = 1.0f + 0.0025f * sine(rl_wow) + 0.0008f * sine(rl_flut);
+        w = 1.0f + wd * (sine(rl_wow) + 0.32f * sine(rl_flut));   /* WOW: 25 is 0.25 % and 0.08 % */
         step = rate * 0.5f * w;
         if (rate != 0.0f) {                      /* the cursor runs with the tape; a gene each interval */
             rl_cursor += step;
@@ -398,17 +418,23 @@ static void reel_play(float *l, float *r, uint32_t n)
             sl += x * g->gl;
             sr += x * g->gr;
         }
-        l[j] = sl * lvl * rl_gain;
-        r[j] = sr * lvl * rl_gain;
+        rl_lpl += (sl - rl_lpl) * tc;            /* TONE: 1.5 kHz .. open */
+        rl_lpr += (sr - rl_lpr) * tc;
+        l[j] = rl_lpl * lvl * rl_gain;
+        r[j] = rl_lpr * lvl * rl_gain;
     }
+    rl_lpl = fm_flush(rl_lpl);
+    rl_lpr = fm_flush(rl_lpr);
     en_reel_pos = rl_cursor / L;
+    for (i = 0; i < RL_NG; i++)
+        en_reel_gene[i] = gn[i].on ? (int32_t)gn[i].pos : -1;
 }
 
 static void reel_init(void)                      /* (the reel itself stays: a reboot loads it, en_reel_mem) */
 {
     int i;
     rl_rec = rl_stopping = 0;
-    rl_cursor = rl_spawn = rl_gain = 0.0f;
+    rl_cursor = rl_spawn = rl_gain = rl_lpl = rl_lpr = 0.0f;
     rl_d1 = rl_d2 = 0.0f;
     rl_half = 0;
     for (i = 0; i < RL_NG; i++) {

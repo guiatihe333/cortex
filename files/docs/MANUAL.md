@@ -277,13 +277,23 @@ The top right of this page shows how much of the FM-1's time the sound takes (CP
 
 ### The reel: a track of tape with genes
 
-SEQ on the Pulse page opens **Tape**, again **Gene**, again back to the Pulse. The reel is one track of tape, 11.8 s,
+SEQ on the Pulse page opens **Tape**, again **Gene**, again **Deck**, again back to the Pulse. On these pages the
+screen shows the reel instead of the garden: a cassette (its spools winding, turning at Speed), the reel as a strip
+(its splices, the one playing bright, the cursor, the genes, the record head), the seconds recorded and the splices. The reel is one track of tape, 11.8 s,
 mono (22 kHz, 4-bit ADPCM, as a cassette's lo-fi), after a Tascam portastudio's tape and Make Noise's Morphagene.
 
 | Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
 | --- | --- | --- | --- | --- |
-| Tape | Source (Mix, Voice 1, 2, 3, Pulse) | Level | SOS | Speed (−2x .. Stop .. +2x) |
+| Tape | Source (Mix, Voice 1, 2, 3, Pulse) | Dry/Wet | SOS | Speed (−2x .. Stop .. +2x) |
 | Gene | Gene (the whole splice .. 1/256) | Slide | Morph | Organize (splice 1–8) |
+| Deck | FX (Before, After) | Wow | Drive | Tone |
+
+- **Dry/Wet:** the garden against the reel: Dry the garden alone, 50 both full, Wet the reel alone (the garden goes on
+  being recorded, unheard, as a send).
+- **FX:** where the space (echo and reverb) is. **Before** the reel: the garden through it, the reel records it with
+  its space (Source Mix) and plays dry beside it. **After** the reel: the reel records the garden dry and plays through
+  the space, as the garden does.
+- **Wow** (and flutter), **Drive** (onto tape: saturating sooner), **Tone** (the reel's highs, 1.5 kHz .. open).
 
 On these two pages:
 
@@ -300,7 +310,7 @@ silent), with a little wow and flutter. **Morph**: gaps between the genes (0–4
 four overlapping (55–100), spread across the field (past 75) and an octave up or down now and then (past 85). The
 reel goes to the mix and a little to the echo and reverb. The echo's tape is 2.8 s now (it gave the reel its room).
 
-MIDI: the reel's eight on channel 16, CC 50–57.
+MIDI: the reel's twelve on channel 16, CC 50–61.
 
 ### The three voices, alike
 
