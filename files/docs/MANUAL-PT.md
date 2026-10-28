@@ -32,23 +32,29 @@ operador por operador, seus próprios bancos DX7), três vozes iguais, os dados 
 
 ## 1. Instalar
 
-Este é o **AMB-1 FM6**, com pacote próprio (identidade `FM-1_76…`), diferente do que está no site do AMB-1. O FM-1
-precisa estar antes com o firmware da M-VAVE versão **V15**: se estiver na V16, volte para a V15 com o atualizador
-da M-VAVE, o M-UPGRADE, usando o arquivo V15 (`firmware-original-M-VAVE/FM-1_V15.fwsc` na pasta do pacote).
+Este é o **AMB-1 FM6**, com pacote próprio (identidade `FM-1_76…`), diferente do que está no site do AMB-1. Ele se
+instala sobre o firmware **V15** da M-VAVE (ou sobre um AMB-1 FM6 anterior).
 
-**Instalar:** com o Python 3 e seus módulos de MIDI (`pip install mido python-rtmidi`; no Windows, também o Visual
-C++ Redistributable), ligue o FM-1 com um cabo USB de dados e rode, na pasta do pacote:
+**Instalar com um clique:** ligue o FM-1 com um cabo USB de dados direto no computador, abra
+**[amb1-fm6.netlify.app](https://amb1-fm6.netlify.app)** (ou o `INSTALAR.html` da pasta do pacote) no Chrome ou no
+Edge, clique em **Instalar** e permita o MIDI quando o navegador pedir. Não desconecte enquanto grava; o FM-1 reinicia
+sozinho no AMB-1 FM6. Um FM-1 no firmware Open da M-VAVE recebe a V15 antes, no mesmo clique. Na V16, volte antes para
+a V15 com o atualizador da M-VAVE, o M-UPGRADE, usando o arquivo V15 (o link está no alto da página, e na pasta do
+pacote em `firmware-original-M-VAVE/FM-1_V15.fwsc`).
+
+**Instalar pelo terminal:** com o Python 3 e seus módulos de MIDI (`pip install mido python-rtmidi`; no Windows,
+também o Visual C++ Redistributable), na pasta do pacote:
 
 ```
-python fm1_install.py amb-1.4.1-fm6.fwsc
+python fm1_install.py amb-1.4.7-fm6.fwsc
 ```
 
-Não desconecte enquanto grava. No fim o FM-1 reinicia no AMB-1 FM6 e o instalador confere a identidade
-(`FM-1_76010401`). `python fm1_install.py --info` mostra o que um FM-1 está rodando.
+No fim ele confere a identidade que o FM-1 informa (`FM-1_76010407`). `python fm1_install.py --info` mostra o que um
+FM-1 está rodando.
 
-**Voltar ao original:** o [instalador web do AMB-1](https://charlesvestal.github.io/fm1-amb/install/) tem "Back to
-the stock firmware" no fim da página, para qualquer FM-1, rode ele o que rodar: escolha o arquivo V15 e aperte o
-botão. O M-UPGRADE da M-VAVE também funciona.
+**Voltar ao original:** a página do instalador tem "Voltar ao firmware original" no fim, com a V15 da M-VAVE dentro:
+um clique. Isso **apaga tudo o que o AMB-1 FM6 guardou** no FM-1: as peças, a fita gravada e os bancos DX7 que você
+mandou (os de fábrica voltam quando o AMB-1 FM6 for instalado de novo). O M-UPGRADE da M-VAVE também funciona.
 
 > Instalar outro firmware é por sua conta e risco. Se o FM-1 não ligar, veja
 > [Recuperar um FM-1 que não liga](#recuperar-um-fm-1-que-n-o-liga).
@@ -88,11 +94,11 @@ Não sabe o que um botão faz? Segure-o por um segundo: aparece um cartão expli
 | PLAY | Cresce / descansa. Descansando, os sons somem devagar e o reverb se apaga. Verde enquanto cresce. |
 | REC | **Freeze**: o acorde fica parado e o reverb soa sem fim. De novo: descongela. Nas páginas da fita: grava (veja [A fita](#s8)). |
 | EDIT | O próximo acorde, no começo do próximo compasso. Nas páginas da fita: um splice novo. |
-| HOME | A página Garden. |
+| HOME | A página Partiture (a partitura). |
 | ENV · ARP · LFO | As Voices 1, 2 e 3. De novo: as páginas PATCH, OPERATOR e MOD da voz, e volta. |
 | SEQ | A fita: Tape. De novo: Gene, Deck, Tape Mod, Tape Mod 2, e dá a volta. |
 | FX · GLO | As páginas Space e Setup. |
-| SEL | **Os dados.** Um toque: a página na tela é sorteada. Segurado com ENV, ARP, LFO, HOME, SEQ, FX ou GLO: a camada inteira (com HOME e SEQ, os loops e padrões crescem de novo também). Com EDIT: loops novos, os ajustes mantidos. Com SAVE: **init** (veja abaixo). Segurado sozinho um segundo: **desfaz** a última rolagem, init ou volta à receita. |
+| SEL | **Os dados.** Um toque: todos os knobs da página na tela são sorteados (numa página de operador, os seis operadores; numa página MOD ou Tape Mod, os cinco moduladores, de dois a quatro ligados, os outros em Off). Segurado com ENV, ARP, LFO, HOME, SEQ, FX ou GLO: a camada inteira (com HOME e SEQ, os loops e padrões crescem de novo também). Com EDIT: loops novos, os ajustes mantidos. Com SAVE: **init** (veja abaixo). Segurado sozinho um segundo: **desfaz** a última rolagem, init ou volta à receita. |
 | SELECT | A página anterior ou a próxima. Segure HOME e gire para o andamento. |
 | ALGORITHM | Modo: jônio, dórico, frígio, lídio, mixolídio, eólio, pentatônica maior e menor. Editar a escala pelas teclas a torna Custom. |
 | PRESETS | A peça (veja [As peças](#s6)). |
@@ -116,21 +122,27 @@ outro botão tira o cartão; soltar depois dele não faz mais nada.
 
 ## 4. A tela
 
-![A página Garden: Garden, D Dorian, andamento 72; o anel com o acorde Dm7, as barras de nível à esquerda](img/screen-garden.png "A página Garden (HOME)")
+![A página Partiture: a peça Garden, D Dorian, andamento 72; a partitura com o acorde Dm7, as barras de nível à esquerda](img/screen-garden.png "A página Partiture (HOME)")
 
-- **Linha de cima:** a peça, sua tônica e seu modo. À direita, uma luz lenta do tempo, o andamento (EXT quando segue
-  o clock MIDI) e um ponto quando há mudanças não salvas. As mensagens ("ADDED F#", "VOICE 2 / PATCH") aparecem aqui
-  por um momento.
-- **Canto de cima à direita do jardim:** uma barra fina enche até o próximo acorde; congelado, diz "held".
-- **O anel:** as doze notas, Dó no alto. As notas da escala em verde, as do acorde mais escuras, a tônica circulada.
-  O nome do acorde no meio.
-- **Em volta:** os quatro loops da primeira voz em Loops, de 13, 17, 23 e 29 passos, de dentro para fora. Os pontos
-  azuis têm nota; uma agulha percorre cada loop e brilha quando toca.
-- **Esquerda:** os níveis como soam: o acorde (verde), os loops (azul), o baixo (oliva), a fita (escuro).
+- **Linha de cima:** a peça, sua tônica e seu modo (e um cursor de terminal piscando), até onde couberem. À direita,
+  uma luz lenta do tempo, o andamento (EXT quando segue o clock MIDI) e um ponto quando há mudanças não salvas. As
+  mensagens ("ADDED F#", "VOICE 2 / PATCH") aparecem aqui por um momento.
+- **Canto de cima à direita:** uma barra fina enche até o próximo acorde; congelado, diz "held".
+- **A partitura** (Partiture, Space e Setup): uma pauta dupla, claves de sol e de fá, rolando da direita para a
+  esquerda, uns sete segundos dela. Cada nota que uma voz toca fica na sua altura (uma cruzinha no sustenido, linhas
+  suplementares fora das pautas), na cor da sua voz; enquanto soa, fica acesa na linha de leitura, à direita, com um
+  rastro até onde começou. O nome do acorde fica acima da linha.
+- **As páginas das vozes:** o som de cada voz num osciloscópio (veja [as vozes](#env-arp-lfo-voices-1-2-3)).
+- **Esquerda:** os níveis como soam, em dB: o de cada voz (**1**, **2**, **3**) e o da mixagem (**M**), antes do volume.
+- **O visual:** cada página nas cores de um disco do Aphex Twin, desenhadas de novo (sem nomes nem marcas): a
+  Partiture em preto e branco com alguns detalhes dourados, a Voice 1 ferrugem e ouro, a Voice 2 laranja quente no
+  preto, a Voice 3 verde, a Space um céu azul, a Setup cinza-aço e amarelo de alerta (e um hex dump ao vivo dos
+  ajustes), as páginas da fita papel bege e os círculos da contracapa do Volume II. Linhas de varredura, marcas de
+  registro, e a cada acorde novo um glitch por um instante.
 - **Embaixo:** o nome da página e um ponto para cada uma das onze páginas, depois seus quatro valores, um por knob: um
   dial (ou, para uma chave, suas posições) e o valor. O que você está girando acende.
 
-Nas páginas da fita, o jardim dá lugar à fita (veja [A fita](#s8)).
+Nas páginas da fita, a partitura dá lugar à fita (veja [A fita](#s8)).
 
 ![A página Space com ECHO TIME aceso enquanto gira](img/screen-turning.png "Girando Echo time na página Space")
 
@@ -188,10 +200,10 @@ fita). Cada uma lembra como você a deixou. Segure SAVE 1,5 s para a peça volta
 
 ## 7. As páginas
 
-Uma página em cada botão, quatro valores nos KNOB 1–4; o SELECT passa por elas: Garden, Voice 1, 2, 3, Space, Setup,
+Uma página em cada botão, quatro valores nos KNOB 1–4; o SELECT passa por elas: Partiture, Voice 1, 2, 3, Space, Setup,
 Tape, Gene, Deck, Tape Mod, Tape Mod 2. Cada voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
 
-### HOME: Garden
+### HOME: Partiture
 
 - **Tempo:** 30 a 120 (também HOME + SELECT, de qualquer página).
 - **Evolve:** o quanto o jardim é inquieto. Em 0 os loops se repetem exatamente; mais alto, notas mudam ou trocam de
@@ -201,7 +213,14 @@ Tape, Gene, Deck, Tape Mod, Tape Mod 2. Cada voz tem mais páginas próprias (EN
 
 ### ENV · ARP · LFO: Voices 1, 2, 3
 
-![A página da Voice 2: LEVEL 65, ROLE Loops, OCTAVE 0, DENSITY 40](img/screen-voice.png "A página de uma voz")
+![A página da Voice 2: seu som no osciloscópio, um Lissajous; LEVEL 65, ROLE Loops, OCTAVE 0, DENSITY 40](img/screen-voice.png "A página de uma voz")
+
+As páginas de cada voz mostram o próprio som dela num osciloscópio, pego quando sobe passando pelo zero e ajustado ao
+seu pico, sobre uma grade, o traço anterior se apagando como num tubo de fósforo: a **Voice 1** no tempo (Y-T), a
+**Voice 2** contra ela mesma um quarto de ciclo depois (X-Y, um Lissajous), a **Voice 3** enrolada num círculo
+(polar). De vez em quando um glitch rasga o traço.
+
+![A página da Voice 1: seu som no tempo, no osciloscópio](img/screen-scope.png "O osciloscópio da Voice 1")
 
 As três iguais:
 
@@ -229,7 +248,8 @@ As três iguais:
 - **MIDI out:** ligado ou desligado.
 - **Lights:** On: as teclas acendem a escala e os botões apagados brilham de leve. Keys: só as teclas. Off.
 
-O canto de cima à direita desta página mostra quanto do tempo do FM-1 o som está usando (CPU).
+O canto de cima à direita desta página mostra quanto do tempo do FM-1 o som está usando (CPU) e, depois de um
+**X**, quantas vezes desde que ligou o som não coube no tempo (uma sobrecarga: veja [Problemas](#s11)).
 
 ### ENV, ARP ou LFO de novo: as páginas de uma voz
 
@@ -249,7 +269,7 @@ em que foi deixado. O alto da tela diz qual voz e qual página. Cada peça guard
 | LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24 semitons, como no DX7) |
 | Pitch EG | Stage (1–4) | Rate | Level (±50) | Osc sync |
 
-![A página Play de uma voz: ENVELOPE Patch, GATE 25%, PACE 1/4, GLIDE 260ms](img/screen-play.png "A página Play")
+![A página Play de uma voz: ENVELOPE Patch, GATE 70%, PACE 11s, GLIDE 260ms](img/screen-play.png "A página Play")
 
 - **Patch:** primeiro os dezoito próprios do AMB-1 FM6 (pads: Rhodes, Voices, Glass, Strings, Warm, Halo; sinos:
   Bell, moldado pelo tom da peça, Vibes, Marimba, Tubular, Kalimba, Celesta; baixos: Sine, Round, Pick, Sub, Reed,
@@ -297,7 +317,7 @@ Rate; os cinco se somam; o arco os aprofunda quando o jardim está cheio e os ac
 - **Shape:** Sine, Triangle, Saw up, Saw down, Square; S&H (um valor aleatório por ciclo, mantido); Walk (deslizando
   entre valores aleatórios); Chaos (o mapa logístico, saltando); Env (a partir do começo de cada nota, caindo até nada
   ao longo de um ciclo).
-- **Target:** da voz: **Timbre** (o nível dos moduladores, ±12 dB), **Ratio** (passos harmônicos, ×1 a ×5),
+- **Target:** **Off** (o padrão: o modulador não faz nada), ou da voz: **Timbre** (o nível dos moduladores, ±12 dB), **Ratio** (passos harmônicos, ×1 a ×5),
   **Metal** (os moduladores desafinados entre si), **Feedback**, **Decay** (os envelopes de cada nota nova),
   **Pitch** (±30 cents), **Space** (o estéreo), **All**, **Level** (um tremolo, até −10 dB), **LFO PM** (o vibrato
   do patch, mais fundo). E os de qualquer operador, **OP1**..**OP6**: **Level**, **Ratio**, **Fine**, **Atk**,
@@ -316,7 +336,7 @@ Uma faixa de fita, 11,8 segundos, mono, inspirada na fita de um portastudio TASC
 Noise (a ideia, não o código deles). SEQ abre a **Tape**; de novo **Gene**, **Deck**, **Tape Mod**, **Tape Mod 2**, e
 dá a volta.
 
-![A página Tape: um cassete com seus carretéis, a fita como uma tira com dois splices e o cursor; 4.2 / 11.8 s, FX BEFORE, 2 SPLICES; SOURCE Mix, DRY/WET 50, SOS 70, SPEED +1.00x](img/screen-tape.png "A página Tape")
+![A página Tape: um cassete com seus carretéis, a fita como uma tira com dois splices e o cursor; 7.7 / 11.8 s, FX BEFORE, 2 SPLICES; SOURCE Mix, DRY/WET 50, SOS 70, SPEED +1.00x](img/screen-tape.png "A página Tape")
 
 Nessas páginas a tela mostra a fita: um cassete cujos carretéis enchem, esvaziam e giram no Speed, a fita como uma
 tira (os splices, o que está tocando em destaque, o cursor, onde cada gene lê, a cabeça de gravação), os segundos
@@ -349,7 +369,7 @@ Stop silencia), com **Wow** e flutter. **Morph**: silêncios entre os genes (0�
 dois a quatro sobrepostos (55–100), espalhados no estéreo (acima de 75), uma oitava acima ou abaixo de vez em quando
 (acima de 85). **Tone** escurece (de 1,5 kHz a aberto).
 
-![A página Gene: GENE 100, SLIDE 0, MORPH 45, ORGANIZE 3](img/screen-gene.png "A página Gene")
+![A página Gene: GENE 100, SLIDE 0, MORPH 45, ORGANIZE 2](img/screen-gene.png "A página Gene")
 
 **Dry/Wet:** o jardim contra a fita: Dry, só o jardim; 50, os dois cheios; Wet, só a fita (o jardim continua sendo
 gravado, sem ser ouvido, como um envio).
@@ -360,14 +380,14 @@ espaço e toca seca ao lado; **After** a fita, ela grava o jardim seco e toca at
 ![A página Deck: FX Before, WOW 25, DRIVE 20, TONE 85](img/screen-deck.png "A página Deck")
 
 **Tape Mod:** cinco moduladores dos ajustes da fita, como o MOD de uma voz (o KNOB 1 escolhe um, nas duas páginas):
-**Target** (Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize; ou a **profundidade** ou a
+**Target** (**Off**, o padrão; Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize; ou a **profundidade** ou a
 **velocidade** de outro modulador, M1..M5), **Depth** (da faixa do ajuste, metade para cada lado em 100: no Speed, de
 −2x a +2x; na profundidade de um modulador ±50, na velocidade ±2 oitavas), **Rate** (de 60 s a um oitavo de segundo
 por ciclo; com Sync em Tempo, uma figura), **Shape** (Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos),
 **Sync** (Free, Tempo), **Smooth** (um deslize, de 2 a 500 ms). Eles movem o ajuste enquanto a fita toca (e grava:
 Drive, SOS); o knob fica onde você o deixou. Cada peça tem o seu primeiro.
 
-![A página Tape Mod: MOD 1, TARGET Morph, DEPTH 25, RATE 28s](img/screen-tapemod.png "A página Tape Mod")
+![A página Tape Mod: MOD 1, TARGET Slide, DEPTH 30, RATE 23s](img/screen-tapemod.png "A página Tape Mod")
 
 ---
 
@@ -400,8 +420,10 @@ Um valor é ajustado à sua faixa. Os bytes do patch vão como são.
 
 ### Vozes e bancos DX7 de um computador
 
-O firmware não traz vozes da Yamaha: você manda as suas. O `amb_syx.py` as envia pelo USB (Python com mido e
-python-rtmidi; feche antes outros programas que usem o MIDI do FM-1):
+O firmware já vem com **16 bancos DX7** (as ROM 1A a 4B do DX7 e bancos de sinos, mallets, rhodes, cordas, synths,
+sopros, efeitos e piano), no knob Patch de cada voz depois dos dezoito. Um banco que você manda toma o lugar do de
+fábrica; apagá-lo traz o de fábrica de volta. O `amb_syx.py` os envia pelo USB (Python com mido e python-rtmidi;
+feche antes outros programas que usem o MIDI do FM-1):
 
 ```sh
 python amb_syx.py ROM1A.syx --bank 1      # um banco de 32 vozes no banco 1 (de 16)
@@ -443,7 +465,12 @@ patch e os ajustes de cada voz, além de Tune, MIDI out e Lights.
 **Estalos com tudo ligado:** o som usa a maior parte do tempo do FM-1 com as três vozes ocupadas, os moduladores
 ligados e a fita tocando muitos genes (CPU na página Setup, canto de cima à direita). Menos genes sobrepostos (Morph
 mais baixo), menos moduladores ou uma Density menor ajudam. (A 1.4.0 abriu espaço: sem o pulso, a placa e os genes
-a 22 kHz.)
+a 22 kHz.) Quando o som não cabe no tempo por um instante (uma sobrecarga, contada depois do **X** na página Setup), o
+AMB-1 FM6 solta o que menos se ouve, um gene da fita, ou então o sino mais baixo que está tocando, em vez de o som
+ficar preso no último instante.
+
+**O som travou repetindo, as luzes piscando:** não desligue; espere dez segundos (ele reinicia sozinho e guarda um
+registro), depois leia o registro: na página do instalador, "Ler o registro do travamento".
 
 **Modo de atualização:** segure OCT- e OCT+ juntos por cinco segundos. Aparece uma contagem; solte antes do fim para
 cancelar.
@@ -512,7 +539,7 @@ Os padrões são os da Garden; cada peça tem os seus.
 | Gene | Organize | 1–8 | 1 |
 | Deck | FX | Before, After | Before |
 | Deck | Wow, Drive, Tone | 0–100 | 25, 20, 85 |
-| Tape Mod (×5) | Target | Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize, M1–M5 depth, M1–M5 rate | Slide (Garden), Morph, Gene, Tone, Speed |
+| Tape Mod (×5) | Target | Off, Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize, M1–M5 depth, M1–M5 rate | o primeiro, o da peça (Slide em Garden), os outros Off |
 | Tape Mod (×5) | Depth, Rate, Shape | 0–100, 60 s – 0,12 s (Tempo: 8 compassos – 1/16), as formas do MOD | 30 (o primeiro, Garden), 0 |
 | Tape Mod (×5) | Sync, Smooth | Free, Tempo; 2–500 ms | Free, 2 ms |
 | PATCH de uma voz | Patch | os dezoito, depois as vozes dos bancos | Rhodes, Bell, Sine |
@@ -527,7 +554,7 @@ Os padrões são os da Garden; cada peça tem os seus.
 | MOD de uma voz (×5) | Depth | 0–100 | 20 (o primeiro), 0 |
 | MOD de uma voz (×5) | Rate | 0–100 (60 s – 0,12 s; Tempo: 8 compassos – 1/16) | 27 (11 s) |
 | MOD de uma voz (×5) | Shape | Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos, Env | Sine |
-| MOD de uma voz (×5) | Target | os dez da voz, os sete de cada operador, M1–M5 depth e rate | Timbre |
+| MOD de uma voz (×5) | Target | Off, os dez da voz, os sete de cada operador, M1–M5 depth e rate | os dois primeiros, os da peça; os outros Off |
 | MOD de uma voz (×5) | Spread, Fade, Sync, Smooth | 0–100, Off – 8 s, Free/Note/Tempo, 2–500 ms | 100, Off, Free, 2 ms |
 | ALGORITHM | Modo | 8 modos, ou Custom | Dórico |
 
@@ -549,7 +576,9 @@ compartilhe também o código dos arquivos modificados. O código vem junto (`co
   leitura de Godfried Toussaint do algoritmo de Bjorklund.
 - A plataforma é o [fm1-base](https://github.com/charlesvestal/fm1-base) e o
   [felucca-bsp](https://github.com/hugelton/felucca-bsp), do **Felucca** de Leo Kuroshita, Hügelton Instruments.
-- As fontes são Barlow Semi Condensed e Terminus (SIL Open Font License).
+- A fonte é a Terminus (SIL Open Font License).
+- Os bancos DX7 de fábrica vêm do arquivo de DX7 de Dave Benson; as vozes do DX7 são da Yamaha (veja `LICENSING.md`).
+- O visual das páginas segue os discos do Aphex Twin (as cores e o clima, desenhados de novo; sem nomes nem marcas).
 
 M-VAVE, FM-1, Yamaha, DX7, Make Noise, Morphagene e TASCAM são marcas de seus donos. O AMB-1 FM6 não tem ligação com
 nenhum deles, com Brian Eno nem com a Hügelton Instruments.
