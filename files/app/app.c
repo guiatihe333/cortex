@@ -19,6 +19,7 @@ void app_init(void)
     project_apply();
 }
 void app_render(int32_t *lr, uint32_t n, uint32_t gain_q12) { en_render(lr, n, gain_q12); }
+void app_overload(void) { en_overload(); }
 void app_panic(void)
 {
     en_play(0);

@@ -139,11 +139,19 @@ static void rl_stop_now(void)
     rl_stopping = 0;
     rl_publish();
 }
+static void rl_put(float x);
 static void reel_new(void)                       /* a new splice at the reel's end */
 {
-    uint32_t s = (rl_meta.len + RL_BLK - 1u) / RL_BLK * RL_BLK;
-    if (rl_rec)
+    uint32_t s;
+    if (rl_rec == 2) {                           /* overdubbing: its block finished as it was (stopped halfway, the rest
+                                                  * of it would decode from the coder's new state: noise) */
+        rl_stopping = 1;
+        while (rl_rec)
+            rl_put(0.0f);
+    } else if (rl_rec) {
         rl_stop_now();
+    }
+    s = (rl_meta.len + RL_BLK - 1u) / RL_BLK * RL_BLK;
     if (rl_meta.nspl >= RL_NSPL || s + RL_BLK * 8u > RL_N)
         return;                                  /* (full: the UI says so) */
     rl_spl = (int)rl_meta.nspl;
@@ -310,7 +318,7 @@ static void tape_mods(uint32_t n)                /* once a chunk */
     for (k = 0; k < TP_N; k++)
         tm_off[k] = 0.0f;
     for (s = 0; s < EN_NTMOD; s++) {             /* the modulators on others: their value a chunk ago */
-        const int t = par[P_TM(s, TARGET)];
+        const int t = par[P_TM(s, TARGET)] - 1;   /* (Off: -1) */
         if (t >= EN_NTMSET && t < EN_NTMDEST) {
             if (t - EN_NTMSET < EN_NTMOD)
                 dd[t - EN_NTMSET] += 50.0f * tmg[s].vs;
@@ -319,7 +327,7 @@ static void tape_mods(uint32_t n)                /* once a chunk */
         }
     }
     for (s = 0; s < EN_NTMOD; s++) {
-        const int t = par[P_TM(s, TARGET)], sh = par[P_TM(s, SHAPE)], rv = par[P_TM(s, RATE)];
+        const int t = par[P_TM(s, TARGET)] - 1, sh = par[P_TM(s, SHAPE)], rv = par[P_TM(s, RATE)];
         const float d = fm_clampf((float)par[P_TM(s, DEPTH)] + dd[s], 0.0f, 100.0f),
                     secs = par[P_TM(s, SYNC)] ? DIV_BEATS[div_of(rv)] * 60.0f / tempo_bpm() : mod_secs(rv),
                     sm = fm_minf((float)n / (smooth_secs(par[P_TM(s, SMOOTH)]) * EN_SR), 1.0f);
@@ -528,6 +536,21 @@ static void reel_play(float *l, float *r, uint32_t n)
     en_reel_level += (pk * 2.0f - en_reel_level) * 0.2f;
     for (i = 0; i < RL_NG; i++)
         en_reel_gene[i] = gn[i].on ? (int32_t)gn[i].pos : -1;
+}
+
+static int reel_shed(void)                       /* an overload: the gene furthest through let go; 0 none on */
+{
+    int i, best = -1;
+    float most = -1.0f;
+    for (i = 0; i < RL_NG; i++)
+        if (gn[i].on && gn[i].life / gn[i].len > most) {
+            most = gn[i].life / gn[i].len;
+            best = i;
+        }
+    if (best < 0)
+        return 0;
+    gn[best].on = 0;
+    return 1;
 }
 
 static void reel_init(void)                      /* (the reel itself stays: a reboot loads it, en_reel_mem) */

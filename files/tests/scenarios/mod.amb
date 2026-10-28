@@ -46,7 +46,7 @@ expect par74 20
 expect par116 20
 turn K1 1 10
 turn K2 9 100
-expect par43 14
+expect par43 15
 turn SELECT 1 100
 expect view 24
 # back to the pad's page
@@ -119,7 +119,8 @@ expect pat0_79 70
 expect pat0_134 6
 expect par30 1
 expect par32 23
-# a bank over SysEx (bank 3); the bells' Patch past their own six: its first voice (TEST 01), as loaded
+# a bank over SysEx (bank 3); the bells' Patch past their own six: the built-in bank 1's first voice (BRASS 1: 66,
+# a B), then 64 on, bank 3's first, the one sent (TEST 01: 84, a T), as loaded
 bankfake 2
 wait 100
 tap ARP
@@ -128,6 +129,9 @@ tap ARP
 wait 100
 expect view 26
 turn K1 11 10
+expect par28 18
+expect pat1_145 66
+spin K1 64
 expect par28 82
 expect par72 0
 expect pat1_145 84

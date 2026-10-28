@@ -28,7 +28,8 @@ wait 100
 expect par74 20
 expect par168 25
 expect view 0
-# on a voice's MOD page: the modulator picked
+# on a voice's MOD page (1.4.5): all five, two to four on (the first two always: depths par32, par40), the rest Off
+# (the fifth: depth par64, target par67)
 tap ENV
 tap ENV
 tap ENV
@@ -37,3 +38,23 @@ wait 100
 tap SEL
 wait 200
 shot mod_dice.png
+expect par32 >9
+expect par40 >9
+expect par64 <1
+expect par67 <1
+# the reel's Tape Mod page: its five, two or three on (the first: target par201, depth par202), the fifth Off (par225,
+# par226)
+tap SEQ
+tap SEQ
+tap SEQ
+tap SEQ
+wait 100
+expect view 9
+tap SEL
+wait 200
+expect par201 >0
+expect par202 >9
+expect par225 <1
+expect par226 <1
+# 1.4.6: every page, every knob: rolled 8 times, none left unmoved (the player's own and the pickers aside)
+expect diceunmoved 0

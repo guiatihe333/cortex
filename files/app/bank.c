@@ -10,14 +10,24 @@
  *   7D 41 4D 03 bank                      the bank erased                          answer 7D 41 4D 04 bank ok
  *   7D 41 4D 05                           how many voices each bank holds          answer 7D 41 4D 06 <16 counts>
  * And a DX7 single voice dump (43 0n 00 01 1B <155> sum: what Dexed sends) goes straight into the voice whose pages
- * are shown, edited (OWN), as the FM pages leave it. */
+ * are shown, edited (OWN), as the FM pages leave it.
+ *
+ * Built in (bank_rom.h, tools/gen_banks.py): sixteen banks a fresh FM-1 has (one never sent a bank, or back from
+ * M-VAVE's firmware, which erases the data area). A bank whose first slot is erased flash plays the built-in one;
+ * a bank sent replaces it, and erasing it (7D 41 4D 03) brings the built-in one back. */
+#include "bank_rom.h"
+_Static_assert(EN_NBANK <= 16, "a built-in bank each");
 
-static const uint8_t *bank_slot(int src)        /* a bank source's packed voice in the flash; 0: not a bank's */
+static const uint8_t *bank_slot(int src)        /* a bank source's packed voice; 0: not a bank's */
 {
+    const uint8_t *f;
     src -= EN_NFACT;
     if (src < 0 || src >= EN_NBANK * 32)
         return 0;
-    return plat_data(BANK_BASE + (uint32_t)(src / 32) * 4096u + (uint32_t)(src % 32) * 128u);
+    f = plat_data(BANK_BASE + (uint32_t)(src / 32) * 4096u);
+    if (!f || (f[0] == 0xFFu && f[1] == 0xFFu))  /* (its first slot erased: none sent) */
+        return BANK_ROM[src / 32] + (uint32_t)(src % 32) * 128u;
+    return f + (uint32_t)(src % 32) * 128u;
 }
 
 int bank_voice(int voice, int src, uint8_t *p)

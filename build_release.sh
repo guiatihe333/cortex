@@ -2,7 +2,7 @@
 # Build AMB-1 FM6 (AMB-1 with JIANT FM's FM6 voices and the MOD page) into an installable FM-1 package, and its web
 # installer when Emscripten is there. Linux x86-64 (natively) or macOS (the JieLi toolchain then runs in Docker).
 #
-#   sh build_release.sh [VERSION]          VERSION X.Y[.Z][-suffix], default 1.4.2-fm6
+#   sh build_release.sh [VERSION]          VERSION X.Y[.Z][-suffix], default 1.4.7-fm6
 #
 # What it does, in WORK (default ./work):
 #   1. fm1-amb at 188b0a4 with its submodules, and the patches in patches/ (git am)
@@ -20,7 +20,7 @@
 # Installing firmware is at your own risk; the web installer can put M-VAVE's own firmware back.
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
-V="${1:-1.4.2-fm6}"
+V="${1:-1.4.7-fm6}"
 WORK="${WORK:-$PWD/work}"
 PY="${PYTHON:-python3}"
 mkdir -p "$WORK"

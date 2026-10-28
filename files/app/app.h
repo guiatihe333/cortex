@@ -21,7 +21,7 @@ enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_TAPE, OBJ_NOBJ };
 #define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u, 0xDA000u}   /* the pieces' patches after the panel; the pieces'
                                                                    * reel settings before it, in the data area */
 #define PROJ_MAGIC 0x314F4E45u           /* "ENO1" */
-#define PROJ_FORMAT 13u                  /* 13: the reel's five modulators, its settings in OBJ_TAPE (P_SPLIT);
+#define PROJ_FORMAT 14u                  /* 14: Off, every modulator's first target; 13: the reel's five modulators, its settings in OBJ_TAPE (P_SPLIT);
                                           * 12: the reel's modulators, no pulse; 11: the reel's dry/wet and deck; 10: the reel's settings; 9: the voices
                                           * alike (a ROLE each, its own octave, density, pace, glide,
                                           * an ADSR), AMB-1's eighteen patches; 8: how each voice plays (ENV, GATE); 7:
@@ -47,6 +47,7 @@ int bank_voice(int voice, int src, uint8_t *p);   /* source src's patch for the 
 int bank_name(int src, char *b);         /* its name (10 characters, trimmed) into b; 0: an empty slot */
 int bank_next(int src, int dir);         /* the next source that holds a voice, dir +1 / -1 (the own six always) */
 #define APP_SYSEX
+#define APP_OVERLOAD                     /* the render over 90 % of its time: it sheds (en_overload) */
 int app_sysex(const uint8_t *p, uint32_t n);   /* a bank's chunk, a DX7 single voice (bank.c) */
 
 /* the playing piece's patches, a voice each (as the engine has them) and the pieces' (OBJ_PATCH) */

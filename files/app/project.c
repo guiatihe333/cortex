@@ -133,6 +133,24 @@ static int patches_valid(void)                  /* (a byte past its range: held 
 #define V10_NPARAMS (P_TAPE + 8)
 #define V11_NPARAMS (P_TAPE + 12)
 #define V12_NPARAMS (P_TMOD + 2 * 4)
+static int off_up;                              /* a format before 14: the modulators' targets one on (Off first) */
+static void target_up(int16_t *par, int t, int depth)
+{
+    par[t] = (int16_t)(par[depth] ? par[t] + 1 : 0);   /* (one at depth 0 did nothing: Off now) */
+}
+static void targets_up(int16_t *par, int lo, int k)   /* those of the settings lo .. k - 1, as they were stored */
+{
+    int v, s;
+    if (!off_up)
+        return;
+    for (v = 0; v < EN_NVOX; v++)
+        for (s = 0; s < EN_NSLOT; s++)
+            if (P_MS(v, s, MS_DEST) >= lo && P_MS(v, s, MS_DEST) < k)
+                target_up(par, P_MS(v, s, MS_DEST), P_MS(v, s, MS_DEPTH));
+    for (s = 0; s < EN_NTMOD; s++)
+        if (P_TM(s, TARGET) >= lo && P_TM(s, TARGET) < k)
+            target_up(par, P_TM(s, TARGET), P_TM(s, DEPTH));
+}
 static int16_t mig6[NPIECES + 1][EN_NVOX][6];   /* format 6's ratio, feedback, attack, decay, sustain, release */
 static int mig_n, mig6_on;
 static void fix_none(int16_t *par, const int16_t *o) { (void)par, (void)o; }
@@ -157,7 +175,7 @@ static void fix_v6(int16_t *par, const int16_t *o)
         const int16_t *b = o + P_VOX + v * V6_VX;
         par[P_VX(v, VX_INDEX)] = b[1];
         for (k = 0; k < MS_N; k++)               /* (format 6's MOD in MS_* order) */
-            par[P_MS(v, 0, k)] = b[7 + k];
+            par[P_MS(v, 0, k)] = (int16_t)(b[7 + k] + (k == MS_DEST));   /* (Off first) */
         mig6[n][v][0] = b[0], mig6[n][v][1] = b[2];
         for (k = 0; k < 4; k++)
             mig6[n][v][2 + k] = b[3 + k];
@@ -175,7 +193,7 @@ static void fix_v12(int16_t *par, const int16_t *o)   /* format 12's two modulat
     int s, k;
     for (s = 0; s < 2; s++)
         for (k = 0; k < 4; k++)
-            par[P_TMOD + s * TM_N + k] = o[P_TMOD + s * 4 + k];
+            par[P_TMOD + s * TM_N + k] = (int16_t)(o[P_TMOD + s * 4 + k] + (k == TM_TARGET));   /* (Off first) */
 }
 static void fix_v8(int16_t *par, const int16_t *o)
 {
@@ -221,6 +239,7 @@ static void migrate_up(int16_t *par, uint32_t fmt)   /* a project of format fmt 
             recipe(i, &r);                                                                                         \
             for (p = 0; p < P_NPARAMS; p++)                                                                        \
                 proj.slot[i].par[p] = p < (K) ? o->slot[i].par[p] : r.par[p];                                      \
+            targets_up(proj.slot[i].par, 0, K);                                                                     \
             FIX(proj.slot[i].par, o->slot[i].par);                                                                 \
             migrate_up(proj.slot[i].par, FMT);                                                                     \
             proj.slot[i].pool = o->slot[i].pool;                                                                   \
@@ -228,6 +247,7 @@ static void migrate_up(int16_t *par, uint32_t fmt)   /* a project of format fmt 
         recipe(proj.piece, &r);                                                                                    \
         for (p = 0; p < P_NPARAMS; p++)                                                                            \
             proj.par[p] = p < (K) ? o->par[p] : r.par[p];                                                          \
+        targets_up(proj.par, 0, K);                                                                                 \
         FIX(proj.par, o->par);                                                                                     \
         migrate_up(proj.par, FMT);                                                                                 \
     }
@@ -242,7 +262,7 @@ OLD_PROJECT(project_v10, V10_NPARAMS, V10_NPARAMS, fix_v11, 10u)
 OLD_PROJECT(project_v11, V11_NPARAMS, V11_NPARAMS, fix_v11, 11u)
 OLD_PROJECT(project_v12, V12_NPARAMS, P_TMOD, fix_v12, 12u)
 
-/* format 13 as stored: the settings to P_SPLIT in OBJ_PROJ (as the formats before, fewer settings), the rest in
+/* formats 13 and 14 as stored: the settings to P_SPLIT in OBJ_PROJ (as the formats before, fewer settings), the rest in
  * OBJ_TAPE */
 OLD_PROJECT(projstore, P_SPLIT, P_SPLIT, fix_none, 13u)
 typedef struct {
@@ -257,7 +277,8 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
     int i, p;
     slot_t r;
     memset(&tst, 0, sizeof tst);
-    if (plat_store_load(OBJ_TAPE, &tst, sizeof tst) < 8 || tst.magic != PROJ_MAGIC || tst.format != PROJ_FORMAT) {
+    if (plat_store_load(OBJ_TAPE, &tst, sizeof tst) < 8 || tst.magic != PROJ_MAGIC ||
+        (tst.format != PROJ_FORMAT && tst.format != 13u)) {
         for (i = 0; i < NPIECES; i++) {
             recipe(i, &r);
             for (p = P_SPLIT; p < P_NPARAMS; p++)
@@ -273,6 +294,12 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
             proj.slot[i].par[p] = tst.par[i][p - P_SPLIT];
     for (p = P_SPLIT; p < P_NPARAMS; p++)
         proj.par[p] = tst.par[NPIECES][p - P_SPLIT];
+    if (tst.format == 13u) {                     /* (the reel's modulators' targets: Off first) */
+        off_up = 1;
+        for (i = 0; i < NPIECES; i++)
+            targets_up(proj.slot[i].par, P_SPLIT, P_NPARAMS);
+        targets_up(proj.par, P_SPLIT, P_NPARAMS);
+    }
 }
 
 int project_load(void)
@@ -294,7 +321,9 @@ int project_load(void)
     memset(&buf, 0, sizeof buf);
     mig_n = mig6_on = 0;
     keep_fmt = 0;
+    off_up = 0;
     n = plat_store_load(OBJ_PROJ, &buf, sizeof buf);
+    off_up = n >= 8 && buf.now.format < 14u;
     if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 3u)
         from_project_v3(&buf.v3);
     else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 4u)
@@ -322,11 +351,13 @@ int project_load(void)
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 12u) {
         keep_fmt = 12u;
         from_project_v12(&buf.v12);
-    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == PROJ_FORMAT) {
+    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && (buf.now.format == PROJ_FORMAT || buf.now.format == 13u)) {
+        if (buf.now.format == 13u)
+            keep_fmt = 13u;                      /* (its patches as they are) */
         from_projstore(&buf.now);                /* (its settings to P_SPLIT; then the reel's from OBJ_TAPE) */
         proj.leds = buf.now.leds;
         tape_from_store();
-        migrated = 0;
+        migrated = buf.now.format == 13u;
     } else {
         proj.magic = 0;                          /* (none, or another: the defaults below) */
     }

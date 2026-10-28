@@ -11,6 +11,6 @@ include = ["dsp"]
 o2 = ["dsp/amb.c"]             # the engine, at -O2
 # the site
 tagline = "AMB-1 FM6: AMB-1 with FM6 voices, DX7 banks and a reel of tape (unofficial)"
-repo = "https://github.com/guiatihe333/lostgear/tree/claude/amb1-jiant-fm6/fm1-amb-fm6"
+repo = ""                      # (the source travels with the firmware: codigo-fonte/)
 licence = "MPL-2.0"
 credits = "An unofficial fork of AMB-1 by Charles Vestal; the FM6 core is msfa (Dexed), by way of JIANT FM. Built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."

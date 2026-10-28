@@ -37,3 +37,11 @@ affiliated with, endorsed by or supported by any of them.
 ## Radio
 
 AMB-1 never enables the Bluetooth / Wi-Fi radio of the hardware.
+
+## The built-in DX7 banks
+
+`app/bank_rom.h` holds sixteen DX7 voice banks (32 voices each) from Dave Benson's DX7 archive (math.uga.edu/~djb/dx7):
+the DX7's ROM 1A..4B cartridges and eight banks of users' voices (bells, mallets1, rhodes1, strings, synths32,
+woodwind, effects1, piano32). They are data, not this project's code, and not under its MPL-2.0; the DX7's voices are
+Yamaha's. They are built in so a fresh FM-1 plays them; to ship a firmware without them, generate `app/bank_rom.h`
+from banks of your own (`tools/gen_banks.py`).
