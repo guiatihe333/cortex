@@ -1,15 +1,15 @@
-# 1.4.0: each piece its own modulation (par43: the first voice's second modulator's target; par40 its depth; par201
+# 1.4.0: each piece its own modulation (1.4.3: a target as its setting, 0 Off) (par43: the first voice's second modulator's target; par40 its depth; par201
 # the reel's first modulator's target); SEL + SAVE initialises what the page is part of (a voice's MOD pages: its
 # modulators), SEL held undoes it; SAVE held (the recipe) is undone the same way; the reel's modulators' pages
 wait 300
-expect par43 5
-expect par201 2
+expect par43 6
+expect par201 3
 turn PRESET 1
 wait 100
 expect piece 1
-expect par43 6
+expect par43 7
 expect par40 35
-expect par201 3
+expect par201 4
 # Voice 1's MOD page: SEL + SAVE, its modulators to their defaults
 tap ENV
 tap ENV
@@ -29,7 +29,7 @@ wait 1100
 release SEL
 wait 100
 expect par40 35
-expect par43 6
+expect par43 7
 # the recipe (SAVE held), undone as well (the second modulator picked: its depth up 5)
 turn K1 1 10
 spin K3 5
@@ -56,9 +56,9 @@ shot tape_mod.png
 # (OBJ_TAPE) across a restart
 turn K1 1 10
 spin K2 4
-expect par207 7
+expect par207 4
 tap SAVE
 wait 300
 reboot
 wait 300
-expect par207 7
+expect par207 4

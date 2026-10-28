@@ -183,6 +183,8 @@ extern volatile uint8_t en_chord_root;         /* the chord's root, MIDI pitch c
 extern volatile uint8_t en_chord_n;            /* its distinct tones: 3 or 4 */
 extern volatile float en_drift;                /* 0..1: how far to the next chord */
 extern volatile float en_pad_level, en_bass_level;
+extern volatile float en_vox_level[EN_NVOX], en_master_level;   /* each voice's peak (its sound alone), the mix's before
+                                                                 * the volume (1: full scale), held a moment: the meters */
 extern volatile float en_tempo;                   /* the tempo playing: Tempo's, or an external clock's as measured */
 extern volatile uint8_t en_loop_pos[EN_NLOOP];
 extern volatile int8_t en_loop_note[EN_NLOOP][EN_LOOP_MAX];   /* -1 rest, else the slot's offset */
@@ -211,6 +213,9 @@ enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD
 enum { OPT_LEVEL, OPT_RATIO, OPT_FINE, OPT_ATK, OPT_DEC, OPT_SUS, OPT_REL, OPT_N };
 #define MOD_MSLOT (MOD_OP + 6 * OPT_N)            /* then the voice's own modulators: M1..M5's depth, M1..M5's rate */
 #define EN_NMODDEST (MOD_MSLOT + 2 * 5)
+/* a modulator's target as its setting has it: 0 Off (the default), then 1 + one of the EN_NMODDEST (the voices') or of
+ * the EN_NTMDEST (the reel's) */
+#define EN_MOD_OFF 0
 /*   TIMBRE    the modulators' output level (+-12 dB): the FM index, brighter and darker
  *   RATIO     the modulators' frequency ratio, in harmonic steps up (x1, x2, x3, x4, x5), gliding 15 ms
  *   METAL     the modulators' ratio pulled apart (+-80 cents, one up, the next down): inharmonic sidebands
@@ -227,7 +232,26 @@ enum { OPT_LEVEL, OPT_RATIO, OPT_FINE, OPT_ATK, OPT_DEC, OPT_SUS, OPT_REL, OPT_N
  *     RATIO   its frequency ratio in harmonic steps up (x1 .. x5), gliding 15 ms
  *     FINE    its pitch, +-50 cents, slewed 15 ms
  *     ATTACK, DECAY, SUSTAIN, RELEASE   its envelope as each note starts: rates +-30 (+ slower), sustain +-30 */
-void en_moddest_text(int d, char *buf);        /* a target's name, as the screen shows it (10 bytes) */
+void en_moddest_text(int d, char *buf);
+/* the scope: the voice the screen shows (-1 none) is captured from a rising zero crossing, every 2nd sample, scaled to
+ * its peak (-127 .. 127); en_scope_seq counts the traces */
+/* the score: the last EN_SCORE_N notes played, every voice's (as their MIDI goes out, sent or not): its note, its
+ * voice, when it began and ended (en_now's samples; off 0 while it sounds); en_score_w the next to write */
+#define EN_SCORE_N 48
+typedef struct {
+    uint32_t on, off;
+    uint8_t note, voice, vel, rsv;
+} en_note_t;
+extern en_note_t en_score[EN_SCORE_N];
+extern volatile uint32_t en_score_w, en_now;
+#define EN_SCOPE_N 128
+/* the render near its time (over 90 %, from the audio interrupt, after it): at the next render's start a gene of the
+ * reel (the one furthest through), else the softest bell ringing, is let go; en_sheds counts them */
+void en_overload(void);
+extern volatile uint32_t en_sheds;
+extern volatile int8_t en_scope_v;
+extern volatile uint32_t en_scope_seq;
+extern int8_t en_scope[EN_SCOPE_N];        /* a target's name, as the screen shows it (10 bytes) */
 #define EN_NMOD (EN_NVOX * EN_NPAD)             /* the generators of a modulator: each voice's four notes */
 extern volatile float en_mod[EN_NSLOT][EN_NMOD];   /* each generator's value now, -1 .. 1 (times the depth) */
 

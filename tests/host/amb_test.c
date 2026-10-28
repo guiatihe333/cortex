@@ -402,7 +402,7 @@ int main(void)
         CHECK(!out, "MOD out of -1..1 (%d)", out);
         CHECK(moved == EN_NMOD, "MOD: %d of %d generators moved", moved, EN_NMOD);
         CHECK(apart > 30, "MOD: the pad's first two voices together (%d of 40 apart)", apart);
-        for (d = 0; d < EN_NMODDEST; d++)
+        for (d = 0; d <= EN_NMODDEST; d++)           /* (0: Off) */
             for (k = 0; k < 2; k++) {
                 vox_all(MS_DEST, d);
                 vox_all(MS_SHAPE, k ? SHAPE_CHAOS : SHAPE_SINE);
@@ -411,7 +411,7 @@ int main(void)
                 CHECK(!bad && peak < 1.0f, "MOD target %d shape %d: peak %f", d, k, (double)peak);
             }
         /* every shape: bounded, and (but the envelope, which waits for notes) moving */
-        vox_all(MS_DEST, MOD_ALL);
+        vox_all(MS_DEST, MOD_ALL + 1);
         for (k = 0; k < EN_NMODSHAPE; k++) {
             float l0 = 9.0f, h0 = -9.0f;
             int j;
@@ -495,7 +495,7 @@ int main(void)
             en_set(P_PL(VOX_BELLS, PL_DENS), 100);
             if (k < 3) {
                 en_set(P_MS(VOX_BELLS, 0, MS_DEPTH), DEST[k] < 0 ? 0 : 100);
-                en_set(P_MS(VOX_BELLS, 0, MS_DEST), DEST[k] < 0 ? 0 : DEST[k]);
+                en_set(P_MS(VOX_BELLS, 0, MS_DEST), DEST[k] < 0 ? 0 : DEST[k] + 1);
                 en_set(P_MS(VOX_BELLS, 0, MS_RATE), 60);
             } else if (k == 3) {
                 en_set(P_VX(VOX_BELLS, VX_INDEX), 24);
@@ -503,7 +503,7 @@ int main(void)
                 patch_set(VOX_BELLS, EP_OPN(6) + EP_FC, 12);  /* the bell's modulator x12 (from x3) */
             } else if (k == 6) {
                 en_set(P_MS(VOX_PAD, 0, MS_DEPTH), 100);
-                en_set(P_MS(VOX_PAD, 0, MS_DEST), MOD_LEVEL);
+                en_set(P_MS(VOX_PAD, 0, MS_DEST), MOD_LEVEL + 1);
                 en_set(P_MS(VOX_PAD, 0, MS_RATE), 80);   /* (fast: its mean, -3 dB, over the 20 s) */
             }
             en_play(1);
@@ -639,7 +639,7 @@ int main(void)
             for (v = 0; v < EN_NVOX; v++)
                 for (s = 0; s < EN_NSLOT; s++) {
                     en_set(P_MS(v, s, MS_DEPTH), 100);
-                    en_set(P_MS(v, s, MS_DEST), (d + s * 7) % EN_NMODDEST);
+                    en_set(P_MS(v, s, MS_DEST), (d + s * 7) % EN_NMODDEST + 1);
                     en_set(P_MS(v, s, MS_SHAPE), (d + s) % EN_NMODSHAPE);
                     en_set(P_MS(v, s, MS_RATE), 40 + 10 * s);
                 }
@@ -677,7 +677,7 @@ int main(void)
             en_set(P_PL(VOX_BELLS, PL_DENS), 100);
             if (DEST[k] >= 0) {
                 en_set(P_MS(VOX_BELLS, 2, MS_DEPTH), 100);
-                en_set(P_MS(VOX_BELLS, 2, MS_DEST), DEST[k]);
+                en_set(P_MS(VOX_BELLS, 2, MS_DEST), DEST[k] + 1);
                 en_set(P_MS(VOX_BELLS, 2, MS_RATE), 60);
             }
             en_play(1);
@@ -1057,7 +1057,7 @@ int main(void)
         en_reel(EN_REEL_NEW);
         run(2.0f);
         en_reel(EN_REEL_DUB);
-        en_set(P_TM(0, TARGET), 0);
+        en_set(P_TM(0, TARGET), 1);
         en_set(P_TM(0, DEPTH), 100);
         en_set(P_TM(0, RATE), 80);
         en_set(P_TM(0, SHAPE), SHAPE_SQUARE);
@@ -1083,13 +1083,13 @@ int main(void)
         en_play(1);
         en_set(P_MS(VOX_PAD, 0, MS_DEPTH), 0);
         en_set(P_MS(VOX_PAD, 0, MS_RATE), 80);
-        en_set(P_MS(VOX_PAD, 1, MS_DEST), MOD_MSLOT + 0);
+        en_set(P_MS(VOX_PAD, 1, MS_DEST), MOD_MSLOT + 0 + 1);
         en_set(P_MS(VOX_PAD, 1, MS_DEPTH), 100);
         en_set(P_MS(VOX_PAD, 1, MS_RATE), 60);
         en_set(P_MS(VOX_PAD, 1, MS_SHAPE), SHAPE_SQUARE);
         en_set(P_TM(0, DEPTH), 0);
         en_set(P_TM(0, RATE), 80);
-        en_set(P_TM(1, TARGET), EN_NTMSET + 0);
+        en_set(P_TM(1, TARGET), EN_NTMSET + 0 + 1);
         en_set(P_TM(1, DEPTH), 100);
         en_set(P_TM(1, RATE), 60);
         en_set(P_TM(1, SHAPE), SHAPE_SQUARE);
@@ -1103,6 +1103,111 @@ int main(void)
         }
         CHECK(m1 > 0.1f, "a voice's M1 moved by M2 on its depth: %f", (double)m1);
         CHECK(t1 > 0.1f, "the reel's M1 moved by M2 on its depth: %f", (double)t1);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.4: a new splice while overdubbing: the block being overdubbed is finished as it was, so the splice decodes
+     * as smoothly as before (no block of noise from the coder's state cut halfway) */
+    {
+        static const int16_t ST[89] = {
+            7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97,
+            107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796,
+            876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871,
+            5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623,
+            27086, 29794, 32767};
+        static const int8_t IX[16] = {-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8};
+        uint32_t n1, n3, bb;
+        const uint8_t *hd = (const uint8_t *)en_reel_mem(1, &n1), *nb = (const uint8_t *)en_reel_mem(3, &n3);
+        int jump = 0, clip = 0, k, prev = 0, bmax = 0;
+        en_init();
+        en_play(1);
+        en_reel(EN_REEL_ERASE);
+        en_reel(EN_REEL_ERASE);
+        en_set(P_RL(SOS), 100);
+        en_reel(EN_REEL_NEW);
+        run(2.0f);
+        en_reel(EN_REEL_DUB);                    /* stop it */
+        run(0.1f);
+        en_reel(EN_REEL_DUB);                    /* overdub it, then a new splice halfway into a block */
+        run(0.537f);
+        en_reel(EN_REEL_NEW);
+        run(0.3f);
+        en_reel(EN_REEL_DUB);
+        run(0.1f);
+        for (bb = en_reel_s0[0] / 256u; bb < en_reel_s1[0] / 256u; bb++) {   /* each block decoded, as the reel does */
+            int pred = (int16_t)(hd[bb * 4u] | hd[bb * 4u + 1u] << 8), idx = hd[bb * 4u + 2u], last = pred;
+            if (bb > en_reel_s0[0] / 256u && abs(pred - prev) > bmax)
+                bmax = abs(pred - prev);
+            for (k = 0; k < 256; k++) {
+                const uint32_t i = bb * 256u + (uint32_t)k;
+                const int nn = i & 1u ? nb[i >> 1] >> 4 : nb[i >> 1] & 15, step = ST[idx];
+                int d = step >> 3;
+                if (nn & 4) d += step;
+                if (nn & 2) d += step >> 1;
+                if (nn & 1) d += step >> 2;
+                pred = nn & 8 ? pred - d : pred + d;
+                pred = pred > 32767 ? 32767 : pred < -32768 ? -32768 : pred;
+                idx += IX[nn];
+                idx = idx < 0 ? 0 : idx > 88 ? 88 : idx;
+                jump += abs(pred - last) > 12000;
+                clip += pred >= 32767 || pred <= -32768;
+                last = pred;
+            }
+            prev = pred;
+        }
+        printf("  overdub then a new splice: the largest step between blocks %d\n", bmax);
+        CHECK(en_reel_nspl == 2u, "a new splice after the overdub: %u", (unsigned)en_reel_nspl);
+        CHECK(jump == 0 && clip == 0, "the overdubbed splice decodes smoothly: %d jumps, %d clipped", jump, clip);
+        CHECK(bmax < 200, "no block of it cut halfway (a step at its end, back on course): %d", bmax);   /* (778 cut) */
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.7: an overload sheds: the reel's genes first (one at each), the render goes on */
+    {
+        int on0 = 0, on1 = 0, k;
+        en_init();
+        en_play(1);
+        en_reel(EN_REEL_ERASE);
+        en_reel(EN_REEL_NEW);
+        run(2.0f);
+        en_reel(EN_REEL_DUB);
+        en_set(P_RL(MORPH), 100);                /* (four genes at once) */
+        run(1.0f);
+        for (k = 0; k < 4; k++)
+            on0 += en_reel_gene[k] >= 0;
+        en_overload();                           /* one spike: nothing shed */
+        run(0.006f);
+        CHECK(en_sheds == 0u, "a single overload sheds nothing: %u", (unsigned)en_sheds);
+        en_overload();                           /* lasting (two renders): a gene shed */
+        run(0.006f);
+        en_overload();
+        run(0.006f);
+        for (k = 0; k < 4; k++)
+            on1 += en_reel_gene[k] >= 0;
+        CHECK(en_sheds == 1u && on1 <= on0 - 1, "a lasting overload sheds the reel's genes: %d then %d, %u shed", on0,
+              on1, (unsigned)en_sheds);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.7: the score: notes come in as they are played, and stopping ends every one of them */
+    {
+        uint32_t k, open = 0, any = 0;
+        en_init();
+        en_play(1);
+        run(6.0f);
+        for (k = 0; k < EN_SCORE_N; k++) {
+            any += en_score[k].on != 0u;
+            open += en_score[k].on && !en_score[k].off;
+        }
+        CHECK(any > 0u && open > 0u, "the score: %u notes, %u sounding", (unsigned)any, (unsigned)open);
+        en_play(0);
+        run(0.1f);
+        for (k = 0, open = 0; k < EN_SCORE_N; k++)
+            open += en_score[k].on && !en_score[k].off;
+        CHECK(open == 0u, "the score: stopped, none left sounding (%u)", (unsigned)open);
         en_init();
         en_play(1);
     }

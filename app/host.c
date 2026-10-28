@@ -9,7 +9,8 @@
  * playing piece's Pad at N); storev5 N (as the first FM6 build wrote it, format 5: one MOD for all three voices, its
  * depth N, chaos 90, target Feedback); storev6 N (as 1.3.91 wrote it, format 6: each voice's MOD at depth N, the
  * pad's FM edits Ratio x2 and Feedback +2); storev7 (as 1.3.93 wrote it, format 7: the pieces as they are, their
- * patches too); storev8 N (as 1.3.95 wrote it, format 8: every GATE at N, the bells on Tubular); bankfake B (a bank of 32 voices, the own patches renamed TEST 01..,
+ * patches too); storev8 N (as 1.3.95 wrote it, format 8: every GATE at N, the bells on Tubular); storev13 (as 1.4.2 wrote it,
+ * format 13: the modulators' targets with no Off before them); bankfake B (a bank of 32 voices, the own patches renamed TEST 01..,
  * sent to bank B as amb_syx.py sends one: 16 SysEx chunks); dx7voice (a DX7 single voice dump, the bass's Pick
  * named DX7 VOICE, as Dexed sends one). */
 static void host_pack(const uint8_t *p, uint8_t *m)   /* a patch as a DX7 bank packs it */
@@ -41,6 +42,39 @@ static void host_pack(const uint8_t *p, uint8_t *m)   /* a patch as a DX7 bank p
         m[118 + k] = p[EP_NAME + k];
 }
 
+/* the knobs SEL's dice never move: every page rolled 8 times, each knob shown watched; the player's own (Tune, MIDI
+ * out, the lights, the reel's source), the pickers (operator, stage, modulator), a transpose, an operator's ratio mode
+ * (kept) and a splice to pick (none recorded) left out. Each named */
+static int dice_unmoved(void)
+{
+    int v, i, r, bad = 0;
+    const uint8_t view = ui.view;
+    for (v = 0; v < NVIEWS; v++) {
+        int k0[4], moved[4] = {0, 0, 0, 0};
+        ui.view = (uint8_t)v;
+        for (i = 0; i < 4; i++)
+            k0[i] = knob_get(view_knob(v, i));
+        for (r = 0; r < 8; r++) {
+            dice_page(v);
+            for (i = 0; i < 4; i++)
+                moved[i] |= knob_get(view_knob(v, i)) != k0[i];
+        }
+        for (i = 0; i < 4; i++) {
+            const int k = view_knob(v, i);
+            char nm[24];
+            if (moved[i] || k == K_NONE || k == K_OP || k == K_STAGE || k == K_PSTAGE || k == K_SLOT || k == K_TSLOT ||
+                k == K_LEDS || k == K_CPU || k == P_TUNE || k == P_MIDI || k == P_RL(SRC) || k == P_RL(ORG) ||
+                k == KV(TRNSP) || k == KO(MODE))
+                continue;
+            view_name(v, nm);
+            printf("dice: %s, knob %d (%s) never moved\n", nm, i + 1, knob_label(v, i));
+            bad++;
+        }
+    }
+    ui.view = view;
+    return bad;
+}
+
 int app_expect(const char *what, int *got)
 {
     int g;
@@ -50,6 +84,8 @@ int app_expect(const char *what, int *got)
         g = en_frozen;
     else if (!strcmp(what, "view"))
         g = ui.view;
+    else if (!strcmp(what, "diceunmoved"))      /* the knobs the dice never move (dice_unmoved) */
+        g = dice_unmoved();
     else if (!strcmp(what, "piece"))
         g = proj.piece;
     else if (!strcmp(what, "pool"))               /* the scale, relative to the root (hex ok) */
@@ -185,6 +221,22 @@ int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, c
         ps.format = 7u;
         plat_store_save(OBJ_PROJ, &o, sizeof o);
         plat_store_save(OBJ_PATCH, &ps, sizeof ps);
+        return 1;
+    }
+    if (!strcmp(cmd, "storev13")) {              /* format 13 (as 1.4.2 wrote it): the targets with no Off before them */
+        int i, v, s;
+        project_save();
+        pst.format = tst.format = 13u;
+        for (i = 0; i <= NPIECES; i++) {
+            int16_t *par = i < NPIECES ? pst.slot[i].par : pst.par, *tp = tst.par[i];
+            for (v = 0; v < EN_NVOX; v++)
+                for (s = 0; s < EN_NSLOT; s++)
+                    par[P_MS(v, s, MS_DEST)] = (int16_t)(par[P_MS(v, s, MS_DEST)] > 0 ? par[P_MS(v, s, MS_DEST)] - 1 : 0);
+            for (s = 0; s < EN_NTMOD; s++)
+                tp[P_TM(s, TARGET) - P_SPLIT] = (int16_t)(tp[P_TM(s, TARGET) - P_SPLIT] > 0 ? tp[P_TM(s, TARGET) - P_SPLIT] - 1 : 0);
+        }
+        plat_store_save(OBJ_PROJ, &pst, sizeof pst);
+        plat_store_save(OBJ_TAPE, &tst, sizeof tst);
         return 1;
     }
     if (!strcmp(cmd, "storev8")) {               /* format 8 (as 1.3.95 wrote it): its GATEs at N */

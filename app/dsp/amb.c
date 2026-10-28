@@ -39,7 +39,7 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     {"V2 patch", 0, EN_NSRC - 1, EN_FACT_BELL}, {"V3 patch", 0, EN_NSRC - 1, EN_FACT_BASS},
 #define MS_PARAMS(w, n)                                                                                            \
     {w " mod" n " depth", 0, 100, 0}, {w " mod" n " rate", 0, 100, 31},                                            \
-    {w " mod" n " shape", 0, EN_NMODSHAPE - 1, 0}, {w " mod" n " target", 0, EN_NMODDEST - 1, 0},                 \
+    {w " mod" n " shape", 0, EN_NMODSHAPE - 1, 0}, {w " mod" n " target", 0, EN_NMODDEST, 0},                      \
     {w " mod" n " spread", 0, 100, 100}, {w " mod" n " fade", 0, 100, 0},                                          \
     {w " mod" n " sync", 0, EN_NMODSYNC - 1, 0}, {w " mod" n " smooth", 0, 100, 0}
 #define VOX_PARAMS(w)                                                                                              \
@@ -57,10 +57,10 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     {"Gene", 0, 100, 100}, {"Slide", 0, 100, 0}, {"Morph", 0, 100, 45}, {"Organize", 0, 7, 0},
     {"Tape FX", 0, 1, 0},     {"Wow", 0, 100, 25},      {"Drive", 0, 100, 20},    {"Tone", 0, 100, 85},
 #define TM_PARAMS(n, target, depth, rate, shape)                                                                   \
-    {"TM" n " target", 0, EN_NTMDEST - 1, target}, {"TM" n " depth", 0, 100, depth}, {"TM" n " rate", 0, 100, rate}, \
+    {"TM" n " target", 0, EN_NTMDEST, target},     {"TM" n " depth", 0, 100, depth}, {"TM" n " rate", 0, 100, rate}, \
     {"TM" n " shape", 0, EN_NMODSHAPE - 1, shape}, {"TM" n " sync", 0, 1, 0}, {"TM" n " smooth", 0, 100, 0}
-    TM_PARAMS("1", 2, 0, 20, SHAPE_WALK), TM_PARAMS("2", 3, 0, 30, SHAPE_SINE), TM_PARAMS("3", 1, 0, 40, SHAPE_TRI),
-    TM_PARAMS("4", 5, 0, 15, SHAPE_SINE), TM_PARAMS("5", 0, 0, 50, SHAPE_SH),
+    TM_PARAMS("1", 0, 0, 20, SHAPE_WALK), TM_PARAMS("2", 0, 0, 30, SHAPE_SINE), TM_PARAMS("3", 0, 0, 40, SHAPE_TRI),
+    TM_PARAMS("4", 0, 0, 15, SHAPE_SINE), TM_PARAMS("5", 0, 0, 50, SHAPE_SH),
 #undef TM_PARAMS
 #undef VOX_PARAMS
 #undef MS_PARAMS
@@ -129,7 +129,7 @@ void en_mod_legacy(int16_t *par, int depth, int rate, int chaos, int dest)
         par[P_MS(v, 0, MS_DEPTH)] = (int16_t)depth;
         par[P_MS(v, 0, MS_RATE)] = (int16_t)rate;
         par[P_MS(v, 0, MS_SHAPE)] = (int16_t)(chaos < 30 ? SHAPE_SINE : chaos < 85 ? SHAPE_WALK : SHAPE_CHAOS);
-        par[P_MS(v, 0, MS_DEST)] = (int16_t)dest;
+        par[P_MS(v, 0, MS_DEST)] = (int16_t)(dest + 1);
     }
 }
 
@@ -181,12 +181,12 @@ void en_piece(int i, int16_t *par, uint16_t *pool)
             {0, SHAPE_SH, 10, 45}, {2, SHAPE_SINE, 40, 8}, {9, SHAPE_SH, 30, 35}, {3, SHAPE_WALK, 35, 20}};
         int v;
         for (v = 0; v < EN_NVOX; v++) {
-            par[P_MS(v, 1, MS_DEST)] = M2[i][v][0];
+            par[P_MS(v, 1, MS_DEST)] = (int16_t)(M2[i][v][0] + 1);
             par[P_MS(v, 1, MS_SHAPE)] = M2[i][v][1];
             par[P_MS(v, 1, MS_DEPTH)] = M2[i][v][2];
             par[P_MS(v, 1, MS_RATE)] = M2[i][v][3];
         }
-        par[P_TM(0, TARGET)] = T1[i][0];
+        par[P_TM(0, TARGET)] = (int16_t)(T1[i][0] + 1);
         par[P_TM(0, SHAPE)] = T1[i][1];
         par[P_TM(0, DEPTH)] = T1[i][2];
         par[P_TM(0, RATE)] = T1[i][3];
@@ -277,8 +277,10 @@ void en_param_text(int i, int v, char *b)
         }
     } else if (vk == VX_OWN)
         s = v ? "Edited" : "As loaded";
+    else if (mk == MS_DEST && v == EN_MOD_OFF)
+        s = "Off";
     else if (mk == MS_DEST) {
-        en_moddest_text(v, b);
+        en_moddest_text(v - 1, b);
         return;
     } else if (mk == MS_SHAPE)
         s = EN_MODSHAPE_NAME[(unsigned)v < EN_NMODSHAPE ? v : 0];
@@ -290,13 +292,15 @@ void en_param_text(int i, int v, char *b)
         s = "Off";
     else if (i == P_RL(SRC))
         s = TSRC_NAME[(unsigned)v < 4u ? v : 0];
-    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_TARGET && v >= EN_NTMSET) {   /* another modulator's */
+    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_TARGET && v == EN_MOD_OFF)
+        s = "Off";
+    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_TARGET && v - 1 >= EN_NTMSET) {   /* another modulator's */
         b[0] = 'M';
-        b[1] = (char)('1' + (v - EN_NTMSET) % EN_NTMOD);
-        copy9(v - EN_NTMSET < EN_NTMOD ? " depth" : " rate", b + 2);
+        b[1] = (char)('1' + (v - 1 - EN_NTMSET) % EN_NTMOD);
+        copy9(v - 1 - EN_NTMSET < EN_NTMOD ? " depth" : " rate", b + 2);
         return;
     } else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_TARGET)
-        s = TMDEST_NAME[(unsigned)v < EN_NTMSET ? v : 0];
+        s = TMDEST_NAME[(unsigned)(v - 1) < EN_NTMSET ? v - 1 : 0];
     else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_SYNC)
         s = v ? "Tempo" : "Free";
     else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_RATE && par[i - TM_RATE + TM_SYNC])
@@ -644,10 +648,39 @@ static uint32_t rnd(void)                       /* Marsaglia's xorshift (Xorshif
 static float frand(void) { return (float)(rnd() >> 8) * (1.0f / 16777216.0f); }
 static int irand(int n) { return n > 0 ? (int)((rnd() >> 8) % (uint32_t)n) : 0; }
 
+en_note_t en_score[EN_SCORE_N];
+volatile uint32_t en_score_w, en_now;    /* (en_now: the samples made) */
+static uint32_t smp_clock;
 static void midi(uint32_t st, uint32_t d1, uint32_t d2)
 {
+    const uint32_t ch = st & 15u;
+    if ((st & 0xF0u) == 0x90u && d2) {          /* the score: a note begins */
+        en_note_t *e = &en_score[en_score_w % EN_SCORE_N];
+        e->note = (uint8_t)d1;
+        e->voice = (uint8_t)ch;
+        e->vel = (uint8_t)d2;
+        e->on = smp_clock ? smp_clock : 1u;
+        e->off = 0;
+        en_score_w++;
+    } else if ((st & 0xF0u) == 0x80u || (st & 0xF0u) == 0x90u) {   /* it ends: the latest of it still sounding */
+        uint32_t k;
+        for (k = 1; k <= EN_SCORE_N; k++) {
+            en_note_t *e = &en_score[(en_score_w - k) % EN_SCORE_N];
+            if (e->on && !e->off && e->note == d1 && e->voice == ch) {
+                e->off = smp_clock ? smp_clock : 1u;
+                break;
+            }
+        }
+    }
     if (par[P_MIDI])
         en_midi_out(st, d1, d2);
+}
+static void score_close(int v)                  /* the score: voice v's notes (all, v < 0) ended now */
+{
+    uint32_t k;
+    for (k = 0; k < EN_SCORE_N; k++)
+        if (en_score[k].on && !en_score[k].off && (v < 0 || en_score[k].voice == (uint8_t)v))
+            en_score[k].off = smp_clock ? smp_clock : 1u;
 }
 
 
@@ -1307,7 +1340,7 @@ static void vox_apply(int v, int k, int val)
         vox_rate(v, s);
         break;
     case MS_SHAPE: x->shape = (uint8_t)val; break;
-    case MS_DEST: x->dest = (uint8_t)val; break;
+    case MS_DEST: x->dest = (uint8_t)(val > 0 ? val - 1 : 255); break;   /* (Off: 255, no target's) */
     case MS_SPREAD: x->spread = (float)val * 0.01f; break;
     case MS_FADE:
         t = fade_secs(val);
@@ -2364,7 +2397,7 @@ static int pulse;
 static uint32_t ext_age;
 /* an external MIDI clock's tempo: measured a beat (24 pulses) at a time, by the samples rendered (the pulses arrive at
  * a chunk's start: a beat's count is off by a chunk at most, under 1 %), half towards each new beat's; 0 none */
-static uint32_t smp_clock, ext_t0, ext_n;
+static uint32_t ext_t0, ext_n;
 static float ext_bpm;
 static float tempo_bpm(void) { return en_ext && ext_bpm > 0.0f ? ext_bpm : (float)par[P_TEMPO]; }
 
@@ -2509,6 +2542,9 @@ static void regrow(void)                        /* a new piece: fresh loops, hom
 static void notes_off(void)
 {
     int i;
+    score_close(-1);                             /* (All notes off goes out past midi(): the score told here) */
+    if (!par[P_MIDI])                            /* (MIDI out off: nothing goes out, this neither) */
+        return;
     for (i = 0; i < 4; i++)
         en_midi_out(0xB0 | (uint32_t)i, 123, 0);
     en_midi_out(0xB9, 123, 0);
@@ -2997,6 +3033,7 @@ static void fm_block(void)
             if (c->fo <= 0.0f) {
                 c->fo = 0.0f;
                 c->role = (uint8_t)want;
+                score_close(v);                  /* (its notes as they were: gone, unsaid) */
                 role_enter(v);
             }
         } else if (c->fo < 1.0f) {
@@ -3011,11 +3048,52 @@ static void fm_block(void)
     }
 }
 
+/* the scope: armed, it waits for the voice to rise through zero (or 4096 samples: silence, a drone), takes every 2nd
+ * sample, 128, scales them to their peak, and rests 1200 samples (the screen draws 20 a second) */
+volatile int8_t en_scope_v = -1;
+volatile uint32_t en_scope_seq;
+int8_t en_scope[EN_SCOPE_N];
+static float sc_buf[EN_SCOPE_N], sc_last;
+static int sc_n = -1, sc_wait;
+static void scope_take(float x)
+{
+    if (sc_n < 0) {
+        if (sc_wait > 0) {
+            sc_wait--;
+        } else if ((sc_last <= 0.0f && x > 0.0f) || sc_wait < -4096) {
+            sc_n = 0;
+        } else {
+            sc_wait--;
+        }
+        sc_last = x;
+        if (sc_n < 0)
+            return;
+    }
+    if (sc_wait++ & 1)
+        return;
+    sc_buf[sc_n++] = x;
+    if (sc_n >= EN_SCOPE_N) {
+        float pk = 1e-4f, k;
+        int i;
+        for (i = 0; i < EN_SCOPE_N; i++)
+            pk = fm_maxf(pk, fm_fabsf(sc_buf[i]));
+        k = pk < 0.002f ? 127.0f / 0.002f : 120.0f / pk;   /* (silence stays flat) */
+        for (i = 0; i < EN_SCOPE_N; i++)
+            en_scope[i] = (int8_t)fm_clampf(sc_buf[i] * k, -127.0f, 127.0f);
+        en_scope_seq++;
+        sc_n = -1;
+        sc_wait = 1200;
+    }
+}
+
 /* this chunk's n samples of the FM6 voices, a block made whenever the last is used up: the pad to its bus, the
  * bells and the bass to the mix and the sends */
+volatile float en_vox_level[EN_NVOX], en_master_level;
 static void fm_pull(uint32_t n)
 {
     uint32_t j;
+    float vpk[EN_NVOX] = {0.0f, 0.0f, 0.0f};
+    int v;
     for (j = 0; j < n; j++) {
         float b, bl, br;
         if (fm_pos >= FM6_N) {
@@ -3027,6 +3105,11 @@ static void fm_pull(uint32_t n)
         vsrc[0][j] = fm_vtap[0][fm_pos];
         vsrc[1][j] = fm_vtap[1][fm_pos];
         vsrc[2][j] = fm_vtap[2][fm_pos];
+        vpk[0] = fm_maxf(vpk[0], fm_fabsf(vsrc[0][j]));
+        vpk[1] = fm_maxf(vpk[1], fm_fabsf(vsrc[1][j]));
+        vpk[2] = fm_maxf(vpk[2], fm_fabsf(vsrc[2][j]));
+        if ((unsigned)en_scope_v < EN_NVOX)
+            scope_take(vsrc[en_scope_v][j]);
         bl = fm_buf[FB_BASSL][fm_pos];
         br = fm_buf[FB_BASSR][fm_pos];
         b = 0.5f * (bl + br);
@@ -3036,11 +3119,17 @@ static void fm_pull(uint32_t n)
         esend[j] += fm_buf[FB_BELLE][fm_pos] * 0.85f;
         fm_pos++;
     }
+    {                                            /* (up at once, down in about a quarter of a second, whatever n) */
+        const float fall = fm_expf(-(float)n * (1.0f / (0.25f * EN_SR)));
+        for (v = 0; v < EN_NVOX; v++)
+            en_vox_level[v] = fm_maxf(vpk[v], en_vox_level[v] * fall);
+    }
 }
 
 static void render_chunk(int32_t *out, uint32_t n, float gain)
 {
     uint32_t j;
+    float mpk = 0.0f;
     const float rg = rev_send * rev_in_gain * (1.0f - 0.25f * arcm), eg = echo_send;
     const int src = par[P_RL(SRC)], fx_after = par[P_RL(FX)] != 0;
     const float dry_t = fm_minf((float)(100 - par[P_RL(MIX)]) * 0.02f, 1.0f);   /* (the garden full to the middle) */
@@ -3081,7 +3170,9 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
         }
         out[2 * j] = (int32_t)(fm_tanhf(l * gain) * 8300000.0f);
         out[2 * j + 1] = (int32_t)(fm_tanhf(r * gain) * 8300000.0f);
+        mpk = fm_maxf(mpk, fm_maxf(fm_fabsf(l), fm_fabsf(r)));   /* (the mix, before the volume) */
     }
+    en_master_level = fm_maxf(mpk, en_master_level * fm_expf(-(float)n * (1.0f / (0.25f * EN_SR))));
     reel_record(rl_in, n);
 }
 
@@ -3122,9 +3213,46 @@ static void control(uint32_t n)                 /* once a chunk: the slow things
         en_loop_glow[i] *= 0.985f;
 }
 
+/* overloads: counted in the audio interrupt, acted on at the next render's start (the same context) */
+static volatile uint8_t ov_now;
+static uint8_t ov_run;
+volatile uint32_t en_sheds;
+void en_overload(void) { ov_now = 1; }          /* (this render ran over: the next sees it) */
+static int reel_shed(void);
+static void shed(void)                          /* the cheapest to lose: a gene of the reel, else the softest bell */
+{
+    int v, i, bv = -1, bi = 0;
+    float least = 9.0f;
+    en_sheds++;
+    if (reel_shed())
+        return;
+    for (v = 0; v < EN_NVOX; v++)
+        for (i = 0; i < NPOLY; i++) {
+            const vnote_t *n = &vc[v].n[i];
+            if (vc[v].role == ROLE_LOOPS && n->on && n->rung && n->vel * n->out < least) {
+                least = n->vel * n->out;
+                bv = v;
+                bi = i;
+            }
+        }
+    if (bv >= 0) {
+        vc[bv].n[bi].on = 0;
+        midi(0x80u | (uint32_t)bv, vc[bv].n[bi].midi_note, 0);
+    }
+}
+
 void en_render(int32_t *out, uint32_t n, uint32_t gain_q12)
 {
     const float gain = (float)gain_q12 * (1.0f / 4096.0f) * 2.0f;
+    if (ov_now) {                                /* two renders in a row over 90 %: one shed, and again each two */
+        ov_now = 0;
+        if (++ov_run >= 2u) {
+            ov_run = 0;
+            shed();
+        }
+    } else {
+        ov_run = 0;
+    }
     drain();
     if (en_ext && ++ext_age > 100u) {           /* the clock gone: the Tempo knob's again */
         en_ext = 0;
@@ -3134,6 +3262,7 @@ void en_render(int32_t *out, uint32_t n, uint32_t gain_q12)
         }
     }
     smp_clock += n;
+    en_now = smp_clock;
     while (n) {
         uint32_t k = n > BLK ? BLK : n;
         int timed = en_playing && !en_ext;
