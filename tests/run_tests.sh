@@ -25,14 +25,14 @@ run() {
     fi
 }
 run amb sh -c "$CC -O2 -ffp-contract=off -std=c99 -Wall -Wextra -Wdouble-promotion -Werror -DEN_HOST -Iapp/dsp -Ibase/include \
-    -o $OUT/amb_test tests/host/amb_test.c app/dsp/amb.c && $OUT/amb_test"
-if [ -f $B/amb.fwsc ]; then
-    run ota-entry sh -c "$CC -w -o $OUT/ota_test base/tests/ota_test.c && $OUT/ota_test $B/amb.fwsc"
-    run update-loader sh -c "head -c 100000 $B/amb.bin > $OUT/old_app.bin && \
+    -o $OUT/amb_test tests/host/amb_test.c app/dsp/amb.c -lm && $OUT/amb_test"
+if [ -f $B/cortex.fwsc ]; then
+    run ota-entry sh -c "$CC -w -o $OUT/ota_test base/tests/ota_test.c && $OUT/ota_test $B/cortex.fwsc"
+    run update-loader sh -c "head -c 100000 $B/cortex.bin > $OUT/old_app.bin && \
         $PY base/tools/fm1pkg_make.py $OUT/old_app.bin $B/loader/ota.bin $OUT/old.fwsc >/dev/null && \
-        $CC -w -o $OUT/ldr_test base/tests/ldr_test.c && $OUT/ldr_test $OUT/old.fwsc $B/amb.fwsc"
+        $CC -w -o $OUT/ldr_test base/tests/ldr_test.c && $OUT/ldr_test $OUT/old.fwsc $B/cortex.fwsc"
 else
-    echo "  skip update path (no $B/amb.fwsc: ./build.sh)"
+    echo "  skip update path (no $B/cortex.fwsc: ./build.sh)"
 fi
 if command -v node >/dev/null 2>&1; then              # tools/FITA.html's reel coding (its CORE), against the FM-1's
     run fita node tests/host/fita_test.js tools/FITA.html $OUT/fita.syx

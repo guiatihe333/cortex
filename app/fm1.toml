@@ -1,5 +1,5 @@
 # AMB-1's build settings (fm1-base's tools/build.py: ./build.sh)
-name = "AMB"                   # the build's files: amb.fwsc, amb-X.Y.fwsc
+name = "CORTEX"                # the build's files: cortex.fwsc, cortex-X.Y.fwsc
 id_prefix = "FM-1_76"          # package identity, AMB-1 FM6's own (AMB-1's is FM-1_7): releases FM-1_76XXYYZZ
 usb_manufacturer = "CORTEX"
 usb_product = "CORTEX FM-1"
@@ -10,7 +10,15 @@ words = "words.tsv"
 include = ["dsp"]
 o2 = ["dsp/amb.c"]             # the engine, at -O2
 # the site
-tagline = "AMB-1 FM6: AMB-1 with FM6 voices, DX7 banks and a reel of tape (unofficial)"
-repo = ""                      # (the source travels with the firmware: codigo-fonte/)
+tagline = "A generative FM instrument and video synth for the FM-1"
+repo = "https://github.com/guiatihe333/cortex"
 licence = "MPL-2.0"
-credits = "An unofficial fork of AMB-1 by Charles Vestal; the FM6 core is msfa (Dexed), by way of JIANT FM. Built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
+credits = "A fork of AMB-1 by Charles Vestal; the FM6 core is msfa (Dexed), by way of JIANT FM. Built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
+
+# firmware.json, for firmware hubs (fm1-base docs/FIRMWARE-JSON.md)
+author = "guiatihe333"
+description = "CORTEX turns the M-VAVE FM-1 into a generative FM instrument. Three six-operator FM voices with DX7 banks play chords, bells and bass that grow by themselves, each with five modulators; a reel of tape records and replays them. Songs come in from MIDI files, and a video synth on the screen moves with the music. It plays itself from the moment it is switched on, and every knob can be played or rolled."
+tags = ["synth", "fm", "generative", "ambient", "sequencer"]
+install = "https://guiatihe333.github.io/cortex/install/"
+site = "https://guiatihe333.github.io/cortex/"
+screenshot = "docs/img/cortex-card.png"
