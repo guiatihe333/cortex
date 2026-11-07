@@ -1,20 +1,20 @@
 {
   "schema": 1,
-  "id": "amb",
-  "name": "AMB-1",
-  "author": "Charles Vestal",
+  "id": "cortex",
+  "name": "CORTEX",
+  "author": "guiatihe333",
   "license": "MPL-2.0",
-  "tagline": "A generative ambient machine for the FM-1",
-  "description": "AMB-1 turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's Music for Airports. It plays itself from the moment it's switched on: breathing voices, soft bells on tape loops of unequal length, a gliding bass and quiet Euclidean percussion, through a tape echo and a plate reverb. It has eight pieces, and it is an album as much as an instrument. You don't perform it, you tend it: pick a piece and a scale, take notes out, put them back, and let it grow.",
-  "tags": ["ambient", "generative", "fm"],
-  "install": "https://charlesvestal.github.io/fm1-amb/install/",
-  "site": "https://charlesvestal.github.io/fm1-amb/",
-  "source": "https://github.com/charlesvestal/fm1-amb",
-  "screenshot": "docs/img/screen-garden.png",
+  "tagline": "A generative FM instrument and video synth for the FM-1",
+  "description": "CORTEX turns the M-VAVE FM-1 into a generative FM instrument. Three six-operator FM voices with DX7 banks play chords, bells and bass that grow by themselves, each with five modulators; a reel of tape records and replays them. Songs come in from MIDI files, and a video synth on the screen moves with the music. It plays itself from the moment it is switched on, and every knob can be played or rolled.",
+  "tags": ["synth", "fm", "generative", "ambient", "sequencer"],
+  "install": "https://guiatihe333.github.io/cortex/install/",
+  "site": "https://guiatihe333.github.io/cortex/",
+  "source": "https://github.com/guiatihe333/cortex",
+  "screenshot": "docs/img/cortex-card.png",
   "hardware": {
     "models": ["FM-1"],
     "flash": ["856014", "B36014"],
-    "features": ["usb-audio-in", "screen-reader"]
+    "features": ["usb-audio-in", "usb-audio-out", "screen-reader"]
   },
-  "credits": "Built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
+  "credits": "A fork of AMB-1 by Charles Vestal; the FM6 core is msfa (Dexed), by way of JIANT FM. Built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
 }

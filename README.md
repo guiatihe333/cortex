@@ -1,60 +1,35 @@
-# AMB-1 for the M-VAVE FM-1
+# CORTEX for the M-VAVE FM-1
 
-AMB-1 turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's
-*Music for Airports*. It plays itself from the moment it's switched on: breathing voices, soft
-bells on tape loops of unequal length, a gliding bass and quiet Euclidean percussion, all through
-a tape echo, a long tape loop and a plate reverb. You don't perform it, you tend it: pick a piece
-and a scale, take notes out, put them back, and let it grow.
+CORTEX turns the M-VAVE FM-1 into a generative FM instrument. Three six-operator FM voices (pad, bells, bass) with
+DX7 banks play chords that grow by themselves, each voice with five modulators; a reel of tape records and replays
+them; songs come in from MIDI files; and a video synth on the screen moves with the music, its colours spilling into
+every page. It plays itself from the moment it is switched on, and every knob can be played or rolled.
 
-**This tree's voices are FM6**: the pad, the bells and the bass are 6-operator FM, the engine of
-[JIANT FM](https://github.com/juanjiant-bit/JIANT) (msfa, Dexed's core, in integer C: `app/dsp/fm6_core.c`), with
-patches of their own, six a voice (`pad_bank`, `bell_bank`, `bass_bank` in `app/dsp/amb.c`), and the DX7 banks you
-send it (`tools/amb_syx.py`); each voice's patch edited on the device operator by operator, five generative
-modulators a voice, MIDI CC and NRPN in and out. Everything that plays them is AMB-1's as it
-was: the breaths, the loops, the glide, the pulse, the echoes and the plate.
+![CORTEX's screen: the video synth](docs/img/cortex-card.png)
 
-![AMB-1's screen: the garden](docs/img/screen-garden.png) ![Voices](docs/img/screen-voices.png) ![Frozen](docs/img/screen-frozen.png)
+- **Try it in your browser** (no FM-1 needed): <https://guiatihe333.github.io/cortex/simulator/>
+- **Install it**: download `cortex-X.Y.Z.fwsc` from the [releases](https://github.com/guiatihe333/cortex/releases)
+  and install it with The Firmware Hub, M-UPGRADE or `python3 base/tools/fm1_install.py`
+- **Read the manual**: [docs/MANUAL.md](docs/MANUAL.md) (Portuguese: [docs/MANUAL-PT.md](docs/MANUAL-PT.md))
 
-- **Try it in your browser** (no FM-1 needed): <https://charlesvestal.github.io/fm1-amb/emu/>
-- **Install it** (Chrome or Edge, with the FM-1 plugged in): <https://charlesvestal.github.io/fm1-amb/install/>
-- **Read the manual**: <https://charlesvestal.github.io/fm1-amb/manual/> (source: [docs/MANUAL.md](docs/MANUAL.md))
-- **Download the firmware file**: [releases](https://github.com/charlesvestal/fm1-amb/releases)
-
-Installing it is at your own risk, though it's hard to get stuck: the web installer can put
-M-VAVE's own firmware back, and an FM-1 that fails to start twice comes up in a safe mode the
-installer can reach.
-
-## In short
-
-| | |
-|---|---|
-| Keys | The scale: each key adds its note or takes it out |
-| PLAY · REC · EDIT | Grow / rest · freeze · the next chord |
-| HOME · ENV · ARP · LFO · SEQ · FX · GLO | The pages: Garden, Pad, Bells, Bass, Pulse, Space, Setup; KNOB 1–4 set their values, a layer's level on KNOB 1 |
-| ENV · ARP · LFO again | that voice's own pages: VOICE (the patch, algorithm, feedback, index, the LFO, the pitch envelope), OPERATOR (each operator as a DX7 edits it), MOD (five generative modulators, any target down to one operator) |
-| SELECT | The previous or next page; with HOME held, the tempo |
-| ALGORITHM · PRESETS | The mode · the piece (eight of them) |
-| OCT− / OCT+ | The bells' octave |
-| SAVE | Saves; held, puts the piece back to its recipe |
-
-Hold any button for a second and a card says what it does.
-
-AMB-1 also tells the [FM-1 Screen Reader](https://charlesvestal.github.io/fm1-reader/) what its screen
-shows, over USB: the page and its knobs, a knob's value as it turns, the piece, the chord as it moves,
-and what each button did.
-
-The [manual](https://charlesvestal.github.io/fm1-amb/manual/) has the rest.
+CORTEX is a fork of [AMB-1](https://github.com/charlesvestal/fm1-amb) by Charles Vestal (its history is this
+repository's), with the FM6 core of [JIANT FM](https://github.com/juanjiant-bit/JIANT) (msfa, Dexed's core, in
+integer C: `app/dsp/fm6_core.c`). Its identity is `FM-1_76XXYYZZ`. It is not affiliated with M-VAVE.
 
 ## Building and testing
 
-AMB-1 is an app on [fm1-base](https://github.com/charlesvestal/fm1-base) (`base/`, a git submodule); clone with
-`--recursive`. The toolchain and prerequisites are in [BUILDING.md](BUILDING.md):
+CORTEX is an app on [fm1-base](https://github.com/charlesvestal/fm1-base), which is in this tree as `base/` (not a
+submodule) with two small changes of CORTEX's: the USB audio a computer plays into the FM-1, given to the app (the
+reel's SOURCE USB). [base/CORTEX.md](base/CORTEX.md) lists them. The toolchain and prerequisites are in
+[BUILDING.md](BUILDING.md):
 
 ```
-sh tests/run_tests.sh                                  # the instrument, the app in a simulator, the web builds
-./build.sh                                             # app/build/amb.fwsc
-python3 base/tools/fm1_install.py app/build/amb.fwsc   # install it over USB
+./build.sh                                                   # app/build/cortex.fwsc
+sh tests/run_tests.sh                                        # the instrument, the app in a simulator, the web builds
+python3 base/tools/fm1_install.py app/build/cortex.fwsc      # install it over USB
 ```
+
+The browser simulator (`simulator/`) is `./build.sh --web`'s, with a page that loads MIDI files into the song slots.
 
 `app/build/host/amb_host SCRIPT OUTDIR` runs the whole app on a computer from a script
 (`tests/scenarios/*.amb`), with audio and screenshots coming out. `./build.sh --web` builds the same code for the

@@ -42,14 +42,14 @@ fi
 run host-build sh build.sh --host
 if command -v emcc >/dev/null 2>&1; then
     run emu sh -c "sh build.sh --web && node tests/host/emu_test.mjs $B/emu/app.wasm"
-    run app sh -c "sh web/app/build.sh >/dev/null && node tests/host/app_test.mjs $B/app/amb.wasm"
+    echo "  skip app (web/app, AMB-1's engine-only web app, is not kept up in CORTEX: no pulse since 1.4.0)"
 else
     echo "  skip emu, app (no emcc)"
 fi
 for s in tests/scenarios/*.amb; do
     n=$(basename "$s" .amb)
     mkdir -p "$B/scenarios/$n"
-    run "scenario-$n" $B/host/amb_host "$s" "$B/scenarios/$n"
+    run "scenario-$n" $B/host/cortex_host "$s" "$B/scenarios/$n"
 done
 [ $FAIL -eq 0 ] && echo "all tests passed" || echo "TESTS FAILED"
 exit $FAIL
