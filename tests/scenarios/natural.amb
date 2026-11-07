@@ -1,0 +1,18 @@
+# 1.5.7: Gate Natural (the Play page's GATE all the way down, par157 4): each note held a sixteenth, as a key
+# played, then the patch's envelopes ring it out; the screen and a screen reader say Natural
+wait 300
+tap ENV
+wait 100
+tap ENV
+wait 100
+tap ENV
+wait 100
+expect view 24
+turn SELECT 1 100
+expect view 25
+spin K2 -100
+expect par157 4
+listen
+where
+said Gate Natural
+shot natural.png

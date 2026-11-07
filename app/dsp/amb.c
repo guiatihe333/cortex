@@ -47,7 +47,7 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     MS_PARAMS(w, "4"), MS_PARAMS(w, "5")
     VOX_PARAMS("V1"), VOX_PARAMS("V2"), VOX_PARAMS("V3"),
 #define PL_PARAMS(w, role, dens, pace, gate)                                                                       \
-    {w " env", 0, EN_NENV - 1, ENV_PATCH}, {w " gate", 5, 100, gate}, {w " role", 0, EN_NROLE - 1, role},          \
+    {w " env", 0, EN_NENV - 1, ENV_PATCH}, {w " gate", 4, 100, gate}, {w " role", 0, EN_NROLE - 1, role},          \
     {w " octave", -2, 2, 0}, {w " density", 0, 100, dens}, {w " pace", 0, 100, pace}, {w " glide", 0, 100, 20},    \
     {w " attack", 0, 100, 5}, {w " decay", 0, 100, 40}, {w " sustain", 0, 100, 70}, {w " release", 0, 100, 40}
     PL_PARAMS("V1", ROLE_CHORD, 100, 60, 70), PL_PARAMS("V2", ROLE_LOOPS, 40, 60, 25),
@@ -468,6 +468,13 @@ void en_param_text(int i, int v, char *b)
         return;
     }
     if (i >= P_PLAY && i < P_TAPE && (i - P_PLAY) % PL_N == PL_GATE) {
+        if (v < 5) {                             /* (below 5 %: Natural, a sixteenth) */
+            const char *s = "Natural";
+            while (*s)
+                *b++ = *s++;
+            *b = 0;
+            return;
+        }
         b = itoa_s(v, b);
         *b++ = '%';
         *b = 0;
@@ -922,6 +929,8 @@ typedef struct {
 static voice_t vc[EN_NVOX];
 #define PL(v, k) (par[P_PL(v, PL_##k)])
 #define GATE_F(v) ((float)PL(v, GATE) * 0.01f)
+static float step_len;                          /* (a sixteenth, in samples: below) */
+#define GATE_NAT(v) (PL(v, GATE) < 5)             /* Natural: each note held a sixteenth, as a key played */
 #define GEN(v, k) ((v) * NPOLY + (k))           /* a note's MOD generator */
 static float pad_gate, bright, btone;           /* the transport (1 playing); the pieces' Bright and Bell tone */
 static const float PAD_PAN[EN_NPAD] = {-0.55f, -0.18f, 0.18f, 0.55f};
@@ -1093,7 +1102,7 @@ static void chord_coefs(int v, int i)           /* every FM6 block (32 samples):
     if (PL(v, ENV) != ENV_AMB || vc[v].decays) {   /* the patch's envelopes (or the ADSR; or a patch that dies away,
                                                  * which AMB's slow breath would only find gone): struck at the breath, let go
                                                  * at GATE of it (its sounding part, 0.9), the level steady */
-        if (!n->up && n->t >= GATE_F(v) * 0.9f) {
+        if (!n->up && n->t >= (GATE_NAT(v) ? step_len * n->rate * (1.0f / 32.0f) : GATE_F(v) * 0.9f)) {
             fm6_note_key(&n->fm, n->vp, 0);
             n->up = 1;
         }
@@ -3481,7 +3490,7 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
             n->out = c->gain;
             n->lv = 1.0f;
             if (PL(v, ENV) != ENV_AMB) {         /* the patch's envelopes (or the ADSR): held GATE of a bar */
-                n->held = (int32_t)(step_len * 16.0f * GATE_F(v));
+                n->held = (int32_t)(GATE_NAT(v) ? step_len : step_len * 16.0f * GATE_F(v));
             } else {                             /* AMB-1's: a bell held at a sustain let go after a beat */
                 uint32_t car = fm6_carriers(p[FP_ALG] & 31u), j2, sus = 0;
                 for (j2 = 0; j2 < 6u; j2++)
@@ -3551,7 +3560,7 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
     if (c->xs && (c->xf <= 0.0f || n->amp < 1e-4f)) {
         note_strike(v, 0, vpat[v], (int32_t)n->note, 100, 1);
         c->xs = 0;
-        c->held = (int32_t)(drift_left * GATE_F(v));
+        c->held = (int32_t)(GATE_NAT(v) ? step_len : drift_left * GATE_F(v));
     }
     if (env) {                                   /* each chord (or PACE's step) struck, let go at GATE of it */
         if (c->strike && en_playing) {
@@ -3561,7 +3570,7 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
             } else {
                 const int st = bass_step(v);
                 note_strike(v, 0, vpat[v], (int32_t)n->target, 100, n->amp < 1e-4f);
-                c->held = (int32_t)((st ? (float)st * step_len : drift_total) * GATE_F(v));
+                c->held = (int32_t)(GATE_NAT(v) ? step_len : (st ? (float)st * step_len : drift_total) * GATE_F(v));
             }
         }
         if (c->held > 0 && (c->held -= FM6_N) <= 0)

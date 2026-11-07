@@ -1,6 +1,6 @@
 # CORTEX
 
-CORTEX (1.5.6; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
+CORTEX (1.5.7; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
 plays itself from the moment it's switched on: three FM voices (each breathing chords, ringing loops or gliding a
 bass, as you choose), a short echo, a tape loop and a plate reverb, and a reel of tape
 that records it all and plays it back as grains. You don't perform it, you tend it: pick a piece and a scale, take
@@ -311,7 +311,8 @@ was left on. The top of the screen says which voice and which page. Each piece k
   **Gate**, so the patch's own envelopes are heard, and editing them changes the sound. **ADSR:** the same, the
   carriers' envelope from the four ADSR knobs (the modulators keep the patch's).
 - **Gate:** how long a note is held down: of a chord's breath, of a bar for the loops, of a chord (or a step) for the
-  bass.
+  bass. All the way down, **Natural** (1.5.7): each note is held a sixteenth, as a key played, and the patch's (or
+  the ADSR's) decay and release are what you hear: notes don't hang on, however long the breath or the chord.
 - **Pace:** a chord's breath (4 to 16 s); the loops' step (1/16, 1/8, 1/4, 1/2); the bass struck each chord, or
   each bar, 1/2, 1/4, 1/8 (with Patch or ADSR).
 - **Glide:** how slowly the bass slides to its next note, 20 ms to 1.2 s.
