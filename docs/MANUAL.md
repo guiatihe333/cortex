@@ -1,15 +1,16 @@
-# AMB-1 FM6
+# CORTEX
 
-AMB-1 FM6 turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
+CORTEX (1.5.5; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
 plays itself from the moment it's switched on: three FM voices (each breathing chords, ringing loops or gliding a
 bass, as you choose), a short echo, a tape loop and a plate reverb, and a reel of tape
 that records it all and plays it back as grains. You don't perform it, you tend it: pick a piece and a scale, take
 notes out, put them back, and let it grow.
 
 It is an unofficial fork of Charles Vestal's AMB-1: the same garden, with DX7-style FM voices (their patches edited
-operator by operator, your own DX7 banks), three voices alike, the dice and the reel.
+operator by operator, your own DX7 banks), three voices alike, the dice and the reel; and since 1.4.8 songs from
+MIDI files, a video synth on the first page whose colours run through every page, and the reel recording what you play.
 
-![A drawing of the FM-1 running AMB-1 FM6, each control labelled with what it does: the Controls section below says the same in words](img/fm1-panel.svg "The FM-1 (a drawing), each control labelled")
+![A drawing of the FM-1 running CORTEX, each control labelled with what it does: the Controls section below says the same in words](img/fm1-panel.svg "The FM-1 (a drawing), each control labelled")
 
 ---
 
@@ -97,7 +98,7 @@ Not sure what a button does? Hold it for a second: a card says. Let go and nothi
 | EDIT | The next chord, at the start of the next bar. On the reel's pages: a new splice. |
 | HOME | The Partiture page (the score). |
 | ENV · ARP · LFO | Voices 1, 2 and 3. Again: the voice's PATCH, OPERATOR and MOD pages, then back. |
-| SEQ | The reel: Tape. Again: Gene, Deck, Tape Mod, Tape Mod 2, and round. |
+| SEQ | The reel: Tape. Again: Gene, Deck, Tape Mod, Tape Mod 2, Tape Key, and round. |
 | FX · GLO | The Space and Setup pages. |
 | SEL | **The dice.** Tapped: every knob of the page shown rolled (on an operator page all six operators, on a MOD or Tape Mod page all five modulators, two to four of them on, the rest Off). Held with ENV, ARP, LFO, HOME, SEQ, FX or GLO: that whole layer (with HOME and SEQ, the loops and patterns grown anew too). With EDIT: new loops, the settings kept. With SAVE: **init** (see below). Held alone a second: **undo** the last roll, init or recipe. |
 | SELECT | The previous or next page. Hold HOME and turn it for the tempo. |
@@ -138,7 +139,11 @@ puts it away; letting go after it does nothing else.
 - **The look:** each page in the colours of a record of Aphex Twin's, drawn anew (no names, no marks): the Partiture
   black and white with a few gold details, Voice 1 rust and gold, Voice 2 warm orange on black, Voice 3 green, Space a
   blue sky, Setup steel grey and a warning yellow (and a live hex dump of the settings), the reel's pages beige paper
-  and the circles of Volume II's back. Scanlines, registration marks, and at each new chord a glitch for a moment.
+  and the circles of Volume II's back. Registration marks at the corners. Since 1.5.2 the chord that sounds colours every page: its first three
+  notes give three colours (C red round the colour wheel to B), as bright as the voices are loud, which fill the
+  lines, the knobs' rings and a faint wash of slow bands over the ground. The letters are melted (1.5.1): each column
+  on a slow wave, a drop now and then from a stroke's foot, a ghost of the letter a pixel off in another colour.
+- **The battery** (top right, 1.5.5): three bars, rust at one or none; a bolt when a computer powers the FM-1.
 - **Bottom:** the page's name and a dot for each of the eleven pages, then its four values, one for each knob: a dial
   (or, for a switch, its positions) and the value. The one you're turning lights up.
 
@@ -215,7 +220,7 @@ Gene, Deck, Tape Mod, Tape Mod 2. Each voice has more pages of its own (ENV, ARP
 
 Each voice's pages show its own sound on an oscilloscope, caught as it rises through zero and scaled to its peak, on a
 graticule, the last trace fading as on a phosphor screen: **Voice 1** in time (Y-T), **Voice 2** against itself a
-quarter later (X-Y, a Lissajous), **Voice 3** wound round a circle (polar). A glitch tears the trace now and then.
+quarter later (X-Y, a Lissajous), **Voice 3** wound round a circle (polar).
 
 ![Voice 1's page: its sound in time on the scope](img/screen-scope.png "Voice 1's scope")
 
@@ -246,6 +251,36 @@ The three alike:
 
 The top right of this page shows how much of the FM-1's time the sound takes (CPU) and, after an **X**, how many
 times since it started the sound ran out of time (an overload: see [Troubleshooting](#s11)).
+
+### HOME again: the video synth
+
+HOME on the Partiture opens the **video synth**'s pages; HOME again steps through them, from Screen back to the Partiture. The picture moves
+with the music (its levels, its beats, the voices, the notes). The keys play it on these pages.
+
+| Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
+| --- | --- | --- | --- | --- |
+| Visual | Visual (Bloom, Ridge, Prism, Swarm, Tunnel, Plasma, Spiral, XOR, Score) | Colour (Theme, Ember, Ice, Acid, Mono) | Trails | React |
+| Video | Feedback | RGB | Hue | Sync (a bass hit tears rows) |
+| Shape | Geometry (Off, Polygon, Lissajous, Grid, Mandala, Scope, Rutt) | Sides | Mirror (Off, Mirror, Flip, Quad, Kaleido) | Speed |
+| Mix | Layer (a second picture, or Off) | Blend (Add, Screen, Max, Diff, Mask) | Mix | Pulse |
+| Life | Morph | Mutate | Flow | Chaos |
+| Mosh | Mosh | Sort | Corrupt | Slice |
+| Chroma | Colorama | Poster | Pixel | Key |
+| React | Slot (1–4) | Source (Level, Bass, Mid, High, Beat, Voice 1–3, Notes, Chord, LFO, Random) | Target (any of these pages' settings, or All) | Depth |
+| Screen | Bars (Show, Auto, Hide: the page's name and knobs over the picture) | Delay | Bright | Ear |
+
+### GLO again: MIDI and Song
+
+GLO on Setup opens **MIDI**, then **Song**, then back to Setup.
+
+- **MIDI:** **V1 chan**, **V2 chan**, **V3 chan**: each voice's MIDI channel, out and in; **Notes in**: *Scale*, a
+  note on Voice 1's channel adds or removes its note from the scale; *Play*, a note on a voice's channel plays that
+  voice. The top line counts what comes in on each port (U for USB, J for the jack, B for Bluetooth) and the last
+  note's channel.
+- **Song:** a song from a MIDI file (see [MIDI](#s9)) plays through the garden: **Song** picks it (Off, or slot 1–4),
+  **Follow** how closely the voices follow its melody and bass (from 50 up, more and more), **Vary** leaves notes
+  out, a scale step off or a sixteenth late, now and then; **Start** the bar it starts from. Its chords lead the
+  garden's while it plays, moved to the garden's root.
 
 ### ENV, ARP or LFO again: a voice's own pages
 
@@ -338,11 +373,12 @@ the splices.
 
 | Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
 | --- | --- | --- | --- | --- |
-| Tape | Source (Mix, Voice 1, 2, 3) | Dry/Wet | SOS | Speed (−2x .. Stop .. +2x) |
+| Tape | Source (Mix, Voice 1, 2, 3, File, USB, Play 1, 2, 3, Play All) | Dry/Wet | SOS | Speed (−2x .. Stop .. +2x) |
 | Gene | Gene (the whole splice .. 1/256) | Slide | Morph | Organize (splice 1–8) |
 | Deck | FX (Before, After) | Wow | Drive | Tone |
 | Tape Mod | Mod (1–5) | Target | Depth | Rate |
 | Tape Mod 2 | Mod (1–5) | Shape | Sync | Smooth |
+| Tape Key | Key sync (Off, Cortex, Tape) | Key (the splice picked's) | Shift (the reel transposed) | |
 
 **Recording** (on these three pages):
 
@@ -355,7 +391,9 @@ the splices.
 - A splice can't be erased alone: overdub it at SOS 0, or erase the reel.
 
 **What it records** is **Source**'s: the whole mix (the reel itself left out) or one voice alone, a little saturated
-as onto tape (**Drive**).
+as onto tape (**Drive**); **File**, a reel sent from a computer (tools/FITA.html); **USB**, what a computer or a phone
+plays into the FM-1 over USB; **Play 1, 2, 3**: on the reel's pages the keys play that voice (**Play All**: all three)
+and the reel records what you play.
 
 **How it plays:** the splice Organize picks, as **genes**: each a window of the splice (**Gene**), starting where
 the tape is, past it by **Slide**, at **Speed** (pitch and time together, as tape; 1x and −1x stick; at Stop it
@@ -390,12 +428,20 @@ Each piece has its own first one.
 
 MIDI comes in over USB and the TRS jack, and goes out over USB.
 
-- **In, channel 1:** a note adds or removes its note from the scale, like a key.
+- **In, notes:** on Voice 1's channel a note adds or removes its note from the scale, like a key; with Notes in at
+  Play, a voice's channel plays the voice (the MIDI page, GLO twice).
 - **In, clock:** the beat follows MIDI clock, and start / stop start and stop the garden. The screen shows EXT for
   the tempo. What hangs on the tempo follows it too, measured a beat at a time: the echo, the modulators at Sync
   Tempo, the loops' Gate, the swing.
-- **Out** (on by default): Voices 1, 2 and 3 on channels 1, 2 and 3, and clock with start / stop when it runs on
+- **Out** (on by default): Voices 1, 2 and 3 on their channels (1, 2 and 3 unless the MIDI page says otherwise), and clock with start / stop when it runs on
   its own tempo. Turning MIDI out off sends all notes off.
+
+### Songs from MIDI files
+
+A MIDI file becomes a song in one of four slots: its chords a half bar each, its melody and its bass (drums on
+channel 10 left out), its key found from its notes. On a computer, `python3 tools/amb_mid.py song.mid --song 1` sends it to
+slot 1 over USB; in the [browser simulator](https://guiatihe333.github.io/cortex/simulator/) the page does the same
+for the simulated FM-1. Then the Song page (GLO twice) plays it.
 
 ### CC and NRPN, in and out
 

@@ -330,8 +330,6 @@ static struct {
     uint8_t rslot;                     /* the visual's react slot picked (0..3) */
     int8_t key_vox[32];                /* each key held on a voice's page: the voice it plays (-1 none) */
     uint8_t in_ch, in_port;            /* MIDI in: the last note's channel (1..16, 0 none yet) and port (PORT_*) */
-    uint32_t glitch_until, glitch_seed, glitch_chord, glitch_next;   /* a burst of torn lines: until, its pattern; the
-                                        * chord it last saw; the next one while it grows */
     uint8_t op[EN_NVOX], stage[EN_NVOX], pstage[EN_NVOX], slot[EN_NVOX];   /* each voice's operator (1..6),
                                         * envelope stage, pitch envelope stage and modulator (0..) picked */
     uint8_t gsub[EN_NVOX][NGROUP];     /* each voice's group: the page it was left on */
@@ -2005,7 +2003,42 @@ static void tag(int32_t *x, const char *s, uint16_t bg, uint16_t fg)
     *x += w + 4;
 }
 
-/* the header: the piece in a tag, its root and mode; on the right, the tempo with a slow beat light
+/* the battery (plat_battery): 0 (low) .. 3 bars, 4 a USB host powers the FM-1, -1 not read yet. The
+ * simulator's "battery N" (host.c) stands in for it (AMB-1's) */
+#ifdef PLAT_HOST
+static int8_t batt_host = -2;                  /* -2: plat_battery's */
+static int batt(void) { return batt_host > -2 ? batt_host : plat_battery(); }
+#else
+#define batt() plat_battery()
+#endif
+#define K_LOW RGB(196, 84, 52)                 /* the battery at one bar or none */
+#define BATT_W 20                              /* the body 18 wide and its nub */
+/* lying down at the header's right: three bars, rust at one or none; a bolt instead on USB power; nothing until it
+ * is read */
+static void draw_batt(int32_t x, int b)
+{
+    static const int8_t BOLT[7][2] = {{10, 2}, {9, 2}, {8, 2}, {7, 5}, {9, 2}, {8, 2}, {7, 2}};
+    uint16_t c = b <= 1 ? K_LOW : K_DIM;
+    int i;
+    cv_round(x, 9, 18, 10, 2, c);
+    cv_rect(x + 1, 10, 16, 8, K_BG);
+    cv_rect(x + 18, 12, 2, 4, c);
+    if (b == 4) {
+        for (i = 0; i < 7; i++)
+            cv_rect(x + BOLT[i][0], 10 + i, BOLT[i][1], 1, K_TEXT);
+        return;
+    }
+    for (i = 0; i < b && i < 3; i++)
+        cv_rect(x + 2 + i * 5, 11, 4, 6, b <= 1 ? K_LOW : K_PAD);
+}
+static const char *batt_words(int b)
+{
+    static const char *const W[5] = {"Battery low", "Battery one third", "Battery two thirds", "Battery full",
+                                     "On USB power"};
+    return b >= 0 && b <= 4 ? W[b] : 0;
+}
+
+/* the header: the piece in a tag, its root and mode; on the right, the battery, the tempo with a slow beat light
  * (a play triangle while resting) and a dot while there is something unsaved. Messages take its place
  * for a moment. */
 static void draw_header(void)
@@ -2017,7 +2050,7 @@ static void draw_header(void)
                       (uint32_t)proj.par[P_TEMPO] | ((ui.view == V_SETUP ? plat_cpu_pct() << 8 | plat_xruns() << 16 | en_sheds << 24 : 0u) ^
                       (ui.view == V_MIDI ? plat_midi_count(PORT_USB, 0) << 4 ^ plat_midi_count(PORT_TRS, 0) << 14 ^
                                                plat_midi_count(PORT_BLE, 0) << 24 ^ ui.in_ch : 0u)));
-    h = hash(h, (uint32_t)theme_of(ui.view) ^ ui_lsig);
+    h = hash(h, (uint32_t)theme_of(ui.view) ^ ui_lsig ^ (uint32_t)(batt() + 1) << 28);
     if (msg)
         h = hash(hash(h, (uint32_t)ui.msg[0][0] << 8 | ui.msg[0][1]), ui.msg_until);
     if (en_playing)
@@ -2034,6 +2067,11 @@ static void draw_header(void)
         cv_text(x + 8, 6, &FONT_B, ui.msg[1], K_ACC);
     } else {
         int32_t x = 232, w;
+        if (batt() >= 0) {                         /* the battery, at the right */
+            x -= BATT_W;
+            draw_batt(x, batt());
+            x -= 6;
+        }
         if (ui.dirty) {                            /* unsaved */
             cv_round(x - 5, 12, 5, 5, 2, K_DIM);
             x -= 11;
@@ -2403,11 +2441,9 @@ static void draw_cover(int th)
     }
 }
 /* over the picture: a CRT's scanlines (every other row a shade toward the ground's other end), registration marks
- * at its corners, and while a glitch lasts a few torn lines: bars of the accent and the ink, a row cut out, a strip
- * of grain */
+ * at its corners */
 /* a voice's page: its sound on a scope, 120 x 120 around (120, 72): a graticule, the last trace dim (phosphor), this
- * one bright; voice 1 in time, voice 2 against itself a quarter later (Lissajous), voice 3 round a circle. While a
- * glitch lasts the trace tears: slices of it shifted, a copy beside it in the ink */
+ * one bright; voice 1 in time, voice 2 against itself a quarter later (Lissajous), voice 3 round a circle */
 static int8_t sc_prev[EN_SCOPE_N];
 static void scope_pt(int mode, const int8_t *w, int i, int32_t dx, int32_t *x, int32_t *y)
 {
@@ -2421,15 +2457,13 @@ static void scope_pt(int mode, const int8_t *w, int i, int32_t dx, int32_t *x, i
         *y = 72 - w[i] * 54 / 127;
     }
 }
-static void scope_trace(int mode, const int8_t *w, uint16_t c, int32_t off, int tear)
+static void scope_trace(int mode, const int8_t *w, uint16_t c, int32_t off)
 {
     int i;
     int32_t x0 = 0, y0 = 0;
     for (i = 0; i < EN_SCOPE_N; i++) {
-        int32_t x, y, dx = off;
-        if (tear && (grain(ui.glitch_seed + (uint32_t)(i / 16) + plat_ms() / 40u) & 3u) == 0u)
-            dx += (int32_t)(grain(ui.glitch_seed ^ (uint32_t)i / 16u) % 13u) - 6;   /* a slice shifted */
-        scope_pt(mode, w, i, dx, &x, &y);
+        int32_t x, y;
+        scope_pt(mode, w, i, off, &x, &y);
         if (i && (mode != 0 || x > x0 - 20))
             cv_line(x0, y0, x, y, c);
         x0 = x, y0 = y;
@@ -2442,7 +2476,7 @@ static void scope_trace(int mode, const int8_t *w, uint16_t c, int32_t off, int 
 }
 static void draw_scope(int v)
 {
-    const int mode = v, tear = plat_ms() < ui.glitch_until;
+    const int mode = v;
     const uint16_t grid = mix(K_BG, K_LINE, 10);
     int32_t k;
     char t[16] = "CH1  FM";
@@ -2455,11 +2489,9 @@ static void draw_scope(int v)
     }
     cv_rect(60, 72, 121, 1, mix(K_BG, K_LINE, 14));
     cv_rect(120, 12, 1, 121, mix(K_BG, K_LINE, 14));
-    scope_trace(mode, sc_prev, mix(K_BG, K_ACC, 5), 0, 0);   /* the last, fading */
-    if (tear)
-        scope_trace(mode, en_scope, K_TEXT, 3, 1);           /* the copy beside it */
-    scope_trace(mode, en_scope, mix(K_BG, K_ACC, 9), 1, tear);   /* the glow */
-    scope_trace(mode, en_scope, K_ACC, 0, tear);
+    scope_trace(mode, sc_prev, mix(K_BG, K_ACC, 5), 0);   /* the last, fading */
+    scope_trace(mode, en_scope, mix(K_BG, K_ACC, 9), 1);   /* the glow */
+    scope_trace(mode, en_scope, K_ACC, 0);
     __builtin_memcpy(sc_prev, en_scope, sizeof sc_prev);
     t[2] = (char)('1' + v);                      /* its label, as a scope's channel readout */
     cv_text(62, -1, &FONT_XS, t, K_DIM);
@@ -2478,40 +2510,6 @@ static void draw_screenfx(void)
             cv_rect(X[k] - 3, Y[k], 7, 1, K_LINE);
             cv_rect(X[k], Y[k] - 3, 1, 7, K_LINE);
         }
-    }
-    if (plat_ms() < ui.glitch_until) {
-        const uint32_t s = ui.glitch_seed + (plat_ms() / 40u) * 7919u;   /* (a new tear every 40 ms) */
-        for (k = 0; k < 6; k++) {
-            const uint32_t g = grain(s + (uint32_t)k * 31u), q = grain(s ^ (uint32_t)k * 0x45D9F3Bu);
-            const int32_t gy = (int32_t)(g % (uint32_t)MAIN_H), gx = (int32_t)(q % 200u), gw = 16 + (int32_t)(g >> 16) % 110,
-                          gh = 1 + (int32_t)(q >> 20) % 3;
-            cv_rect(gx, gy, gw, gh, k == 0 ? K_BG : k & 1 ? K_ACC : K_TEXT);
-        }
-        {                                        /* a strip of grain across */
-            const uint32_t g = grain(s + 99u);
-            const int32_t gy = (int32_t)(g % (uint32_t)(MAIN_H - 4));
-            for (k = 0; k < 60; k++) {
-                const uint32_t q = grain(s + 200u + (uint32_t)k);
-                cv_rect((int32_t)(q % 240u), gy + (int32_t)(q >> 24 & 3u), 2 + (int32_t)(q >> 12 & 3u), 1,
-                        q >> 30 & 1u ? K_ACC : K_TEXT);
-            }
-        }
-    }
-}
-/* a burst of torn lines (180 ms): at each new chord, and now and then while it grows (every 6 .. 14 s) */
-static void glitch_tick(void)
-{
-    uint32_t c = 2166136261u, now = plat_ms();
-    int i;
-    for (i = 0; i < EN_NPAD; i++)
-        c = hash(c, en_chord[i]);
-    if (c != ui.glitch_chord || (en_playing && (int32_t)(now - ui.glitch_next) >= 0)) {
-        if (0 && ui.glitch_chord && (c != ui.glitch_chord || en_playing)) {   /* (1.5.3: no glitch) */
-            ui.glitch_until = now + 180u;
-            ui.glitch_seed = hash(c, now);
-        }
-        ui.glitch_chord = c;
-        ui.glitch_next = now + 6000u + grain(now) % 8000u;
     }
 }
 static void draw_spool(int32_t cx, int32_t cy, int32_t r, int turn, uint16_t ink)
@@ -3655,37 +3653,6 @@ static void vis_key(int k)
     }
     mark_dirty();
 }
-/* the video synth's colour mosh, lightly, on any band drawn: its planes apart by split pixels (red one way, blue the
- * other), blocks of rows slipped sideways (blocks of them) */
-__attribute__((unused)) static void ui_bend(int32_t h, int split, int blocks)
-{
-    uint16_t *row = (uint16_t *)(void *)vline;   /* (a row's copy: the visual's scratch, 480 bytes) */
-    int32_t y, x;
-    int k;
-    if (split > 0)
-        for (y = 0; y < h; y++) {
-            uint16_t *p = cv_px + (uint32_t)y * 240u;
-            memcpy(row, p, 480);
-            for (x = 0; x < 240; x++) {
-                const int xr = x + split < 240 ? x + split : 239, xb = x - split >= 0 ? x - split : 0;
-                const uint16_t r = swap16(row[xr]), g = swap16(row[x]), b = swap16(row[xb]);
-                p[x] = swap16((uint16_t)((r & 0xF800u) | (g & 0x07E0u) | (b & 0x001Fu)));
-            }
-        }
-    for (k = 0; k < blocks; k++) {
-        const int32_t y0 = (int32_t)(vis_rnd() * (float)(h - 8)), hh = 2 + (int32_t)(vis_rnd() * 6.0f),
-                      d = (int32_t)((vis_rnd() - 0.5f) * 48.0f);
-        for (y = y0; y < y0 + hh && y < h; y++) {
-            uint16_t *p = cv_px + (uint32_t)y * 240u;
-            memcpy(row, p, 480);
-            for (x = 0; x < 240; x++) {
-                int32_t sx = x - d;
-                sx = sx < 0 ? sx + 240 : sx >= 240 ? sx - 240 : sx;
-                p[x] = row[sx];
-            }
-        }
-    }
-}
 /* ------------------------------------------------------------ the start --- */
 /* CORTEX's start (3 s, or until a button): static that settles, the gate of horn opening (in the Odyssey true dreams
  * come through the gate of horn, false ones through ivory) on an eye that opens, the name torn into place, the three
@@ -3752,14 +3719,6 @@ static void sp_band(int32_t by, int32_t bh, float t)
             cv_text(120 - text_w(&FONT_XS, "FM-1  1.5") / 2, 216, &FONT_XS, "FM-1  1.5", VIOLET);
         }
         cv_oy = 0;
-    }
-    if (0) {                                     /* (1.5.3: no bend, no band inverted) */
-        const int32_t yi = (int32_t)(vis_rnd() * 240.0f) - by, hi = 2 + (int32_t)(vis_rnd() * 5.0f);
-        int32_t y, x;
-        for (y = yi; y < yi + hi; y++)
-            if (y >= 0 && y < bh)
-                for (x = 0; x < 240; x++)
-                    cv_px[(uint32_t)y * 240u + (uint32_t)x] ^= 0xFFFFu;
     }
     cv_blit(0, (uint32_t)by);
 }
@@ -3833,10 +3792,7 @@ static void draw_main(void)
                                         (uint32_t)en_playing << 17 | (uint32_t)proj.par[P_MODE] << 20), i;
     if (ui.frame % 3u)                           /* the garden moves slowly: 20 frames a second is plenty */
         return;
-    glitch_tick();
     h = hash(h, (uint32_t)theme_of(ui.view) ^ ui_lsig);
-    if (plat_ms() < ui.glitch_until)            /* (a glitch: each tear) */
-        h = hash(h, plat_ms() / 40u);
     if (theme_of(ui.view) == 6)                 /* (Setup's hex dump scrolling) */
         h = hash(h, plat_ms() / 300u);
     en_scope_v = (int8_t)view_vox(ui.view);      /* (the scope: the voice shown, each new trace) */
@@ -3866,7 +3822,6 @@ static void draw_main(void)
         h = hash(0x5441504Eu, (uint32_t)tape_ang | en_reel_state << 8 | en_reel_nspl << 10 |
                                   (uint32_t)proj.par[P_RL(ORG)] << 14 | (uint32_t)proj.par[P_RL(FX)] << 18);
         h = hash(h, en_reel_len ^ en_reel_w << 1 ^ (uint32_t)(en_reel_pos * 200.0f) << 20);
-        h = hash(h, plat_ms() < ui.glitch_until ? plat_ms() / 40u : 0u);
         for (i = 0; i < 4u; i++)
             h = hash(h, (uint32_t)en_reel_gene[i] >> 9);
         if (h == ui.sig[1])
@@ -4201,6 +4156,10 @@ static void sp_page(int all)
         sp_cat(", shed ");
         sp_int(en_sheds);
     }
+    if (batt_words(batt())) {                    /* the battery, at the end */
+        sp_cat(". ");
+        sp_cat(batt_words(batt()));
+    }
 }
 
 /* the garden: the chord and how far to the next, the scale from the root up ("F and F sharp": one letter's
@@ -4507,6 +4466,8 @@ static void speak_dump(void)
     proj = keep;
     sp_print("MSG", "Tempo EXT");
     sp_print("MSG", "Tempo 72");
+    for (x = 0; x <= 4; x++)                          /* the battery, at the end of WHERE's first part */
+        sp_print("WHERE", batt_words(x));
 }
 #endif
 
@@ -4645,7 +4606,8 @@ static void ui_live(void)
             ui_lc[i] = hsv565(hue[i] < 0.0f ? hue[i] + 1.0f : hue[i], 0.75f, 0.6f + 0.4f * lv[i]);
             sg = sg * 131u + (uint32_t)(ui_lc[i] & 0xE71Cu);   /* (coarsely) */
         }
-        ui_lsig = sg;
+        if (ui.frame % 32u == 0u)                /* (the pages drawn again with them twice a second) */
+            ui_lsig = sg;
     }
     th_live.line = mix(th_live.line, ui_lc[0], 9);   /* the rules and the tracks: half the first tone */
     th_live.pad = ui_lc[1];

@@ -89,7 +89,7 @@ kbd { font:600 .85em ui-monospace, Menlo, monospace; background: var(--card); bo
 </style>
 <header>
   <h1>CORTEX</h1>
-  <p>1.5.3 for the M-VAVE FM-1: the same code the FM-1 runs, in your browser. Switch it on, then play.</p>
+  <p>1.5.5 for the M-VAVE FM-1: the same code the FM-1 runs, in your browser. Switch it on, then play.</p>
 </header>
 <main>
 <h2 class="sr">The FM-1</h2>
@@ -339,11 +339,20 @@ keys.forEach((k, i) => {
 });
 // a press is held at least MIN_HOLD ms: a quick click or tap would otherwise come and go between two of the
 // firmware's frames and never be seen
-const MIN_HOLD = 90, heldSince = new Map();
-document.addEventListener("pointerdown", (e) => heldSince.set("p" + e.pointerId, performance.now()), true);
-function pointerUp(e) {
-  const id = "p" + e.pointerId, wait = MIN_HOLD - (performance.now() - (heldSince.get(id) || 0));
-  if (wait > 0) { setTimeout(() => pointerUp(e), wait); return; }
+// (each press numbered: a release held back belongs to its own press, and a newer press of the same pointer, a
+// mouse's always the same id, is left alone)
+const MIN_HOLD = 90, heldSince = new Map(), pressNo = new Map();
+document.addEventListener("pointerdown", (e) => {
+  const id = "p" + e.pointerId;
+  heldSince.set(id, performance.now());
+  pressNo.set(id, (pressNo.get(id) || 0) + 1);
+}, true);
+function pointerUp(e, no) {
+  const id = "p" + e.pointerId;
+  if (no === undefined) no = pressNo.get(id) || 0;
+  if (no !== (pressNo.get(id) || 0)) return;   // a newer press holds it now
+  const wait = MIN_HOLD - (performance.now() - (heldSince.get(id) || 0));
+  if (wait > 0) { setTimeout(() => pointerUp(e, no), wait); return; }
   heldSince.delete(id);
   if (btnHeldBy.delete(id)) syncButtons();
   if (keyHeldBy.delete(id)) syncKeys();
@@ -745,14 +754,18 @@ const SONG = (() => {
       while (i < end) {
         tick += vlq();
         let st = d[i];
-        if (st < 0x80) st = run; else i++;
+        if (st < 0x80) {
+          if (!run) { i++; continue; }          // a data byte with no status before it: skipped
+          st = run;
+        } else i++;
         if (st === 0xFF) {
           const ty = d[i++], ln = vlq();
           if (ty === 0x51 && tempo === null && ln === 3) tempo = 60e6 / (d[i] << 16 | d[i + 1] << 8 | d[i + 2]);
           i += ln;
+          run = 0;                              // (meta and SysEx events cancel running status)
           continue;
         }
-        if (st === 0xF0 || st === 0xF7) { i += vlq(); continue; }
+        if (st === 0xF0 || st === 0xF7) { i += vlq(); run = 0; continue; }
         run = st;
         const hi = st & 0xF0, ch = st & 15, a = d[i++], b = hi === 0xC0 || hi === 0xD0 ? 0 : d[i++];
         if (ch === 9) continue;

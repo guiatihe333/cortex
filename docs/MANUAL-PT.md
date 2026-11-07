@@ -1,14 +1,16 @@
-# AMB-1 FM6
+# CORTEX
 
-O AMB-1 FM6 transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
+O CORTEX (1.5.5; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
 de Brian Eno. Ele toca sozinho desde o momento em que é ligado: três vozes FM (cada uma respirando acordes, tocando
 loops ou deslizando um baixo, como você escolher), um eco curto, um loop de fita e um reverb de placa, e uma fita que grava tudo isso e toca de volta em grãos. Você não toca o AMB-1, você cuida dele:
 escolhe uma peça e uma escala, tira notas, põe de volta, e deixa crescer.
 
 É um fork não oficial do AMB-1 de Charles Vestal: o mesmo jardim, com vozes FM no estilo DX7 (patches editados
-operador por operador, seus próprios bancos DX7), três vozes iguais, os dados e a fita.
+operador por operador, seus próprios bancos DX7), três vozes iguais, os dados e a fita; e desde a 1.4.8 músicas de
+arquivos MIDI, um sintetizador de vídeo na primeira página cujas cores passam por todas as páginas, e a fita gravando
+o que você toca.
 
-![Um desenho do FM-1 com o AMB-1 FM6, cada controle com o que ele faz: a seção Controles abaixo diz o mesmo em palavras](img/fm1-panel.svg "O FM-1 (um desenho), cada controle com seu rótulo")
+![Um desenho do FM-1 com o CORTEX, cada controle com o que ele faz: a seção Controles abaixo diz o mesmo em palavras](img/fm1-panel.svg "O FM-1 (um desenho), cada controle com seu rótulo")
 
 ---
 
@@ -137,8 +139,13 @@ outro botão tira o cartão; soltar depois dele não faz mais nada.
 - **O visual:** cada página nas cores de um disco do Aphex Twin, desenhadas de novo (sem nomes nem marcas): a
   Partiture em preto e branco com alguns detalhes dourados, a Voice 1 ferrugem e ouro, a Voice 2 laranja quente no
   preto, a Voice 3 verde, a Space um céu azul, a Setup cinza-aço e amarelo de alerta (e um hex dump ao vivo dos
-  ajustes), as páginas da fita papel bege e os círculos da contracapa do Volume II. Linhas de varredura, marcas de
-  registro, e a cada acorde novo um glitch por um instante.
+  ajustes), as páginas da fita papel bege e os círculos da contracapa do Volume II. Marcas de registro nos cantos.
+  Desde a 1.5.2 o acorde que soa colore todas as páginas: suas três primeiras notas dão três cores (Dó vermelho, e
+  assim pela roda de cores até Si), tão brilhantes quanto as vozes estão fortes, que preenchem as linhas, os anéis dos
+  knobs e um véu leve de faixas lentas sobre o fundo. As letras são derretidas (1.5.1): cada coluna numa onda lenta,
+  de vez em quando uma gota escorrendo do pé de um traço, um fantasma da letra um pixel ao lado em outra cor.
+- **A bateria** (em cima à direita, 1.5.5): três barras, ferrugem com uma ou nenhuma; um raio quando um computador
+  alimenta o FM-1.
 - **Embaixo:** o nome da página e um ponto para cada uma das onze páginas, depois seus quatro valores, um por knob: um
   dial (ou, para uma chave, suas posições) e o valor. O que você está girando acende.
 
@@ -218,7 +225,7 @@ Tape, Gene, Deck, Tape Mod, Tape Mod 2. Cada voz tem mais páginas próprias (EN
 As páginas de cada voz mostram o próprio som dela num osciloscópio, pego quando sobe passando pelo zero e ajustado ao
 seu pico, sobre uma grade, o traço anterior se apagando como num tubo de fósforo: a **Voice 1** no tempo (Y-T), a
 **Voice 2** contra ela mesma um quarto de ciclo depois (X-Y, um Lissajous), a **Voice 3** enrolada num círculo
-(polar). De vez em quando um glitch rasga o traço.
+(polar).
 
 ![A página da Voice 1: seu som no tempo, no osciloscópio](img/screen-scope.png "O osciloscópio da Voice 1")
 
@@ -250,6 +257,36 @@ As três iguais:
 
 O canto de cima à direita desta página mostra quanto do tempo do FM-1 o som está usando (CPU) e, depois de um
 **X**, quantas vezes desde que ligou o som não coube no tempo (uma sobrecarga: veja [Problemas](#s11)).
+
+### HOME de novo: o sintetizador de vídeo
+
+HOME na Partiture abre as páginas do **sintetizador de vídeo**; HOME de novo passa por elas, e da Screen volta à Partiture. A imagem se move
+com a música (os níveis, as batidas, as vozes, as notas). Nessas páginas as teclas tocam a imagem.
+
+| Página | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
+| --- | --- | --- | --- | --- |
+| Visual | Visual (Bloom, Ridge, Prism, Swarm, Tunnel, Plasma, Spiral, XOR, Score) | Colour (Theme, Ember, Ice, Acid, Mono) | Trails | React |
+| Video | Feedback | RGB | Hue | Sync (uma batida do baixo rasga linhas) |
+| Shape | Geometry (Off, Polygon, Lissajous, Grid, Mandala, Scope, Rutt) | Sides | Mirror (Off, Mirror, Flip, Quad, Kaleido) | Speed |
+| Mix | Layer (uma segunda imagem, ou Off) | Blend (Add, Screen, Max, Diff, Mask) | Mix | Pulse |
+| Life | Morph | Mutate | Flow | Chaos |
+| Mosh | Mosh | Sort | Corrupt | Slice |
+| Chroma | Colorama | Poster | Pixel | Key |
+| React | Slot (1–4) | Source (Level, Bass, Mid, High, Beat, Voice 1–3, Notes, Chord, LFO, Random) | Target (qualquer ajuste destas páginas, ou All) | Depth |
+| Screen | Bars (Show, Auto, Hide: o nome da página e os knobs sobre a imagem) | Delay | Bright | Ear |
+
+### GLO de novo: MIDI e Song
+
+GLO na Setup abre a **MIDI**, depois a **Song**, e volta à Setup.
+
+- **MIDI:** **V1 chan**, **V2 chan**, **V3 chan**: o canal MIDI de cada voz, na saída e na entrada; **Notes in**:
+  *Scale*, uma nota no canal da Voice 1 põe ou tira sua nota da escala; *Play*, uma nota no canal de uma voz toca
+  essa voz. A linha de cima conta o que chega por cada porta (U o USB, J o conector, B o Bluetooth) e o canal da
+  última nota.
+- **Song:** uma música de um arquivo MIDI (veja [MIDI](#s9)) toca pelo jardim: **Song** a escolhe (Off, ou o slot
+  1–4), **Follow** o quanto as vozes seguem a melodia e o baixo dela (de 50 para cima, cada vez mais), **Vary** de
+  vez em quando deixa notas de fora, um grau da escala ao lado ou uma semicolcheia atrasada; **Start** o compasso em
+  que ela começa. Enquanto toca, os acordes dela conduzem os do jardim, levados à tônica do jardim.
 
 ### ENV, ARP ou LFO de novo: as páginas de uma voz
 
@@ -344,11 +381,12 @@ gravados e os splices.
 
 | Página | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
 | --- | --- | --- | --- | --- |
-| Tape | Source (Mix, Voice 1, 2, 3) | Dry/Wet | SOS | Speed (−2x .. Stop .. +2x) |
+| Tape | Source (Mix, Voice 1, 2, 3, File, USB, Play 1, 2, 3, Play All) | Dry/Wet | SOS | Speed (−2x .. Stop .. +2x) |
 | Gene | Gene (o splice inteiro .. 1/256) | Slide | Morph | Organize (splice 1–8) |
 | Deck | FX (Before, After) | Wow | Drive | Tone |
 | Tape Mod | Mod (1–5) | Target | Depth | Rate |
 | Tape Mod 2 | Mod (1–5) | Shape | Sync | Smooth |
+| Tape Key | Key sync (Off, Cortex, Tape) | Key (a do splice escolhido) | Shift (a fita transposta) | |
 
 **Gravar** (nessas três páginas):
 
@@ -360,7 +398,9 @@ gravados e os splices.
   1,5 s apaga a fita (salve depois para apagar também a salva).
 - Um splice não pode ser apagado sozinho: faça overdub nele com SOS 0, ou apague a fita.
 
-**O que grava** é o do **Source**: a mistura inteira (sem a própria fita) ou uma voz sozinha, um pouco saturado
+**O que grava** é o do **Source** (e mais: **File**, uma fita mandada de um computador por tools/FITA.html; **USB**,
+o que um computador ou um celular toca no FM-1 pelo USB; **Play 1, 2, 3**, nas páginas da fita as teclas tocam essa
+voz, **Play All** as três, e a fita grava o que você toca): a mistura inteira (sem a própria fita) ou uma voz sozinha, um pouco saturado
 como numa fita (**Drive**).
 
 **Como toca:** o splice escolhido no Organize, em **genes**: cada um uma janela do splice (**Gene**), começando onde
@@ -395,12 +435,20 @@ Drive, SOS); o knob fica onde você o deixou. Cada peça tem o seu primeiro.
 
 O MIDI entra pelo USB e pelo conector TRS, e sai pelo USB.
 
-- **Entrada, canal 1:** uma nota põe ou tira sua nota da escala, como uma tecla.
+- **Entrada, notas:** no canal da Voice 1 uma nota põe ou tira sua nota da escala, como uma tecla; com Notes in em
+  Play, o canal de uma voz toca essa voz (a página MIDI, GLO duas vezes).
 - **Entrada, clock:** o tempo segue o clock MIDI, e start / stop começam e param o jardim. A tela mostra EXT no
   andamento. O que depende do andamento o segue também, medido a cada tempo: o eco, os moduladores em Sync Tempo, o
   Gate dos loops, o swing.
-- **Saída** (ligada por padrão): as Voices 1, 2 e 3 nos canais 1, 2 e 3, e o clock com start / stop quando roda no
+- **Saída** (ligada por padrão): as Voices 1, 2 e 3 nos seus canais (1, 2 e 3, se a página MIDI não disser outros), e o clock com start / stop quando roda no
   próprio andamento. Desligar o MIDI out manda todas as notas pararem.
+
+### Músicas de arquivos MIDI
+
+Um arquivo MIDI vira uma música num de quatro slots: os acordes dele a cada meio compasso, a melodia e o baixo (a
+bateria do canal 10 fica de fora), o tom achado pelas notas. Num computador, `python3 tools/amb_mid.py musica.mid --song 1`
+manda para o slot 1 pelo USB; no [simulador no navegador](https://guiatihe333.github.io/cortex/simulator/) a página
+faz o mesmo no FM-1 simulado. Depois a página Song (GLO duas vezes) toca a música.
 
 ### CC e NRPN, entrada e saída
 

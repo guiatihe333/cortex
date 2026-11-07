@@ -1,4 +1,4 @@
-# AMB-1 licensing
+# CORTEX licensing
 
 AMB-1 is free software under the **Mozilla Public License 2.0** (`MPL-2.0`, full text in `LICENSE`), file by file.
 If you change one of its files and share the result, share that file's source under the MPL. It is built on
@@ -15,7 +15,7 @@ earlier stay under the GPL.
 | --- | --- | --- |
 | The platform: `base/` (boot, USB and USB audio, the TRS jack, storage, the update path, screen, panel, the screen reader, the host simulator and the browser emulator, build and install tools) | [fm1-base](https://github.com/charlesvestal/fm1-base) and [felucca-bsp](https://github.com/hugelton/felucca-bsp), from [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita (@kurogedelic), Hügelton Instruments, under MPL-2.0 with his permission ([felucca-bsp#4](https://github.com/hugelton/felucca-bsp/issues/4)) | MPL-2.0 |
 | `app/` (`app.c`, `app.h`, `ui.c`, `project.c`, `host.c`, `dsp/amb.c` with its Dattorro plate from FoMni-1, `dsp/fm6_tables.h` made by `tools/gen_fm6_tables.py`), `web/app/`, `tests/`, `tools/` | AMB-1, Charles Vestal | MPL-2.0 |
-| AMB-1 FM6's own: `app/bank.c` (the DX7 banks over SysEx), `app/dsp/reel.c` (the reel: IMA ADPCM, after the public IMA/DVI algorithm; its genes after Make Noise's Morphagene, the idea only, no code), `tools/amb_syx.py`, and the changes through `app/` | AMB-1 FM6 | MPL-2.0 |
+| CORTEX's own (until 1.4.7 AMB-1 FM6): `app/bank.c` (the DX7 banks over SysEx), `app/dsp/reel.c` (the reel: IMA ADPCM, after the public IMA/DVI algorithm; its genes after Make Noise's Morphagene, the idea only, no code), `tools/amb_syx.py`, and the changes through `app/` | CORTEX | MPL-2.0 |
 | The idea of a browser emulator for FM-1 firmware (fm1-base's emulator) | [Groove OS](https://www.groove-os.com/) by Peter Gombos, whose site runs its firmware in the browser; no code from it | credit only |
 
 ## Third-party material

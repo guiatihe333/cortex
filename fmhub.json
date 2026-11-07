@@ -1,9 +1,11 @@
 {
   "what": "A generative FM instrument: three 6-operator FM voices with DX7 banks grow chords, bells and bass by themselves, a reel of tape records them, songs come in from MIDI files, and a video synth on the screen moves with the music.",
   "author": "guiatihe333",
-  "kinds": "synth",
+  "kinds": [
+    "synth"
+  ],
   "play": "https://guiatihe333.github.io/cortex/simulator/",
-  "cheat": "https://github.com/guiatihe333/cortex/blob/main/docs/MANUAL.md",
+  "cheat": "https://guiatihe333.github.io/cortex/manual/",
   "image": "docs/img/cortex-card.png",
   "color": "#FFD600"
 }
