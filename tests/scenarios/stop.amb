@@ -1,0 +1,14 @@
+# 1.5.6: STOP on the patch's envelopes (the voices' Envelope Patch, the default) lets every note go: its release
+# ends it, not a slow fade of 4..5 s (and the chords breathe no new notes while stopped). Echo and reverb off, so
+# only the voices are heard
+wait 300
+tap FX
+spin K1 -100
+spin K3 -100
+wait 6000
+tap PLAY
+expect playing 0
+wait 3000
+peakreset
+wait 3000
+expect peak_db_max -55

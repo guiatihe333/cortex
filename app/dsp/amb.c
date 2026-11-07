@@ -1085,7 +1085,9 @@ static void chord_coefs(int v, int i)           /* every FM6 block (32 samples):
     n->t += n->rate;
     if (n->t >= 1.0f) {
         n->t -= 1.0f;
-        chord_breathe(v, i);
+        if (en_playing || (PL(v, ENV) == ENV_AMB && !vc[v].decays))   /* (stopped, on the patch's envelopes: no
+                                                 * new breath under the fade) */
+            chord_breathe(v, i);
     }
     br = breath(n->t);
     if (PL(v, ENV) != ENV_AMB || vc[v].decays) {   /* the patch's envelopes (or the ADSR; or a patch that dies away,
@@ -3231,8 +3233,27 @@ static void play_start(int from_top)
 
 static void play_stop(void)
 {
+    int v, i;
     en_playing = 0;
     pad_gate = 0.0f;
+    for (v = 0; v < EN_NVOX; v++) {             /* on the patch's envelopes (or the ADSR): every note let go, its
+                                                 * release ends it (AMB's: the slow fade alone) */
+        voice_t *c = &vc[v];
+        if (PL(v, ENV) == ENV_AMB && !c->decays)
+            continue;
+        for (i = 0; i < NPOLY; i++) {
+            vnote_t *n = &c->n[i];
+            if (c->role == ROLE_LOOPS) {
+                if (n->held > 0)                 /* (let go at its next block) */
+                    n->held = 1;
+            } else if (!n->up || (c->role == ROLE_BASS && i == 0)) {
+                fm6_note_key(&n->fm, n->vp, 0);
+                n->up = 1;
+            }
+        }
+        if (c->role == ROLE_BASS)
+            c->held = 0;
+    }
     if (!en_ext)
         midi(0xFC, 0, 0);
     notes_off();
