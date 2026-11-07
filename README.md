@@ -1,4 +1,18 @@
-# AMB-1 com as vozes do motor FM6 do JIANT
+# CORTEX
+
+Firmware generativo para o **M-VAVE FM-1** (versão atual **1.5.3**), nascido como AMB-1 FM6: o AMB-1 de Charles
+Vestal com as vozes no motor FM6 do JIANT FM, e depois um sintetizador de vídeo, músicas a partir de arquivos MIDI,
+a fita com fontes Play, as letras derretidas e as páginas nas cores do acorde que toca.
+
+- **Simulador no navegador:** a pasta [`simulator/`](simulator/) roda o mesmo código do FM-1 (WebAssembly); abra
+  `simulator/index.html` por um servidor (`python -m http.server`) ou pelo GitHub Pages.
+- **Código:** `patches/0001..0022` sobre `charlesvestal/fm1-amb` @ `188b0a4` (e `base-patches/` sobre o fm1-base);
+  `amb1-fm6.patch` é o mesmo em um arquivo; `files/` traz os arquivos já modificados.
+- **Compilar:** `build_release.sh` (Linux/WSL). Licença: MPL-2.0, como o AMB-1 (veja `files/LICENSING.md`).
+
+O texto abaixo é o histórico das versões AMB-1 FM6.
+
+## AMB-1 com as vozes do motor FM6 do JIANT
 
 Modificação do firmware alternativo **AMB-1** (Charles Vestal, <https://github.com/charlesvestal/fm1-amb>) para o
 M-VAVE FM-1: as vozes passam a ser geradas pelo **motor FM6 do JIANT FM** (<https://github.com/juanjiant-bit/JIANT>),

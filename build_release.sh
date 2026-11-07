@@ -31,6 +31,9 @@ if [ ! -d fm1-amb ]; then
     git clone -q https://github.com/charlesvestal/fm1-amb
     (cd fm1-amb && git checkout -q 188b0a4 && git submodule update -q --init --recursive)
     (cd fm1-amb && git -c user.name="AMB-1 FM6" -c user.email="noreply@example.com" am -q "$HERE"/patches/*.patch)
+    # fm1-base's own (its USB audio in for the app: the reel's SOURCE USB), and felucca-bsp's within it
+    (cd fm1-amb/base && git apply "$HERE"/base-patches/0001-*.patch)
+    (cd fm1-amb/base/bsp && git apply "$HERE"/base-patches/0002-*.patch)
 fi
 cd fm1-amb
 

@@ -53,7 +53,7 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     PL_PARAMS("V1", ROLE_CHORD, 100, 60, 70), PL_PARAMS("V2", ROLE_LOOPS, 40, 60, 25),
     PL_PARAMS("V3", ROLE_BASS, 35, 0, 80),
 #undef PL_PARAMS
-    {"Tape source", 0, 3, 0}, {"Dry/Wet", 0, 100, 50}, {"SOS", 0, 100, 70}, {"Speed", 0, 100, 75},
+    {"Tape source", 0, 9, 0}, {"Dry/Wet", 0, 100, 50}, {"SOS", 0, 100, 70}, {"Speed", 0, 100, 75},
     {"Gene", 0, 100, 100}, {"Slide", 0, 100, 0}, {"Morph", 0, 100, 45}, {"Organize", 0, 7, 0},
     {"Tape FX", 0, 1, 0},     {"Wow", 0, 100, 25},      {"Drive", 0, 100, 20},    {"Tone", 0, 100, 85},
 #define TM_PARAMS(n, target, depth, rate, shape)                                                                   \
@@ -62,6 +62,21 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     TM_PARAMS("1", 0, 0, 20, SHAPE_WALK), TM_PARAMS("2", 0, 0, 30, SHAPE_SINE), TM_PARAMS("3", 0, 0, 40, SHAPE_TRI),
     TM_PARAMS("4", 0, 0, 15, SHAPE_SINE), TM_PARAMS("5", 0, 0, 50, SHAPE_SH),
 #undef TM_PARAMS
+    {"Song", 0, EN_NSONG, 0}, {"Follow", 0, 100, 75}, {"Vary", 0, 100, 20}, {"Start", 0, 127, 0},
+    {"V1 channel", 1, 16, 1}, {"V2 channel", 1, 16, 2}, {"V3 channel", 1, 16, 3}, {"Notes in", 0, 1, 0},
+    {"Key sync", 0, 2, 0},     {"Visual", 0, 8, 0},      {"Colour", 0, 4, 0},      {"Trails", 0, 100, 60},
+    {"React", 0, 100, 50},    {"Feedback", 0, 100, 25}, {"RGB", 0, 100, 20},     {"Hue", 0, 100, 10},
+    {"Sync", 0, 100, 10},     {"Geometry", 0, 6, 0},    {"Sides", 3, 12, 5},      {"Mirror", 0, 4, 0},
+    {"Speed", 0, 100, 50},    {"Layer", 0, 8, 0},       {"Blend", 0, 4, 0},       {"Mix", 0, 100, 60},
+    {"Pulse", 0, 100, 50},    {"Morph", 0, 100, 0},     {"Mutate", 0, 100, 30},   {"Flow", 0, 100, 20},
+    {"Chaos", 0, 100, 30},    {"Mosh", 0, 100, 35},     {"Sort", 0, 100, 15},     {"Corrupt", 0, 100, 20},
+    {"Slice", 0, 100, 15},    {"Colorama", 0, 100, 0},  {"Poster", 0, 100, 0},    {"Pixel", 0, 100, 0},
+    {"Key", 0, 100, 0},       {"Bars", 0, 2, 0},        {"Delay", 1, 15, 4},      {"Bright", 0, 100, 50},
+    {"Ear", 0, 100, 30},
+    {"Source 1", 0, EN_AR_NSRC - 1, 2}, {"Target 1", 0, EN_AR_NTGT, 21}, {"Depth 1", -100, 100, 40},
+    {"Source 2", 0, EN_AR_NSRC - 1, 4}, {"Target 2", 0, EN_AR_NTGT, 6}, {"Depth 2", -100, 100, 35},
+    {"Source 3", 0, EN_AR_NSRC - 1, 5}, {"Target 3", 0, EN_AR_NTGT, 24}, {"Depth 3", -100, 100, 40},
+    {"Source 4", 0, EN_AR_NSRC - 1, 0}, {"Target 4", 0, EN_AR_NTGT, 0}, {"Depth 4", -100, 100, 30},
 #undef VOX_PARAMS
 #undef MS_PARAMS
 };
@@ -78,7 +93,8 @@ static const char *const PATCH_NAME[EN_NFACT] = {
     "Rhodes", "Voices", "Glass", "Strings", "Warm", "Halo", "Bell", "Vibes", "Marimba", "Tubular", "Kalimba", "Celesta",
     "Sine", "Round", "Pick", "Sub", "Reed", "Fretless"};
 static const char *const ENV_NAME[EN_NENV] = {"AMB", "Patch", "ADSR"};
-static const char *const TSRC_NAME[4] = {"Mix", "Voice 1", "Voice 2", "Voice 3"};
+static const char *const TSRC_NAME[10] = {"Mix", "Voice 1", "Voice 2", "Voice 3", "File", "USB", "Play 1",
+                                          "Play 2", "Play 3", "Play All"};
 static const char *const TMDEST_NAME[EN_NTMSET] = {"Speed", "Gene", "Slide", "Morph", "Dry/Wet", "Tone", "Wow",
                                                    "Drive", "SOS", "Organize"};
 static const char *const ROLE_NAME[EN_NROLE] = {"Chord", "Loops", "Bass"};
@@ -103,6 +119,12 @@ static void copy9(const char *s, char *b)       /* a name of up to 9 characters 
         k++;
     }
     b[k] = 0;
+}
+static char *cat_word(char *b, const char *w)
+{
+    while (*w)
+        *b++ = *w++;
+    return b;
 }
 void en_moddest_text(int d, char *b)            /* (M1..M5 depth, rate: the voice's own modulators) */
 {
@@ -145,14 +167,19 @@ static const struct {
     const char *name;
     int8_t v[REC_N];
 } PIECES[EN_NPIECES] = {
-    {"Garden",       {60, 65, 45, 40, 40, 35, 25, 35, 45, 3, 65, 80, 40, 60, 50, 50, 0, 1, 72, 2, 1, 0, 0, 0, 20, 35, 0, 50, 20, 27, 25, 0}},
-    {"Departures",   {35, 75, 0, 0, 35, 30, 40, 0, 30, 3, 70, 85, 20, 55, 5, 40, 0, 1, 60, 1, 0, -1, 0, 0, 30, 25, 0, 40, 15, 16, 10, 5}},
-    {"Voices",       {85, 0, 25, 0, 30, 30, 50, 0, 20, 5, 80, 90, 67, 70, 30, 55, 0, 1, 56, 5, 5, 0, 1, -1, 45, 30, 0, 40, 35, 23, 40, 3}},
-    {"Afternoon",    {50, 65, 35, 25, 55, 45, 20, 30, 50, 2, 60, 75, 60, 50, 60, 55, 0, 1, 84, 7, 3, 0, 0, 0, 15, 40, 15, 65, 25, 39, 35, 6}},
-    {"Night Bus",    {45, 55, 55, 60, 45, 50, 15, 55, 55, 1, 55, 70, 35, 40, 75, 70, 0, 1, 96, 9, 5, 0, 0, 0, 10, 45, 30, 70, 35, 47, 60, 2}},
-    {"Shoreline",    {40, 60, 30, 0, 30, 40, 40, 0, 85, 4, 55, 95, 30, 80, 0, 85, 0, 1, 64, 4, 6, 0, 0, 0, 40, 20, 0, 30, 40, 19, 20, 4}},
-    {"Glass",        {35, 80, 30, 20, 60, 55, 25, 25, 45, 2, 65, 80, 55, 45, 90, 50, 0, 1, 76, 3, 7, 1, 0, 1, 10, 30, 10, 85, 45, 31, 70, 1}},
-    {"Tides",        {55, 60, 40, 35, 45, 75, 10, 40, 50, 3, 65, 85, 60, 60, 55, 95, 0, 1, 70, 10, 4, 0, 1, 0, 25, 55, 10, 50, 50, 31, 50, 7}},
+    /* (1.5.0, CORTEX: the pieces after sleep and dreams) Hypnagogia, falling asleep (D Lydian, a halo, slow); Theta,
+     * the dreaming brain's waves (A Dorian); REM, the eyes moving (E Aeolian, glass, quicker); Morpheus, who takes
+     * human form (G Mixolydian, voices); Phobetor, the nightmare (C# Phrygian, low, restless); Phantasos, the
+     * shapes of things (F# pentatonic, bells); Lethe, the river of forgetting (Eb Ionian, strings, long); Nyx, the
+     * night itself (B minor pentatonic, deep, sparse) */
+    {"Hypnagogia",   {60, 50, 35, 0, 30, 40, 50, 0, 50, 4, 80, 95, 35, 70, 30, 60, 0, 1, 58, 2, 3, 0, 5, 0, 40, 30, 0, 40, 30, 18, 30, 6}},
+    {"Theta",        {55, 65, 40, 0, 40, 45, 30, 0, 45, 3, 70, 85, 45, 55, 45, 55, 0, 1, 66, 9, 1, 0, 4, 0, 25, 35, 0, 50, 25, 27, 25, 0}},
+    {"REM",          {45, 75, 50, 0, 60, 60, 15, 0, 55, 2, 60, 75, 60, 45, 65, 70, 0, 1, 88, 4, 5, 1, 2, 0, 15, 40, 0, 60, 35, 45, 70, 2}},
+    {"Morpheus",     {85, 30, 30, 0, 30, 35, 45, 0, 30, 5, 85, 90, 60, 70, 35, 55, 0, 1, 56, 7, 4, 0, 1, -1, 45, 30, 0, 40, 35, 23, 40, 3}},
+    {"Phobetor",     {50, 45, 65, 0, 40, 55, 20, 0, 60, 1, 65, 80, 30, 40, 70, 75, 0, 1, 80, 1, 2, -1, 4, 0, 10, 50, 0, 70, 35, 47, 80, 3}},
+    {"Phantasos",    {35, 85, 25, 0, 55, 50, 25, 0, 45, 2, 65, 80, 55, 45, 90, 50, 0, 1, 76, 6, 6, 1, 2, 1, 10, 30, 10, 85, 45, 31, 70, 1}},
+    {"Lethe",        {65, 40, 30, 0, 25, 30, 70, 0, 70, 4, 80, 95, 30, 80, 20, 85, 0, 1, 52, 3, 0, 0, 3, 0, 50, 20, 0, 30, 40, 15, 20, 4}},
+    {"Nyx",          {55, 55, 50, 0, 35, 50, 35, 0, 55, 3, 75, 90, 35, 60, 50, 65, 0, 1, 60, 11, 7, 0, 5, -1, 30, 45, 0, 45, 30, 20, 50, 6}},
 };
 
 const char *en_piece_name(int i) { return PIECES[(unsigned)i < EN_NPIECES ? i : 0].name; }
@@ -291,21 +318,67 @@ void en_param_text(int i, int v, char *b)
     else if (mk == MS_FADE && v == 0)
         s = "Off";
     else if (i == P_RL(SRC))
-        s = TSRC_NAME[(unsigned)v < 4u ? v : 0];
-    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_TARGET && v == EN_MOD_OFF)
+        s = TSRC_NAME[(unsigned)v < 10u ? v : 0];
+    else if (i == P_SG(SONG) && v == 0)
         s = "Off";
-    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_TARGET && v - 1 >= EN_NTMSET) {   /* another modulator's */
+    else if (i == P_ST(NOTES))
+        s = v ? "Play" : "Scale";
+    else if (i == P_ST(KSYNC))
+        s = v == 1 ? "Cortex" : v == 2 ? "Tape" : "Off";
+    else if (i == P_ST(VMODE)) {
+        static const char *const VM[9] = {"Bloom", "Ridge", "Prism", "Swarm", "Tunnel", "Plasma", "Spiral", "XOR",
+                                          "Score"};
+        s = VM[(unsigned)v < 9u ? v : 0];
+    } else if (i == P_ST(VGEO)) {
+        static const char *const VG[7] = {"Off", "Polygon", "Lissajous", "Grid", "Mandala", "Scope", "Rutt"};
+        s = VG[(unsigned)v < 7u ? v : 0];
+    } else if (i == P_ST(VLAYER)) {
+        static const char *const VL[9] = {"Off", "Bloom", "Ridge", "Prism", "Swarm", "Tunnel", "Plasma", "Spiral", "XOR"};
+        s = VL[(unsigned)v < 9u ? v : 0];
+    } else if (i == P_ST(VBLEND)) {
+        static const char *const VB[5] = {"Add", "Screen", "Max", "Diff", "Mask"};
+        s = VB[(unsigned)v < 5u ? v : 0];
+    } else if (i == P_ST(VBARS)) {
+        static const char *const VB2[3] = {"Show", "Auto", "Hide"};
+        s = VB2[(unsigned)v < 3u ? v : 0];
+    } else if (i >= P_ST(AR1S) && i <= P_ST(AR4D) && (i - P_ST(AR1S)) % 3 == 0) {   /* a react slot's source */
+        static const char *const AS[EN_AR_NSRC] = {"Off", "Level", "Bass", "Mid", "High", "Beat", "Voice 1", "Voice 2",
+                                                   "Voice 3", "Notes", "Chord", "LFO", "Random"};
+        s = AS[(unsigned)v < EN_AR_NSRC ? v : 0];
+    } else if (i >= P_ST(AR1S) && i <= P_ST(AR4D) && (i - P_ST(AR1S)) % 3 == 1) {   /* its target: a setting's name */
+        s = v == 0 ? "Off" : v >= EN_AR_NTGT ? "All" : PARAMS[P_ST(VMODE) + v - 1].name;
+    } else if (i == P_ST(VMIRROR)) {
+        static const char *const VR[5] = {"Off", "Mirror", "Flip", "Quad", "Kaleido"};
+        s = VR[(unsigned)v < 5u ? v : 0];
+    } else if (i == P_ST(VPAL)) {
+        static const char *const VP[5] = {"Theme", "Ember", "Ice", "Acid", "Mono"};
+        s = VP[(unsigned)v < 5u ? v : 0];
+    }
+    else if (i >= P_ST(CH1) && i <= P_ST(CH3)) {   /* "Ch 5" */
+        b = cat_word(b, "Ch ");
+        b = itoa_s(v, b);
+        *b = 0;
+        return;
+    }
+    else if (i == P_SG(SONG) || i == P_SG(START)) {   /* "Song 2", "Bar 5" */
+        b = cat_word(b, i == P_SG(SONG) ? "Song " : "Bar ");
+        b = itoa_s(i == P_SG(SONG) ? v : v + 1, b);
+        *b = 0;
+        return;
+    } else if (i >= P_TMOD && i < P_SONGP && (i - P_TMOD) % TM_N == TM_TARGET && v == EN_MOD_OFF)
+        s = "Off";
+    else if (i >= P_TMOD && i < P_SONGP && (i - P_TMOD) % TM_N == TM_TARGET && v - 1 >= EN_NTMSET) {   /* another modulator's */
         b[0] = 'M';
         b[1] = (char)('1' + (v - 1 - EN_NTMSET) % EN_NTMOD);
         copy9(v - 1 - EN_NTMSET < EN_NTMOD ? " depth" : " rate", b + 2);
         return;
-    } else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_TARGET)
+    } else if (i >= P_TMOD && i < P_SONGP && (i - P_TMOD) % TM_N == TM_TARGET)
         s = TMDEST_NAME[(unsigned)(v - 1) < EN_NTMSET ? v - 1 : 0];
-    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_SYNC)
+    else if (i >= P_TMOD && i < P_SONGP && (i - P_TMOD) % TM_N == TM_SYNC)
         s = v ? "Tempo" : "Free";
-    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_RATE && par[i - TM_RATE + TM_SYNC])
+    else if (i >= P_TMOD && i < P_SONGP && (i - P_TMOD) % TM_N == TM_RATE && par[i - TM_RATE + TM_SYNC])
         s = DIV_NAME[div_of(v < 0 ? 0 : v > 100 ? 100 : v)];
-    else if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_SHAPE)
+    else if (i >= P_TMOD && i < P_SONGP && (i - P_TMOD) % TM_N == TM_SHAPE)
         s = EN_MODSHAPE_NAME[(unsigned)v < EN_NMODSHAPE ? v : 0];
     else if (i == P_RL(SPEED) && v >= 48 && v <= 52)
         s = "Stop";
@@ -345,14 +418,14 @@ void en_param_text(int i, int v, char *b)
         }
         return;
     }
-    if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_SMOOTH) {   /* 2 ms .. 500 ms */
+    if (i >= P_TMOD && i < P_SONGP && (i - P_TMOD) % TM_N == TM_SMOOTH) {   /* 2 ms .. 500 ms */
         b = itoa_s((int)(smooth_secs(v) * 1000.0f + 0.5f), b);
         *b++ = 'm';
         *b++ = 's';
         *b = 0;
         return;
     }
-    if (i >= P_TMOD && (i - P_TMOD) % TM_N == TM_RATE) {   /* a cycle: 60 s .. 0.12 s */
+    if (i >= P_TMOD && i < P_SONGP && (i - P_TMOD) % TM_N == TM_RATE) {   /* a cycle: 60 s .. 0.12 s */
         b = tenths((int)(mod_secs(v) * 10.0f + 0.5f), b);
         *b++ = 's';
         *b = 0;
@@ -568,8 +641,8 @@ const char *en_chord_name(const int *pcs, int n, char *buf)
 
 /* ------------------------------------------------------------ commands --- */
 enum { C_SET, C_POOL, C_PLAY, C_NEXT, C_FREEZE, C_SEED, C_PANIC, C_CLOCK, C_REGROW, C_PBYTE, C_PDONE, C_PLOAD,
-       C_REEL };
-_Static_assert(P_NPARAMS <= 256, "C_SET carries a parameter's index in 8 bits");
+       C_REEL, C_KEY, C_SONG, C_DETUNE };
+_Static_assert(P_NPARAMS <= 512, "C_SET carries a parameter's index in 9 bits");
 _Static_assert(FP_SIZE <= 256, "C_PBYTE carries a patch byte's offset in 8 bits");
 #define QN 1024u                              /* a piece (project_apply) posts every parameter and patch byte at once */
 static uint32_t q[QN];
@@ -579,7 +652,7 @@ static void post(uint32_t c, int a, int b)
     uint32_t w = q_w;
     if (w - q_r >= QN)
         return;                                   /* full: dropped (never, at the UI's rate) */
-    q[w % QN] = c << 24 | ((uint32_t)a & 0xFFu) << 16 | ((uint32_t)b & 0xFFFFu);
+    q[w % QN] = c << 25 | ((uint32_t)a & 0x1FFu) << 16 | ((uint32_t)b & 0xFFFFu);   /* (7, 9, 16 bits) */
     BARRIER();
     q_w = w + 1;
 }
@@ -593,7 +666,25 @@ void en_panic(void) { post(C_PANIC, 0, 0); }
 void en_clock(int msg) { post(C_CLOCK, msg, 0); }
 void en_regrow(void) { post(C_REGROW, 0, 0); }
 void en_reel(int op) { post(C_REEL, op, 0); }
+static const void *volatile reel_meta_req;      /* a file's splices (en_reel_take), taken at the next drain */
+void en_reel_take(const void *meta)
+{
+    reel_meta_req = meta;
+    post(C_REEL, EN_REEL_TAKE, 0);
+}
+void en_key(int v, int note, int on) { post(C_KEY, v, (note & 0x7F) | (on ? 0x100 : 0)); }
+void en_detune(int dcents) { post(C_DETUNE, dcents, 0); }
+static float kcents;                            /* Key sync Garden: the tape's cents, as a semitone's fraction */
+static void kb_key(int v, int note, int on);    /* (the keyboard's notes: by fm_block) */
+static const uint8_t *volatile song_req;        /* the song asked for (en_song), taken at the next drain */
+void en_song(const uint8_t *rec)
+{
+    song_req = rec;
+    post(C_SONG, 0, 0);
+}
+static void kb_reset(void);
 static void reel_new(void);                      /* (reel.c) */
+static void reel_take(void);
 static void reel_dub(void);
 static void reel_erase(void);
 static void reel_init(void);
@@ -739,7 +830,7 @@ static uint8_t vstage[EN_NVOX][FP_SIZE + 1];    /* its bytes as they arrive, int
 static int32_t fm_logfreq(float note)          /* log2 Hz, Q24, of a MIDI pitch (a fraction too) and Tune */
 {
     int32_t k = (int32_t)note;
-    float fr = note - (float)k + (float)par[P_TUNE] * 0.01f;
+    float fr = note - (float)k + (float)par[P_TUNE] * 0.01f + kcents;
     return FM6_LOGF0 + k * 1398101 + (int32_t)(fr * 1398101.33f);   /* (1 << 24) / 12 a semitone */
 }
 
@@ -810,7 +901,7 @@ typedef struct {
     int32_t wait, held;                         /* the loops: samples until it rings (a hand), until it is let go */
     uint8_t midi_note, hand, gen, up;           /* hand: 1 fading out of the old key, 2 into the new; gen: the patch it
                                                  * sings (its voice's gen as it started); up: its key let go */
-    uint8_t on, rung, loop;                     /* the loops: sounding, started, its loop */
+    uint8_t on, rung, loop, fade;               /* the loops: sounding, started, its loop; shed: blocks to silence */
 } vnote_t;
 typedef struct {
     vnote_t n[NPOLY];
@@ -819,6 +910,8 @@ typedef struct {
     float glide_k;                              /* 1 / GLIDE's time, in samples */
     uint8_t pc, rest, strike, xs;               /* the bass: its pitch class; sitting this chord out; struck next
                                                  * block; fading out for a new patch */
+    uint8_t decays;                             /* its patch dies away (no carrier held): on AMB's envelope it plays
+                                                 * as on the patch's, struck each time (patch_decays) */
     int rs;                                     /* the bass: blocks to a new patch's restrike (the knob at rest) */
     int32_t held;                               /* the bass: samples until its key is let go; 0 let go */
     float xf;                                   /* the bass: the restrike's fade */
@@ -907,7 +1000,18 @@ static void note_refresh(int v, int k, const uint8_t *src)
 }
 
 /* ------------------------------------------------------------------ a chord --- */
-static int chord_n(int v) { return 1 + (PL(v, DENS) * 3 + 50) / 100; }   /* its voices sounding, 1..4 */
+static uint8_t load_cap;                        /* the load (en_load): 0 free, 1 over 72 %, 2 over 80 % (its average:
+                                                 * a render's peaks run 20 % over it) */
+void en_load(int pct)
+{
+    load_cap = (uint8_t)(pct >= 80 ? 2 : pct >= 72 ? (load_cap == 2 ? 2 : 1) : pct < 62 ? 0 : load_cap);
+}
+static int chord_n(int v)                       /* its voices sounding, 1..4 (under load one fewer, then two; two at
+                                                 * least) */
+{
+    const int n = 1 + (PL(v, DENS) * 3 + 50) / 100, m = n - load_cap;
+    return m < 2 ? (n < 2 ? n : 2) : m;
+}
 static void chord_breathe(int v, int i)         /* a new breath: its length, its strength, its note */
 {
     vnote_t *n = &vc[v].n[i];
@@ -984,7 +1088,8 @@ static void chord_coefs(int v, int i)           /* every FM6 block (32 samples):
         chord_breathe(v, i);
     }
     br = breath(n->t);
-    if (PL(v, ENV) != ENV_AMB) {                /* the patch's envelopes (or the ADSR): struck at the breath, let go
+    if (PL(v, ENV) != ENV_AMB || vc[v].decays) {   /* the patch's envelopes (or the ADSR; or a patch that dies away,
+                                                 * which AMB's slow breath would only find gone): struck at the breath, let go
                                                  * at GATE of it (its sounding part, 0.9), the level steady */
         if (!n->up && n->t >= GATE_F(v) * 0.9f) {
             fm6_note_key(&n->fm, n->vp, 0);
@@ -1389,10 +1494,9 @@ static void chord_retarget(int v)               /* the chord's tones to a Chord 
     for (i = 0; i < NPOLY; i++)                 /* each takes its note at its next breath */
         vc[v].n[i].target = (float)to[i];
 }
-static void pad_retarget(void)                  /* the chord's tones, to every Chord voice */
+static void chord_publish(void)                 /* chord_pcs to every Chord voice, and the garden's view */
 {
     int v, i, f;
-    chord_nt = en_chord_tones(pool, par[P_ROOT], deg, chord_pcs);
     for (v = 0; v < EN_NVOX; v++)
         if (vc[v].role == ROLE_CHORD)
             chord_retarget(v);
@@ -1402,13 +1506,17 @@ static void pad_retarget(void)                  /* the chord's tones, to every C
     en_chord_root = (uint8_t)chord_pcs[0];
     en_chord_n = (uint8_t)chord_nt;
 }
+static void pad_retarget(void)                  /* the chord's tones (the scale's, on its degree), to every Chord voice */
+{
+    chord_nt = en_chord_tones(pool, par[P_ROOT], deg, chord_pcs);
+    chord_publish();
+}
 
-static void bass_to(int v, int pc)
+static void bass_note(int v, int n)             /* the bass voice to note n (MIDI), struck */
 {
     voice_t *c = &vc[v];
-    int n = 36 + pc % 12 + 12 * PL(v, OCT);     /* C2..B2, octaves down or up */
     c->n[0].target = (float)n;
-    c->pc = (uint8_t)(pc % 12);
+    c->pc = (uint8_t)(n % 12);
     if (en_playing && c->n[0].midi_note != n) {
         midi(0x80u | (uint32_t)v, c->n[0].midi_note, 0);
         midi(0x90u | (uint32_t)v, (uint32_t)n, 80);
@@ -1418,6 +1526,7 @@ static void bass_to(int v, int pc)
     c->strike = 1;                               /* (heard with the patch's envelopes: each chord struck) */
     c->n[0].midi_note = (uint8_t)n;
 }
+static void bass_to(int v, int pc) { bass_note(v, 36 + pc % 12 + 12 * PL(v, OCT)); }   /* C2..B2, octaves down or up */
 static void key_moved(void)                     /* a new key or scale: the chords hand off, the basses to the root */
 {
     int v;
@@ -1470,8 +1579,15 @@ static void chord_change(void)                  /* to another degree: the near, 
 }
 
 /* ------------------------------------------------------------- the loops --- */
+static const uint8_t *song;
+static int song_offset(void);
 static int rand_offset(void)                    /* scale steps above the chord's degree */
 {
+    if (song && frand() < fm_minf((float)par[P_SG(FOLLOW)] * 0.02f, 1.0f)) {   /* a song: from its phrases */
+        const int o = song_offset();
+        if (o >= 0)
+            return o;
+    }
     if (frand() < 0.72f) {                      /* a chord tone, sometimes an octave up */
         int o = 2 * irand(chord_nt);
         return o + (frand() < 0.3f ? nsteps : 0);
@@ -1605,6 +1721,241 @@ static void fm_voice_par(uint8_t *p, int alg, int fb, int lfs, int lfd, int lpmd
 }
 
 static void fm_off(uint8_t *p, int op) { fm_op(p, op, 99, 99, 99, 99, 0, 0, 0, 0, 0, 1, 0, 7, 0, 0); }   /* silent */
+
+/* ------------------------------------------------------- the generator --- */
+/* a voice's patch made anew (the Gen page, en_gen): a kind of carriers and modulators, their ratios, envelopes and LFO
+ * drawn from a seed. BRIGHT (0..100): the modulators' index, how high their ratios may go, their sustain. MOTION
+ * (0..100): the carriers' chorus (their detune), the LFO on the modulators' amplitude, their envelopes' slow sweep.
+ * Every draw is made in the same order whatever the settings, so a seed and its settings make one patch, and turning
+ * BRIGHT or MOTION moves that patch, not another */
+const char *const EN_GEN_NAME[EN_NGEN] = {"Pad", "Glass", "Air", "Strings", "Bell", "Keys", "Pluck", "Bass", "Drone",
+                                          "Texture"};
+typedef struct {
+    uint8_t alg[3];                             /* the algorithms it is made on (1..32) */
+    uint8_t atk0, atk1, rel0, rel1;             /* the carriers' attack and release rates (the seed's, in these) */
+    uint8_t dec, sus;                           /* their decay rate (R2, R3), their sustain level */
+    uint8_t mol0, mol1;                         /* the modulators' level at BRIGHT 0 and 100 */
+    int8_t matk;                                /* their attack against the carriers' (negative: slower, a bloom) */
+    uint8_t msus;                               /* their sustain level at BRIGHT 0 (BRIGHT opens it) */
+    uint8_t fb0, fb1;                           /* the feedback */
+    uint8_t ratios;                             /* its ratios: GEN_RATIO's */
+    uint8_t vib, kvs;                           /* a vibrato's depth (0 none), the carriers' velocity */
+} gen_kind_t;
+static const gen_kind_t GEN_KIND[EN_NGEN] = {
+    /*  alg          atk     rel     dec sus  mol    matk msus fb   r  vib kvs */
+    {{5, 1, 22}, 30, 38, 30, 38, 30, 94, 64, 80, -4, 82, 2, 5, 0, 0, 1},    /* Pad */
+    {{5, 22, 5}, 34, 44, 30, 36, 30, 90, 58, 80, -2, 72, 0, 2, 1, 0, 1},    /* Glass */
+    {{5, 22, 1}, 30, 38, 30, 38, 30, 94, 60, 76, -4, 80, 3, 6, 2, 4, 1},    /* Air */
+    {{5, 1, 2}, 32, 40, 32, 40, 30, 95, 68, 80, -4, 84, 4, 6, 0, 4, 1},     /* Strings */
+    {{5, 5, 19}, 80, 95, 30, 40, 34, 60, 62, 86, 6, 50, 0, 2, 3, 0, 2},     /* Bell */
+    {{5, 5, 1}, 90, 99, 45, 55, 38, 72, 60, 84, 6, 52, 0, 3, 4, 0, 3},      /* Keys */
+    {{5, 2, 1}, 95, 99, 48, 58, 48, 0, 66, 90, 8, 40, 2, 6, 0, 0, 3},       /* Pluck */
+    {{5, 1, 16}, 85, 99, 55, 65, 40, 90, 66, 86, 4, 74, 4, 6, 5, 0, 2},     /* Bass */
+    {{32, 31, 5}, 24, 32, 26, 32, 28, 96, 50, 74, -6, 80, 1, 4, 6, 0, 0},   /* Drone */
+    {{22, 5, 31}, 26, 40, 28, 36, 30, 88, 48, 78, -8, 72, 3, 7, 7, 0, 1},   /* Texture */
+};
+/* the ratios: (coarse, fine) each, the carriers' and the modulators'; the modulators' list in order of brightness
+ * (BRIGHT reaches further into it) */
+typedef struct {
+    uint8_t nc, nm;
+    uint8_t car[6][2], mod[8][2];
+} gen_ratio_t;
+static const gen_ratio_t GEN_RATIO[8] = {
+    {4, 6, {{1, 0}, {1, 0}, {2, 0}, {0, 0}}, {{1, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}, {5, 0}}},              /* harmonic */
+    {3, 7, {{1, 0}, {2, 0}, {4, 0}}, {{1, 0}, {1, 41}, {3, 50}, {2, 76}, {5, 0}, {7, 0}, {9, 0}}},           /* glass */
+    {3, 4, {{1, 0}, {3, 0}, {5, 0}}, {{1, 0}, {1, 0}, {2, 0}, {3, 0}}},                                      /* formants */
+    {3, 7, {{1, 0}, {2, 0}, {1, 0}}, {{1, 0}, {3, 50}, {2, 76}, {1, 41}, {5, 0}, {4, 20}, {7, 0}}},          /* bells */
+    {3, 4, {{1, 0}, {1, 0}, {2, 0}}, {{1, 0}, {1, 0}, {14, 0}, {3, 0}}},                                     /* tines */
+    {2, 5, {{0, 0}, {1, 0}}, {{1, 0}, {0, 0}, {1, 0}, {2, 0}, {3, 0}}},                                      /* bass */
+    {6, 3, {{0, 0}, {1, 0}, {1, 50}, {2, 0}, {3, 0}, {4, 0}}, {{1, 0}, {2, 0}, {1, 0}}},                     /* drone */
+    {4, 8, {{1, 0}, {1, 3}, {2, 0}, {3, 0}}, {{1, 0}, {2, 3}, {3, 17}, {5, 41}, {7, 0}, {9, 37}, {11, 0}, {13, 0}}},
+};
+static uint32_t gen_rng;
+static uint32_t gen_draw(void)                  /* the generator's own (xorshift32), apart from the garden's */
+{
+    uint32_t x = gen_rng;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    gen_rng = x;
+    return x >> 8;                               /* 24 bits */
+}
+static int gen_in(uint32_t d, int lo, int hi) { return lo + (int)(d % (uint32_t)(hi - lo + 1)); }
+static int clamp_to(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+void en_gen(int kind, int bright, int motion, uint32_t seed, uint8_t *p)
+{
+    const gen_kind_t *g = &GEN_KIND[(unsigned)kind < EN_NGEN ? kind : 0];
+    const gen_ratio_t *rt = &GEN_RATIO[g->ratios];
+    uint32_t d[6][8], dv[8], car;
+    int k, j, alg, catk, crel, seen[6][3], ns = 0;
+    char name[12] = "GEN ";
+    gen_rng = seed * 2654435761u ^ 0x9E3779B9u;
+    if (!gen_rng)
+        gen_rng = 1u;
+    for (k = 0; k < 8; k++)                      /* every draw first, in one order */
+        dv[k] = gen_draw();
+    for (k = 0; k < 6; k++)
+        for (j = 0; j < 8; j++)
+            d[k][j] = gen_draw();
+    bright = clamp_to(bright, 0, 100);
+    motion = clamp_to(motion, 0, 100);
+    alg = g->alg[dv[0] % 3u];
+    car = fm6_carriers((uint32_t)(alg - 1));
+    catk = gen_in(dv[1], g->atk0, g->atk1);
+    crel = gen_in(dv[2], g->rel0, g->rel1);
+    for (k = 1; k <= 6; k++) {                   /* operator k (1..6): its bit in car is 6 - k */
+        const uint32_t *r = d[k - 1];
+        const int is_car = (int)(car >> (6 - k) & 1u);
+        int fc, ff, ol, det, r1, r2, r3, r4, l1, l2, l3, ams = 0, kvs, rd = 0;
+        if (is_car) {
+            const int x = (int)(r[0] % rt->nc);
+            const int dt = (motion * 4 + 50) / 100 * (1 + (int)(r[1] % 2u)), sign = (k & 1) ? 1 : -1;
+            fc = rt->car[x][0];
+            ff = rt->car[x][1];
+            ol = k == 1 ? 99 : gen_in(r[2], 84, 96);
+            if (fc >= 2 && k != 1)               /* (BRIGHT: the upper carriers up or down, a carriers-only voice too) */
+                ol = clamp_to(ol + (bright - 50) / 6, 0, 99);
+            det = clamp_to(7 + sign * dt, 0, 14);
+            r1 = clamp_to(catk + gen_in(r[3], -2, 2), 1, 99);
+            r2 = clamp_to(g->dec + gen_in(r[4], -3, 3), 1, 99);
+            r3 = clamp_to(r2 - 4, 1, 99);
+            r4 = clamp_to(crel + gen_in(r[5], -2, 2), 1, 99);
+            l1 = 99;
+            l3 = g->sus ? clamp_to(g->sus + gen_in(r[6], -3, 2), 0, 99) : 0;
+            l2 = g->sus ? 99 - (99 - l3) / 3 : 78;
+            kvs = g->kvs;
+            if (g->ratios == 7 && motion > 50)   /* (a texture's carriers breathe too) */
+                ams = 1;
+        } else {
+            const int n = 2 + (rt->nm - 2) * clamp_to(bright - 30, 0, 70) / 70,   /* (the higher ratios past 30) */
+                      x = (int)(r[0] % rt->nm) % (n < 1 ? 1 : n);
+            const int swell = motion > 50 ? (motion - 50) / 5 : 0;   /* (0..10: a sweep up and down) */
+            fc = rt->mod[x][0];
+            ff = rt->mod[x][1];
+            ol = clamp_to(g->mol0 + (g->mol1 - g->mol0) * bright / 100 + gen_in(r[2], -4, 4) - (fc >= 5 ? 6 : 0), 0, 99);
+            det = clamp_to(7 + gen_in(r[1], -1, 1) * (motion > 30), 0, 14);
+            r1 = clamp_to(catk + g->matk - swell + gen_in(r[3], -3, 3), 1, 99);
+            r2 = clamp_to(g->dec - 2 - swell + gen_in(r[4], -3, 3), 1, 99);
+            r3 = clamp_to(r2 - 4, 1, 99);
+            r4 = clamp_to(crel + 6 + gen_in(r[5], -2, 2), 1, 99);
+            l1 = 99;
+            l3 = clamp_to(g->msus + bright / 6 - swell + gen_in(r[6], -4, 4), 0, 99);
+            l2 = 99 - (99 - l3) / 3;
+            kvs = clamp_to(g->kvs + 1, 0, 7);
+            ams = motion > 65 ? 2 : motion > 25 ? 1 : 0;
+            rd = 25;                             /* (softer up high) */
+        }
+        if (is_car) {                            /* carriers at one ratio kept apart (a chorus, not a beat to silence) */
+            int s, same = 0;
+            for (s = 0; s < ns; s++)
+                if (seen[s][0] == fc && seen[s][1] == ff) {
+                    same = ++seen[s][2];
+                    ol = clamp_to(ol, 0, 99 - (same == 1 ? 10 : same == 2 ? 16 : 20));
+                }
+            if (!same && ns < 6) {
+                seen[ns][0] = fc, seen[ns][1] = ff, seen[ns][2] = 0;
+                ns++;
+            }
+        }
+        fm_op(p, k, r1, r2, r3, r4, l1, l2, l3, 0, ol, fc, ff, det, kvs, 1);
+        p[(6 - k) * FP_OP + FP_AMS] = (uint8_t)ams;
+        p[(6 - k) * FP_OP + FP_RD] = (uint8_t)rd;
+    }
+    {
+        const int fb = clamp_to(gen_in(dv[3], g->fb0, g->fb1) + (bright > 85), 0, 7);
+        const int vib = g->vib, lfs = vib ? gen_in(dv[4], 30, 35) : 3 + motion * 15 / 100 + (int)(dv[4] % 5u);
+        for (k = 0; EN_GEN_NAME[kind][k] && k < 6; k++)
+            name[4 + k] = (char)(EN_GEN_NAME[kind][k] >= 'a' ? EN_GEN_NAME[kind][k] - 32 : EN_GEN_NAME[kind][k]);
+        name[4 + k] = 0;
+        fm_voice_par(p, alg, fb, lfs, vib ? 60 : 0, vib, g->ratios == 7 && motion > 60 ? 5 : 4, vib ? 2 : 0, name);
+        p[FP_LAMD] = (uint8_t)(motion * 35 / 100);
+    }
+}
+
+/* the patch varied by amount (0..100), from a seed: levels, rates, sustains, detune, a little the modulators' fine
+ * ratio and the feedback, the LFO; past 70 a modulator now and then to another harmonic. Its algorithm and carriers'
+ * ratios kept */
+void en_gen_vary(uint8_t *p, int amount, uint32_t seed)
+{
+    const uint32_t car = fm6_carriers(p[FP_ALG] & 31u);
+    const int a = clamp_to(amount, 0, 100);
+    int k, s;
+    gen_rng = seed * 2246822519u ^ 0x85EBCA6Bu;
+    if (!gen_rng)
+        gen_rng = 1u;
+#define VARY(off, span, lo, hi) (p[off] = (uint8_t)clamp_to((int)p[off] + gen_in(gen_draw(), -(span), (span)), lo, hi))
+    for (k = 0; k < 6; k++) {
+        uint8_t *o = p + k * FP_OP;
+        const int is_car = (int)(car >> k & 1u), off = k * FP_OP;
+        (void)o;
+        VARY(off + FP_OL, a * (is_car ? 4 : 8) / 100, is_car ? 60 : 0, 99);
+        for (s = 0; s < 4; s++)
+            VARY(off + FP_R1 + s, a * 10 / 100, 1, 99);
+        VARY(off + FP_L1 + 2, a * 8 / 100, 0, 99);
+        VARY(off + FP_DET, a * 3 / 100, 0, 14);
+        if (!is_car && !o[FP_MODE]) {
+            if ((int)(gen_draw() % 100u) < a / 2)
+                VARY(off + FP_FF, a * 10 / 100, 0, 99);
+            if (a > 70 && (int)(gen_draw() % 100u) < a - 70) {   /* to a neighbouring harmonic */
+                static const uint8_t H[6] = {1, 2, 3, 4, 5, 7};
+                o[FP_FC] = H[gen_draw() % 6u];
+            }
+        }
+    }
+    if ((int)(gen_draw() % 100u) < a)
+        VARY(FP_FB, 1, 0, 7);
+    VARY(FP_LFS, a * 15 / 100, 0, 99);
+    VARY(FP_LAMD, a * 15 / 100, 0, 99);
+#undef VARY
+}
+
+#ifdef EN_HOST
+/* (the tests' probe) a patch's note alone, mono, its own envelopes: held on_s, let go for off_s; env[] the RMS of each
+ * 50 ms; *harm its brightness, the RMS of its slope over its RMS as a frequency, in harmonics of the note (a sine 1),
+ * from 50 ms to the release (a pluck's is in its first moments) */
+int en_probe(const uint8_t *p, int note, float on_s, float off_s, float *env, int nenv, float *harm)
+{
+    static fm6_note_t n;
+    static fm6_lfo_t lf;
+    static uint8_t q[FP_SIZE + 1];
+    static const int32_t zero[6] = {0, 0, 0, 0, 0, 0};
+    const int seg = 2205, total = (int)((on_s + off_s) * EN_SR), off = (int)(on_s * EN_SR);
+    int i, k = 0, acc = 0;
+    float s2 = 0.0f, last = 0.0f, x[FM6_N], ss = 0.0f, sd = 0.0f;
+    __builtin_memcpy(q, p, FP_SIZE);
+    q[FP_SIZE] = 0;
+    __builtin_memset(&n, 0, sizeof n);
+    fm_note_on(&n, q, note, 100, 1);
+    fm6_lfo_reset(&lf, q);
+    fm6_lfo_key(&lf);
+    for (i = 0; i < total; i += FM6_N) {
+        const int32_t lv = fm6_lfo_sample(&lf), ld = fm6_lfo_delay(&lf);
+        uint32_t j;
+        if (i < off && i + FM6_N >= off)
+            fm6_note_key(&n, q, 0);
+        if (!fm_voice(&n, q, (float)note, lv, ld, 0.0f, 0, zero, zero, x))
+            for (j = 0; j < FM6_N; j++)
+                x[j] = 0.0f;
+        for (j = 0; j < FM6_N; j++) {
+            if (i > 2205 && i < off) {
+                ss += x[j] * x[j];
+                sd += (x[j] - last) * (x[j] - last);
+            }
+            last = x[j];
+            s2 += x[j] * x[j];
+            if (++acc == seg) {
+                if (k < nenv)
+                    env[k++] = fm_sqrtf(s2 / (float)seg);
+                acc = 0;
+                s2 = 0.0f;
+            }
+        }
+    }
+    *harm = ss > 0.0f ? fm_sqrtf(sd / ss) * EN_SR / (FM_TWO_PI * 440.0f * fm_exp2f((float)(note - 69) / 12.0f)) : 0.0f;
+    return k;
+}
+#endif
 
 /* the pad's bank, held down (the breath is its amplitude): algorithm 5 (three pairs, the sixth operator with
  * feedback for MOD), the carriers 1, 3 and 5. Each a level of its own (PAD_GAIN, measured: analysis/patchlev.c) */
@@ -1948,9 +2299,19 @@ void en_bake(uint8_t *p, int ratio, int fb, int atk, int dec, int sus, int rel)
 
 /* a patch's level out: AMB-1's own eighteen measured (analysis/patchlev.c), each in the role it was made for; a bank's
  * from its carriers, so a voice of six carriers at full is as loud as one */
+static int patch_decays(const uint8_t *p)       /* no sounding carrier held past -16 dB (L3 78): a piano, a pluck */
+{
+    const uint32_t car = fm6_carriers(p[FP_ALG] & 31u);
+    uint32_t j;
+    for (j = 0; j < 6u; j++)
+        if ((car >> j & 1u) && p[j * FP_OP + FP_OL] >= 40u && p[j * FP_OP + FP_L1 + 2] >= 78u)
+            return 0;
+    return 1;
+}
 static float patch_gain(int v, int src, const uint8_t *p)
 {
-    static const float BASE[EN_NROLE] = {1.48f, 1.0f, 1.0f};
+    static const float BASE[EN_NROLE] = {1.97f, 1.0f, 1.0f};   /* (a chord's: 1.48 until 1.4.12, 3 .. 5 dB under
+                                                                * AMB-1's own pads; +2.5 dB) */
     uint32_t car = fm6_carriers(p[FP_ALG] & 31u), j;
     float a = 0.0f;
     if ((unsigned)src < EN_NFACT)
@@ -1972,6 +2333,7 @@ static void patch_apply(int v, int fresh)
     for (j = 0; j < FP_SIZE + 1u; j++)
         vpat[v][j] = vstage[v][j];
     c->gain = patch_gain(v, par[EN_VOX_PATCH[v]], vpat[v]);
+    c->decays = (uint8_t)patch_decays(vpat[v]);
     if (c->role == ROLE_CHORD) {
         if (fresh) {
             c->gen++;
@@ -2005,7 +2367,7 @@ static void role_enter(int v)
     for (i = 0; i < NPOLY; i++) {
         vnote_t *n = &c->n[i];
         n->amp = n->tgt = 0.0f;
-        n->on = n->rung = n->hand = 0;
+        n->on = n->rung = n->hand = n->fade = 0;
         n->up = 1;
         n->hf = 1.0f;
         n->midi_note = 0;
@@ -2015,6 +2377,7 @@ static void role_enter(int v)
         n->note = n->target = (float)(50 + 7 * i + 12 * PL(v, OCT));
     }
     c->gain = patch_gain(v, par[EN_VOX_PATCH[v]], vpat[v]);
+    c->decays = (uint8_t)patch_decays(vpat[v]);
     c->rest = c->strike = c->xs = 0;
     c->rs = 0;
     c->held = 0;
@@ -2068,6 +2431,23 @@ static void bell_voice(int v, int l, int n, float vel, int32_t wait)
     int i, best = 0;
     float lo = 9.0f, p;
     vnote_t *b;
+    if (load_cap) {                              /* under load: three notes a voice (two), the quietest over faded */
+        int on = 0, q = -1;
+        float ql = 9.0f;
+        for (i = 0; i < NPOLY; i++) {
+            vnote_t *o = &c->n[i];
+            if (o->on && !o->fade) {
+                const float a = o->rung ? fm_gain(&o->fm, o->vp) * o->vel : 2.0f;
+                on++;
+                if (a < ql) {
+                    ql = a;
+                    q = i;
+                }
+            }
+        }
+        if (q >= 0 && on >= (load_cap == 2 ? 2 : 3))
+            c->n[q].fade = 6;
+    }
     for (i = 0; i < NPOLY; i++) {               /* a free note, or the quietest (its carrier's gain) */
         const vnote_t *q = &c->n[i];
         float a = q->on ? (q->rung ? fm_gain(&q->fm, q->vp) * q->vel : 2.0f) : -1.0f;
@@ -2081,6 +2461,7 @@ static void bell_voice(int v, int l, int n, float vel, int32_t wait)
         midi(0x80u | (uint32_t)v, b->midi_note, 0);
     b->on = 1;
     b->rung = 0;
+    b->fade = 0;
     b->midi_note = (uint8_t)n;
     b->loop = (uint8_t)l;
     b->vel = vel;
@@ -2103,19 +2484,194 @@ static void bell_ring(int v, int l, int slot)
         bell_voice(v, l, n + 12, vel * 0.4f, wait + 300 + irand(2000));   /* now and then, its octave */
 }
 
+/* ------------------------------------------------------------------ a song --- */
+/* (song: declared before rand_offset) */
+/* a song (tools/amb_mid.py, in the flash: the UI points the engine at it, en_song; amb.h has its record): the chords
+ * the song's, a half bar each (the drift waits); FOLLOW from 50 its melody on the first Loops voice and its bass on the
+ * first Bass voice, each note with a chance of (FOLLOW - 50) / 50 (the loops' own the rest); under 50 the loops' own
+ * notes, new ones taken from the song's melody near where it is, FOLLOW / 50 of them. VARY: a melody note a scale step
+ * off, a sixteenth late, left out. It goes round from START */
+static int song_n, song_mask = -1, song_root = -1;
+volatile uint32_t en_song_pos;
+static uint32_t song_pos;
+#define PSG(k) (par[P_SG(k)])
+static int song_at(int part, int pos)            /* part 0 the melody's notes, 1 its lengths, 2 the bass's, 3 its */
+{
+    const int x = song[EN_SONG_HDR + 3 * ((song_n + 7) / 8) + part * song_n + pos];
+    return x < 128 ? x : 0;                      /* (a byte not 7-bit: flash erased, a song half sent: none) */
+}
+static int song_tr(void)                        /* the song moved with the garden's root: its root less the song's,
+                                                 * -6 .. +5 (0 as chosen: SONG sets the root) */
+{
+    const int d = ((par[P_ROOT] - song[9] % 12) % 12 + 12) % 12;
+    return d > 5 ? d - 12 : d;
+}
+static uint32_t song_start(void)
+{
+    const uint32_t s = (uint32_t)PSG(START) * 16u;
+    return s < (uint32_t)song_n ? s : 0u;
+}
+static void song_take(const uint8_t *rec)
+{
+    song = rec;
+    song_n = rec ? rec[5] << 7 | rec[6] : 0;
+    if (song_n <= 0 || song_n > EN_SONG_MAXN)
+        song = 0;
+    song_mask = song_root = -1;
+    song_pos = song ? song_start() : 0u;
+    en_song_pos = song_pos;
+    if (!song) {                                 /* back to the garden's own chords, the basses to their root */
+        int v;
+        pad_retarget();
+        for (v = 0; v < EN_NVOX; v++)
+            if (vc[v].role == ROLE_CHORD)
+                chord_leave(v);
+            else if (vc[v].role == ROLE_BASS)
+                bass_to(v, chord_pcs[0]);
+        drift_reset();
+    }
+}
+static int song_neighbour(int n, int dir)       /* the next note of the scale from n, up or down */
+{
+    int d;
+    for (d = 1; d <= 3; d++)
+        if (pool >> ((n + dir * d - par[P_ROOT] + 120) % 12) & 1u)
+            return n + dir * d;
+    return n;
+}
+static int song_mel_v = -1, song_bass_v = -1;  /* the voices playing a song's melody, its bass (song_parts) */
+static void song_chord(int i)                   /* its chord at half bar i, if it changes */
+{
+    const uint8_t *c = song + EN_SONG_HDR + 3 * i;
+    const int tr = (song_tr() + 12) % 12, m0 = (c[0] | c[1] << 6) & 0xFFF, fm = PSG(FOLLOW),
+              mask = ((m0 << tr) | (m0 >> (12 - tr))) & 0xFFF, root = c[2] > 11 ? c[2] : (c[2] + tr) % 12;
+    int k, v;
+    if (root > 11 || !mask || (mask == song_mask && root == song_root))
+        return;
+    song_mask = mask;
+    song_root = root;
+    chord_nt = 0;
+    for (k = 0; k < 12 && chord_nt < 4; k++)     /* its pitch classes, from its root up */
+        if (k == 0 || mask >> ((root + k) % 12) & 1)
+            chord_pcs[chord_nt++] = (root + k) % 12;
+    {                                            /* its degree in the scale, else the nearest (the loops' notes from it) */
+        int best = 12;
+        for (k = 0; k < nsteps; k++) {
+            const int d = (steps[k] + par[P_ROOT] - root + 120) % 12, dd = d > 6 ? 12 - d : d;
+            if (dd < best) {
+                best = dd;
+                deg = k;
+            }
+        }
+    }
+    chord_publish();
+    for (v = 0; v < EN_NVOX; v++)
+        if (vc[v].role == ROLE_CHORD)
+            chord_leave(v);
+        else if (vc[v].role == ROLE_BASS && (fm < 75 || (v != song_mel_v && v != song_bass_v)))
+            bass_to(v, root);                    /* (following the song: its notes, not the roots) */
+}
+static int song_offset(void)                    /* a loops note from the song's melody near here: scale steps above
+                                                 * the chord's degree; -1 none */
+{
+    int k, i = irand(64);
+    for (k = 0; k < 64; k++, i = (i + 7) % 64) {
+        const int pos = ((int)song_pos + i - 32 + song_n * 4) % song_n, n = song_at(0, pos);
+        int x, rel;
+        if (!n)
+            continue;
+        rel = (n + song_tr() - par[P_ROOT] + 120) % 12;
+        for (x = 0; x < nsteps; x++)
+            if (steps[x] == rel)
+                return (x - deg + nsteps) % nsteps + (n >= 72 ? nsteps : 0);
+    }
+    return -1;
+}
+static float song_mel(void) { return song ? fm_clampf((float)(PSG(FOLLOW) - 50) * 0.02f, 0.0f, 1.0f) : 0.0f; }
+/* who plays the song's melody and its bass (-1 none), whatever the roles: the melody on the first Loops voice, else
+ * the highest Bass voice (one note at a time); the bass on the lowest Bass voice left, else the lowest Loops voice
+ * left. The Chord voices play its chords; a voice with no part of it plays on, its own */
+static void song_parts(void)
+{
+    int v, m = first_role(ROLE_LOOPS), b = -1;
+    if (m < 0)
+        for (v = 0; v < EN_NVOX; v++)
+            if (vc[v].role == ROLE_BASS && (m < 0 || PL(v, OCT) > PL(m, OCT)))
+                m = v;
+    for (v = 0; v < EN_NVOX; v++)
+        if (vc[v].role == ROLE_BASS && v != m && (b < 0 || PL(v, OCT) < PL(b, OCT)))
+            b = v;
+    if (b < 0)
+        for (v = 0; v < EN_NVOX; v++)
+            if (vc[v].role == ROLE_LOOPS && v != m && (b < 0 || PL(v, OCT) <= PL(b, OCT)))
+                b = v;
+    song_mel_v = m;
+    song_bass_v = b;
+}
+static void song_step(void)                      /* a sixteenth of the song */
+{
+    const int pos = (int)song_pos, vary = PSG(VARY);
+    const float f = song_mel();
+    int v, n;
+    if (song[0] != 'A') {                        /* (its flash rewritten under it: let go) */
+        song_take(0);
+        return;
+    }
+    song_parts();
+    if (pos % 8 == 0)
+        song_chord(pos / 8);
+    if (f > 0.0f && (n = song_at(0, pos)) != 0 && (v = song_mel_v) >= 0 && frand() < f &&
+        frand() >= (float)vary * 0.002f) {       /* the melody (VARY: now and then left out) */
+        int32_t wait = 0;
+        n += song_tr() + 12 * PL(v, OCT);
+        if (frand() < (float)vary * 0.003f)      /* a scale step off */
+            n = song_neighbour(n, frand() < 0.5f ? 1 : -1);
+        if (frand() < (float)vary * 0.002f)      /* a sixteenth late */
+            wait = (int32_t)step_len;
+        while (n > 103)
+            n -= 12;
+        while (n < 36)
+            n += 12;
+        if (vc[v].role == ROLE_BASS)
+            bass_note(v, n > 96 ? n - 12 : n);   /* (one at a time, on the beat) */
+        else
+            bell_voice(v, pos & 3, n, 0.55f + 0.004f * (float)(song_at(1, pos) < 8 ? song_at(1, pos) : 8) * 10.0f, wait);
+    }
+    if (f > 0.0f && (n = song_at(2, pos)) != 0 && (v = song_bass_v) >= 0 && frand() < f) {   /* the bass */
+        n += song_tr();
+        if (vc[v].role == ROLE_BASS) {
+            bass_to(v, n % 12);                  /* (its octave the voice's) */
+        } else {                                 /* on a Loops voice, low */
+            n += 12 * PL(v, OCT);
+            while (n > 60)
+                n -= 12;
+            while (n < 36)
+                n += 12;
+            bell_voice(v, 3, n, 0.8f, 0);
+        }
+    }
+    if (++song_pos >= (uint32_t)song_n)
+        song_pos = song_start();
+    en_song_pos = song_pos;
+}
+
 /* the grid: one call a sixteenth (MIDI clock: 6 ticks) */
 static uint32_t sixteenth;
 static void tick(void)
 {
     int l, v;
+    if (song)
+        song_step();
     for (v = 0; v < EN_NVOX; v++) {
         voice_t *c = &vc[v];
         int st;
         if (c->role == ROLE_LOOPS && sixteenth % (uint32_t)loops_step(v) == 0u) {   /* the loops: PACE's step */
             for (l = 0; l < EN_NLOOP; l++) {
                 int s = c->loop_pos[l];
-                if (c->loop_note[l][s] >= 0 && !c->loop_rest[l])
-                    bell_ring(v, l, s);
+                if (c->loop_note[l][s] >= 0 && !c->loop_rest[l] &&
+                    !(song && (v == song_mel_v || v == song_bass_v) && frand() < song_mel()))
+                    bell_ring(v, l, s);          /* (a song followed: the voices playing its melody and its bass give
+                                                  * way to it, the loops' own the rest of the time; the others play on) */
                 if (first_role(ROLE_LOOPS) == v)
                     en_loop_pos[l] = (uint8_t)s;
                 if (++c->loop_pos[l] >= EN_LOOP_LEN[l]) {
@@ -2123,12 +2679,12 @@ static void tick(void)
                     loop_pass(v, l);
                 }
             }
-        } else if (c->role == ROLE_BASS && PL(v, ENV) != ENV_AMB && (st = bass_step(v)) > 0 &&
+        } else if (c->role == ROLE_BASS && (PL(v, ENV) != ENV_AMB || c->decays) && (st = bass_step(v)) > 0 &&
                    sixteenth % (uint32_t)st == 0u) {
             c->strike = 1;                       /* the bass struck again, PACE's step */
         }
     }
-    if ((sixteenth & 15u) == 0u && change_pending && !en_frozen) {   /* chords move on the bar */
+    if ((sixteenth & 15u) == 0u && change_pending && !en_frozen && !song) {   /* chords move on the bar */
         change_pending = 0;
         chord_change();
     }
@@ -2140,11 +2696,12 @@ static void tick(void)
 /* J. Dattorro, "Effect Design, Part 1", JAES 1997 (as in FoMni): a predelay, four input diffusers,
  * then a figure-eight tank of two halves, each a modulated allpass, a delay, a damping lowpass, an
  * allpass and a delay, feeding the other half. Stereo out from seven taps a side. The paper's lengths
- * are for 29761 Hz; DS() scales them to 22.05 kHz, the plate's rate (half the work and half the lines of 44.1 kHz:
- * what it loses above 11 kHz its damping took anyway): reverb() is called every other sample, on the pair's mean, and
- * its output drawn as a line between its last two (plate_step) */
-#define DS(n) (((n) * 7409 + 5000) / 10000)           /* 22050 / 29761 */
-#define PRE_N 662                                    /* 30 ms */
+ * are for 29761 Hz; DS() scales them to 11.025 kHz, the plate's rate (1.4.14: a quarter of the work of 44.1 kHz; its
+ * tank keeps nothing above ~3 kHz, its input band and damping take it, so what it loses above 5.5 kHz it never had):
+ * reverb() is called every fourth sample, on the four's mean, and its output drawn as a line between its last two
+ * (plate_step). Silent a while (rested, its tail gone), it rests too */
+#define DS(n) (((n) * 3705 + 5000) / 10000)           /* 11025 / 29761 */
+#define PRE_N 331                                    /* 30 ms */
 #define EXC DS(16)
 enum { L_PRE, L_IN1, L_IN2, L_IN3, L_IN4, L_APL, L_D1L, L_AP2L, L_D2L, L_APR, L_D1R, L_AP2R, L_D2R, L_N };
 static const int DL_LEN[L_N] = {PRE_N, DS(142), DS(107), DS(379), DS(277), DS(672) + EXC + 2, DS(4453), DS(1800),
@@ -2168,8 +2725,8 @@ static inline float tap(const dl_t *d, int k)
 }
 static inline void push(dl_t *d, float x)
 {
-    float y = x * PL_Q;
-    d->b[d->i] = (int16_t)(y > 32767.0f ? 32767 : y < -32767.0f ? -32767 : (int)(y + (y >= 0.0f ? 0.5f : -0.5f)));
+    const int q = (int)(x * PL_Q);               /* (toward zero: symmetric, no bias; a branch less a sample) */
+    d->b[d->i] = (int16_t)(q > 32767 ? 32767 : q < -32767 ? -32767 : q);
     if (++d->i >= d->n)
         d->i = 0;
 }
@@ -2192,26 +2749,26 @@ static inline void reverb(float in, float *ol, float *or_)
     float x, a, b, fb_l = tap(&dl[L_D2R], DS(3163)), fb_r = tap(&dl[L_D2L], DS(3720));
     push(&dl[L_PRE], in);
     x = tap(&dl[L_PRE], PRE_N);
-    pl_bw += 0.6f * (x - pl_bw);
+    pl_bw += 0.84f * (x - pl_bw);                /* (0.6 at 22.05 kHz) */
     x = allpass(&dl[L_IN1], DS(142), pl_bw, 0.75f);
     x = allpass(&dl[L_IN2], DS(107), x, 0.75f);
     x = allpass(&dl[L_IN3], DS(379), x, 0.625f);
     x = allpass(&dl[L_IN4], DS(277), x, 0.625f);
     {
-        float s = lfo_s + 0.0002f * lfo_c, c = lfo_c - 0.0002f * s;   /* (its rate as at 44.1 kHz) */
+        float s = lfo_s + 0.0004f * lfo_c, c = lfo_c - 0.0004f * s;   /* (its rate as at 22.05 kHz before) */
         lfo_s = s;
         lfo_c = c;
     }
     a = allpass_mod(&dl[L_APL], (float)DS(672) + (float)EXC * lfo_s, x + pl_decay * fb_l, -0.7f);
     push(&dl[L_D1L], a);
     b = tap(&dl[L_D1L], DS(4453));
-    pl_damp_l += 0.45f * (b - pl_damp_l);
+    pl_damp_l += 0.6975f * (b - pl_damp_l);     /* (0.45 at 22.05 kHz) */
     b = allpass(&dl[L_AP2L], DS(1800), pl_damp_l * pl_decay, pl_dd2);
     push(&dl[L_D2L], b);
     a = allpass_mod(&dl[L_APR], (float)DS(908) + (float)EXC * lfo_c, x + pl_decay * fb_r, -0.7f);
     push(&dl[L_D1R], a);
     b = tap(&dl[L_D1R], DS(4217));
-    pl_damp_r += 0.45f * (b - pl_damp_r);
+    pl_damp_r += 0.6975f * (b - pl_damp_r);
     b = allpass(&dl[L_AP2R], DS(2656), pl_damp_r * pl_decay, pl_dd2);
     push(&dl[L_D2R], b);
     *ol = 0.6f * (tap(&dl[L_D1R], DS(266)) + tap(&dl[L_D1R], DS(2974)) - tap(&dl[L_AP2R], DS(1913)) +
@@ -2222,24 +2779,29 @@ static inline void reverb(float in, float *ol, float *or_)
                    tap(&dl[L_D2R], DS(121)));
 }
 
-static float pv_acc, pv_al, pv_ar, pv_bl, pv_br; /* the pair's first; the last two out */
+static float pv_acc, pv_al, pv_ar, pv_bl, pv_br; /* the four's sum so far; the last two out */
 static uint8_t pv_ph;
+static uint32_t pv_quiet;                        /* its runs silent in and out (resting past PV_REST) */
+#define PV_REST 33075u                           /* 3 s of its rate */
 static inline void plate_step(float in, float *ol, float *or_)   /* a sample in, a sample out, at 44.1 kHz */
 {
-    pv_ph ^= 1u;
-    if (pv_ph) {
-        pv_acc = in;
-        *ol = 0.5f * (pv_al + pv_bl);
-        *or_ = 0.5f * (pv_ar + pv_br);
-    } else {
-        float l, r;
-        reverb(0.5f * (pv_acc + in), &l, &r);
+    const float f = (float)pv_ph * 0.25f;
+    pv_acc += in;
+    *ol = pv_al + (pv_bl - pv_al) * f;           /* (a line from the last to the next, a run late) */
+    *or_ = pv_ar + (pv_br - pv_ar) * f;
+    if (++pv_ph >= 4u) {
+        const float x = pv_acc * 0.25f;
+        float l = 0.0f, r = 0.0f;
+        pv_ph = 0;
+        pv_acc = 0.0f;
+        if (fm_fabsf(x) > 1e-6f || pv_quiet < PV_REST) {
+            reverb(x, &l, &r);
+            pv_quiet = fm_fabsf(x) > 1e-6f || fm_fabsf(l) + fm_fabsf(r) > 2e-6f ? 0u : pv_quiet + 1u;
+        }
         pv_al = pv_bl;
         pv_ar = pv_br;
         pv_bl = l;
         pv_br = r;
-        *ol = pv_al;
-        *or_ = pv_ar;
     }
 }
 
@@ -2247,6 +2809,7 @@ static void plate_init(void)
 {
     pv_acc = pv_al = pv_ar = pv_bl = pv_br = 0.0f;
     pv_ph = 0;
+    pv_quiet = 0;
     int16_t *p = pl_buf;
     int k, i;
     for (k = 0; k < L_N; k++) {
@@ -2570,6 +3133,9 @@ void en_init(void)
     int i, v;
     for (i = 0; i <= SN; i++)
         sint[i] = fm_sinf((float)i * (FM_TWO_PI / (float)SN));
+    __builtin_memset(en_score, 0, sizeof en_score);   /* (the score and the keys' notes: none of before) */
+    en_score_w = 0;
+    kb_reset();
     for (v = 0; v < EN_NVOX; v++) {             /* (an init again: no note of before rings on) */
         __builtin_memset(&vc[v], 0, sizeof vc[v]);
         vc[v].role = (uint8_t)v;
@@ -2634,6 +3200,8 @@ static void play_start(int from_top)
     if (from_top) {
         pulse = 0;
         sixteenth = 0;
+        song_pos = song ? song_start() : 0u;
+        song_mask = song_root = -1;
         for (v = 0; v < EN_NVOX; v++)
             for (i = 0; i < EN_NLOOP; i++)
                 vc[v].loop_pos[i] = 0;
@@ -2674,10 +3242,10 @@ static void drain(void)
 {
     while (q_r != q_w) {
         uint32_t c = q[q_r % QN];
-        int a = (int)(c >> 16 & 0xFFu), b = (int)(int16_t)(c & 0xFFFFu);
+        int a = (int)(c >> 16 & 0x1FFu), b = (int)(int16_t)(c & 0xFFFFu);
         BARRIER();
         q_r++;
-        switch (c >> 24) {
+        switch (c >> 25) {
         case C_SET:
             if (a < P_NPARAMS)
                 apply(a, b);
@@ -2752,8 +3320,13 @@ static void drain(void)
                 reel_dub();
             else if (a == EN_REEL_ERASE)
                 reel_erase();
+            else if (a == EN_REEL_TAKE)
+                reel_take();
             break;
         case C_REGROW: regrow(); break;
+        case C_KEY: kb_key(a, b & 0x7F, b >> 8 & 1); break;
+        case C_SONG: song_take(song_req); break;
+        case C_DETUNE: kcents = (float)a * 0.001f; break;
         }
     }
 }
@@ -2803,7 +3376,7 @@ static float lfo_pm(int32_t lv, float pm) { return pm * (float)(lv - (1 << 23)) 
 static void chord_block(int v)                  /* a Chord voice's block: its breaths, to the pad's bus */
 {
     voice_t *c = &vc[v];
-    const int nn = chord_n(v), amb = PL(v, ENV) == ENV_AMB, pub = first_role(ROLE_CHORD) == v;
+    const int nn = chord_n(v), amb = PL(v, ENV) == ENV_AMB && !c->decays, pub = first_role(ROLE_CHORD) == v;
     float x[FM6_N], lvl = 0.0f;
     int32_t dtb[6], olb[6];
     mod_t m;
@@ -2903,6 +3476,8 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
         lv = fm6_lfo_sample(&n->lfo);
         ld = fm6_lfo_delay(&n->lfo);
         mod_of(GEN(v, i), p, &m, dtb, olb);
+        if (n->fade)                             /* shed: down to silence over its blocks (no click) */
+            m.lvl = n->lv * (float)(n->fade - 1) / (float)n->fade;
         if (fm_voice(&n->fm, p, (float)n->midi_note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb, olb,
                      x)) {
             const float g = c->vol * 0.53f * n->vel * n->out * c->fo;   /* (AMB-1's bells' level, measured) */
@@ -2932,8 +3507,9 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
             n->pr = gr;
             n->lv = m.lvl;
         }
-        if (fm6_note_done(&n->fm, p, p[FP_ALG] & 31u)) {   /* rung out */
+        if ((n->fade && --n->fade == 0) || fm6_note_done(&n->fm, p, p[FP_ALG] & 31u)) {   /* rung out, or shed */
             n->on = 0;
+            n->fade = 0;
             midi(0x80u | (uint32_t)v, n->midi_note, 0);
         }
     }
@@ -2943,7 +3519,8 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
 {
     voice_t *c = &vc[v];
     vnote_t *n = &c->n[0];
-    const int env = PL(v, ENV) != ENV_AMB;      /* (the patch's envelopes: the level steady, the patch shapes it) */
+    const int env = PL(v, ENV) != ENV_AMB || c->decays;   /* (the patch's envelopes, or a patch that dies away: the
+                                                 * level steady, the patch shapes it, struck each chord) */
     float x[FM6_N];
     int32_t dtb[6], olb[6];
     mod_t m;
@@ -3010,6 +3587,85 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
 }
 
 /* one FM6 block of every voice into fm_buf, each by its role; a voice changing role fades out, changes, fades in */
+/* the keys on a voice's page: KB_N notes apart from the garden, each its voice's patch as it is now (ADSR'd when the
+ * voice plays the ADSR), at its octave, its Level, its Index; held while the key is, then let go as the patch lets go;
+ * to the bells' bus (its echo), the voice's tap (its scope, its meter) and the score */
+#define KB_N 6                                  /* (Play All: two keys, three voices each) */
+static struct {
+    fm6_note_t fm;
+    fm6_lfo_t lfo;
+    uint8_t vp[FP_SIZE + 1];
+    uint8_t on, voice, note, key;               /* key: the key's note as pressed (released by it) */
+} kb[KB_N] EN_POOL;
+static void kb_reset(void) { __builtin_memset(kb, 0, sizeof kb); }
+static void kb_key(int v, int note, int on)
+{
+    int i, k = -1;
+    if ((unsigned)v >= EN_NVOX)
+        return;
+    if (!on) {                                   /* let go: the note of this key, this voice */
+        for (i = 0; i < KB_N; i++)
+            if (kb[i].on == 1 && kb[i].voice == v && kb[i].key == note) {
+                fm6_note_key(&kb[i].fm, kb[i].vp, 0);
+                kb[i].on = 2;
+                midi(0x80u | (uint32_t)v, kb[i].note, 0);
+            }
+        return;
+    }
+    for (i = 0; i < KB_N && k < 0; i++)          /* a free one, else one letting go, else the first */
+        if (!kb[i].on)
+            k = i;
+    for (i = 0; i < KB_N && k < 0; i++)
+        if (kb[i].on == 2)
+            k = i;
+    if (k < 0)
+        k = 0;
+    if (kb[k].on == 1)
+        midi(0x80u | (uint32_t)kb[k].voice, kb[k].note, 0);
+    kb[k].voice = (uint8_t)v;
+    kb[k].key = (uint8_t)note;
+    {
+        const int n = note + 12 * PL(v, OCT);
+        kb[k].note = (uint8_t)(n < 0 ? 0 : n > 127 ? 127 : n);
+    }
+    __builtin_memcpy(kb[k].vp, vpat[v], sizeof kb[k].vp);
+    if (PL(v, ENV) == ENV_ADSR)
+        adsr_patch(v, kb[k].vp);
+    fm_note_on(&kb[k].fm, kb[k].vp, kb[k].note, 100, 1);
+    fm6_lfo_reset(&kb[k].lfo, kb[k].vp);
+    fm6_lfo_key(&kb[k].lfo);
+    kb[k].on = 1;
+    midi(0x90u | (uint32_t)v, kb[k].note, 100);
+}
+static void kb_block(void)
+{
+    static const int32_t zero[6] = {0, 0, 0, 0, 0, 0};
+    float x[FM6_N];
+    int i;
+    uint32_t j;
+    for (i = 0; i < KB_N; i++) {
+        const uint8_t *p = kb[i].vp;
+        const int v = kb[i].voice;
+        int32_t lv, ld;
+        if (!kb[i].on)
+            continue;
+        lv = fm6_lfo_sample(&kb[i].lfo);
+        ld = fm6_lfo_delay(&kb[i].lfo);
+        if (fm_voice(&kb[i].fm, p, (float)kb[i].note + lfo_pm(lv, 0.0f), lv, ld, vx[v].index, 0, zero, zero, x)) {
+            const float g = vc[v].vol * vc[v].gain * 0.45f;
+            for (j = 0; j < FM6_N; j++) {
+                const float sm = x[j] * g;
+                fm_buf[FB_BELLL][j] += sm * 0.707f;
+                fm_buf[FB_BELLR][j] += sm * 0.707f;
+                fm_buf[FB_BELLE][j] += sm * 0.5f;
+                fm_vtap[v][j] += sm;
+            }
+        }
+        if (kb[i].on == 2 && fm6_note_done(&kb[i].fm, p, p[FP_ALG] & 31u))
+            kb[i].on = 0;
+    }
+}
+
 static void fm_block(void)
 {
     int v, i;
@@ -3046,6 +3702,7 @@ static void fm_block(void)
         else
             bass_block(v);
     }
+    kb_block();
 }
 
 /* the scope: armed, it waits for the voice to rise through zero (or 4096 samples: silence, a drone), takes every 2nd
@@ -3126,12 +3783,54 @@ static void fm_pull(uint32_t n)
     }
 }
 
+/* the engine's ear (amb.h): the mix a sample in four (11 kHz), its bands and its last samples, for the screen */
+volatile float en_bands[EN_NBAND];
+volatile int8_t en_wave[EN_WAVE_N];
+volatile uint32_t en_wave_w;
+static float ear_lp[5], ear_env[EN_NBAND], ear_acc;
+static uint8_t ear_ph;
+static inline void ear(float m)
+{
+    static const float K[5] = {0.0819f, 0.2040f, 0.4337f, 0.7608f, 0.9423f};   /* 1 - e^(-2 pi fc / 11025) */
+    float b[EN_NBAND];
+    int k;
+    ear_acc += m;
+    if (++ear_ph < 4u)
+        return;
+    ear_ph = 0;
+    m = ear_acc * 0.25f;
+    ear_acc = 0.0f;
+    for (k = 0; k < 5; k++)
+        ear_lp[k] += K[k] * (m - ear_lp[k]);
+    b[0] = ear_lp[0];
+    for (k = 1; k < 5; k++)
+        b[k] = ear_lp[k] - ear_lp[k - 1];
+    b[5] = m - ear_lp[4];
+    for (k = 0; k < EN_NBAND; k++) {
+        const float a = fm_fabsf(b[k]);
+        ear_env[k] = a > ear_env[k] ? ear_env[k] + (a - ear_env[k]) * 0.3f : ear_env[k] * 0.9995f;
+        en_bands[k] = ear_env[k];
+    }
+    en_wave[en_wave_w % EN_WAVE_N] = (int8_t)fm_clampf(m * 160.0f, -127.0f, 127.0f);
+    en_wave_w++;
+}
+
+static const int16_t *usb_p;                    /* what plays in over USB, this render's (en_usb) */
+static uint32_t usb_n, usb_i;
+void en_usb(const int16_t *mono, uint32_t n)
+{
+    usb_p = mono;
+    usb_n = mono ? n : 0u;
+    usb_i = 0;
+}
 static void render_chunk(int32_t *out, uint32_t n, float gain)
 {
     uint32_t j;
     float mpk = 0.0f;
     const float rg = rev_send * rev_in_gain * (1.0f - 0.25f * arcm), eg = echo_send;
-    const int src = par[P_RL(SRC)], fx_after = par[P_RL(FX)] != 0;
+    const int sp = par[P_RL(SRC)], src = sp == 5 ? -1 : sp < 4 ? sp : sp >= 6 && sp <= 8 ? sp - 5 : sp == 9 ? 4 : 0,
+              fx_after = par[P_RL(FX)] != 0;   /* (Play 1 .. 3: that voice, as the keys play it too; Play All: the three) */
+    /* (File records the mix; USB, -1, what plays in over USB) */
     const float dry_t = fm_minf((float)(100 - par[P_RL(MIX)]) * 0.02f, 1.0f);   /* (the garden full to the middle) */
     for (j = 0; j < n; j++)
         mixl[j] = mixr[j] = rsend[j] = esend[j] = 0.0f;
@@ -3160,14 +3859,19 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
         plate_step((rsend[j] * rg + (el + er + xl + xr) * 0.35f * rev_send) * 0.8f, &wl, &wr);
         l = (mixl[j] + 0.75f * el + 0.3f * xl + 1.3f * wl) * 0.36f;
         r = (mixr[j] + 0.75f * er + 0.3f * xr + 1.3f * wr) * 0.36f;
-        if (src > 0)
-            rl_in[j] = vsrc[(src - 1) % EN_NVOX][j] * 0.36f;
+        if (src == 4)                            /* Play All: the three voices, layered */
+            rl_in[j] = (vsrc[0][j] + vsrc[1][j] + vsrc[2][j]) * 0.24f;
+        else if (src > 0)
+            rl_in[j] = vsrc[src - 1][j] * 0.36f;
+        else if (src < 0)                        /* USB: a phone's, a computer's, as it comes */
+            rl_in[j] = usb_i < usb_n ? (float)usb_p[usb_i++] * (0.9f / 32768.0f) : 0.0f;
         if (!fx_after) {                         /* (before: the garden with its space, then the reel beside it) */
             if (src == 0)
                 rl_in[j] = 0.5f * (l + r);
             l = l * dryv[j] + rl_l[j];
             r = r * dryv[j] + rl_r[j];
         }
+        ear(0.5f * (l + r));                     /* (the screen's ear) */
         out[2 * j] = (int32_t)(fm_tanhf(l * gain) * 8300000.0f);
         out[2 * j + 1] = (int32_t)(fm_tanhf(r * gain) * 8300000.0f);
         mpk = fm_maxf(mpk, fm_maxf(fm_fabsf(l), fm_fabsf(r)));   /* (the mix, before the volume) */
@@ -3197,7 +3901,7 @@ static void control(uint32_t n)                 /* once a chunk: the slow things
     pl_decay += ((en_frozen ? 0.9995f : pl_decay_t) - pl_decay) * 0.002f;
     pl_dd2 = fm_clampf(pl_decay + 0.15f, 0.25f, 0.5f);
     rev_in_gain += ((en_frozen ? 0.0f : 1.0f) - rev_in_gain) * 0.01f;
-    if (en_playing && !en_frozen && !change_pending) {
+    if (en_playing && !en_frozen && !change_pending && !song) {
         drift_left -= (float)n;
         if (!fifth_done && drift_left < 0.5f * drift_total) {
             fifth_done = 1;                      /* halfway: a bass may lean on the fifth (its DENSITY) */
@@ -3216,38 +3920,43 @@ static void control(uint32_t n)                 /* once a chunk: the slow things
 /* overloads: counted in the audio interrupt, acted on at the next render's start (the same context) */
 static volatile uint8_t ov_now;
 static uint8_t ov_run;
+static uint32_t shed_t;                         /* (the last shed) */
 volatile uint32_t en_sheds;
 void en_overload(void) { ov_now = 1; }          /* (this render ran over: the next sees it) */
 static int reel_shed(void);
-static void shed(void)                          /* the cheapest to lose: a gene of the reel, else the softest bell */
+static void shed(void)                          /* the cheapest to lose: a gene of the reel, else the softest bell as
+                                                 * it sounds now; faded out over 6 blocks (4 ms), not cut */
 {
     int v, i, bv = -1, bi = 0;
-    float least = 9.0f;
+    float least = 1e9f;
     en_sheds++;
     if (reel_shed())
         return;
     for (v = 0; v < EN_NVOX; v++)
         for (i = 0; i < NPOLY; i++) {
-            const vnote_t *n = &vc[v].n[i];
-            if (vc[v].role == ROLE_LOOPS && n->on && n->rung && n->vel * n->out < least) {
-                least = n->vel * n->out;
+            vnote_t *n = &vc[v].n[i];
+            float a;
+            if (vc[v].role != ROLE_LOOPS || !n->on || !n->rung || n->fade)
+                continue;
+            a = fm_gain(&n->fm, n->vp) * n->vel * n->out;
+            if (a < least) {
+                least = a;
                 bv = v;
                 bi = i;
             }
         }
-    if (bv >= 0) {
-        vc[bv].n[bi].on = 0;
-        midi(0x80u | (uint32_t)bv, vc[bv].n[bi].midi_note, 0);
-    }
+    if (bv >= 0)
+        vc[bv].n[bi].fade = 6;
 }
 
 void en_render(int32_t *out, uint32_t n, uint32_t gain_q12)
 {
     const float gain = (float)gain_q12 * (1.0f / 4096.0f) * 2.0f;
-    if (ov_now) {                                /* two renders in a row over 90 %: one shed, and again each two */
+    if (ov_now) {                                /* two renders in a row over 90 %: one shed, at most each 1/4 s */
         ov_now = 0;
-        if (++ov_run >= 2u) {
+        if (++ov_run >= 2u && smp_clock - shed_t >= (uint32_t)(EN_SR / 4.0f)) {
             ov_run = 0;
+            shed_t = smp_clock;
             shed();
         }
     } else {

@@ -1,0 +1,34 @@
+# 1.4.11: a voice's Gen page (its button again, from its layer's page): KIND, BRIGHT, MOTION, VARY; EDIT a new voice
+# of the kind (the voice's own: par30 its OWN; its name GEN PAD, pat0_145 a G), the knobs move it (BRIGHT: a
+# modulator's level, OP2's at pat0_100), REC varies it, SEL held undoes it
+wait 300
+tap ENV
+wait 100
+tap ENV
+wait 100
+expect view 23
+expect par30 0
+tap EDIT
+wait 100
+expect par30 1
+expect pat0_145 71
+expect pat0_149 80
+shot gen.png
+turn K2 -5 10
+wait 100
+expect par30 1
+turn K1 1 10
+wait 100
+expect pat0_149 71
+tap REC
+wait 100
+expect par30 1
+press SEL
+wait 1100
+release SEL
+wait 100
+expect pat0_149 71
+wav gen.wav
+wait 4000
+wavstop
+expect peak_db_max -0.5

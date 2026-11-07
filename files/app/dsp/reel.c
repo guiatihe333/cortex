@@ -24,6 +24,7 @@ _Static_assert(RL_N == EN_REEL_N, "amb.h's reel length");
 #define RL_NSPL 8
 #define RL_NG 4                                  /* genes sounding at once */
 #define RL_MAGIC 0x4C45455Eu                     /* "^EEL" */
+#define RL_MIN 2205u                             /* a splice shorter (0.1 s) is too short to play: dropped */
 static uint8_t rl_nib[RL_N / 2] EN_POOL;         /* two samples a byte, the first in the low nibble */
 typedef struct {
     int16_t pred;
@@ -33,6 +34,8 @@ static rl_hdr_t rl_hdr[RL_NBLK] EN_POOL;
 typedef struct {
     uint32_t magic, len, nspl, ver;              /* len: how far the reel is recorded (samples) */
     uint32_t s0[RL_NSPL], s1[RL_NSPL];           /* each splice: its first sample (a block's), one past its last */
+    uint8_t kok[RL_NSPL], kman[RL_NSPL];         /* (1.4.13) each splice's key: studied (RL_KOK), set by hand (1..24) */
+    uint8_t chroma[RL_NSPL][12];                 /* its 12 pitch classes, studied (0..255) */
 } rl_meta_t;
 static rl_meta_t rl_meta;
 
@@ -42,6 +45,8 @@ volatile float en_reel_pos;                      /* the cursor in the splice pla
 volatile uint32_t en_reel_s0[8], en_reel_s1[8];
 volatile int32_t en_reel_gene[4] = {-1, -1, -1, -1};
 volatile float en_reel_level, en_reel_mod[EN_NTMOD];
+volatile float en_reel_rate;
+volatile int8_t en_reel_spl;
 
 /* ---------------------------------------------------------------- the coder --- */
 static const int16_t RL_STEP[89] = {
@@ -135,6 +140,11 @@ static void rl_block_start(void)                 /* rl_w at a block's start: wha
 }
 static void rl_stop_now(void)
 {
+    if (rl_rec == 1 && rl_meta.nspl && rl_meta.s1[rl_spl] - rl_meta.s0[rl_spl] < RL_MIN &&
+        rl_spl == (int)rl_meta.nspl - 1) {      /* a new splice too short to play: gone, the reel as it was */
+        rl_meta.len = rl_meta.s0[rl_spl];
+        rl_meta.nspl--;
+    }
     rl_rec = 0;
     rl_stopping = 0;
     rl_publish();
@@ -156,6 +166,7 @@ static void reel_new(void)                       /* a new splice at the reel's e
         return;                                  /* (full: the UI says so) */
     rl_spl = (int)rl_meta.nspl;
     rl_meta.s0[rl_spl] = rl_meta.s1[rl_spl] = s;
+    rl_meta.kok[rl_spl] = rl_meta.kman[rl_spl] = 0;   /* (its key studied once it is recorded) */
     rl_meta.nspl++;
     rl_w = s;
     rl_ep = 0;
@@ -179,6 +190,7 @@ static void reel_dub(void)                       /* the splice picked, overdubbe
         return;
     }
     rl_spl = k < (int)rl_meta.nspl ? k : (int)rl_meta.nspl - 1;
+    rl_meta.kok[rl_spl] = 0;                     /* (studied again after) */
     rl_w = rl_meta.s0[rl_spl];
     rl_ep = rl_hdr[rl_w / RL_BLK].pred;
     rl_ei = rl_hdr[rl_w / RL_BLK].idx;
@@ -269,6 +281,7 @@ typedef struct {
     float edge;                                  /* its window's fade, a fraction of len each end */
     float gl, gr, pitch;                         /* its place; its pitch (a ratio) */
     uint32_t cb[2];                              /* its two decoded blocks (block + 1; 0 none) */
+    float kill;                                  /* shed: its level falling to 0 (5 ms); 0 not shed */
     int16_t cache[2][RL_BLK];
 } gene_t;
 static gene_t gn[RL_NG];
@@ -376,6 +389,181 @@ static float rl_speed(void)                      /* SPEED: -2x .. 0 .. +2x, 1x a
         return 0.0f;
     return (float)(v - 50) * 0.04f;
 }
+
+/* ------------------------------------------------------------- the splices' keys --- */
+/* Each splice's key, so the garden and the reel can be played in one key (Key sync). The pitch a splice plays at is
+ * the pitch it was recorded at times SPEED (12 log2 |speed| semitones: at 0.75x, -5); SPEED alone says nothing of what
+ * was recorded. So each splice is studied once it is recorded (or comes in from a file): its sound's 12 pitch classes
+ * (a chroma), from 36 Goertzel filters (C4 .. B6, where the notes and the bass's harmonics are), over up to 48 frames
+ * of 4096 samples spread across it, each frame weighted alike. From the UI, a frame a call (en_reel_study). A splice's
+ * key can be set by hand too (24 keys, a major or a minor profile). Then:
+ *   Key sync Tape: SPEED snaps to the nearest semitone transposition that sets the splice's pitch classes on the
+ *     garden's scale (the best fits, within 3 %, then the one nearest the knob): 1x may become 0.94x (-1);
+ *   Key sync Garden: the garden's root moves to fit its scale to the splice as SPEED transposes it, and the garden is
+ *     tuned by the cents SPEED leaves over (the UI, en_detune) */
+#define RL_KOK 0x5A                              /* a splice's key known (its chroma studied) */
+#define ST_FRAME 4096u
+#define ST_NF 48u
+static const float KK_MAJ[12] = {6.35f, 2.23f, 3.48f, 2.33f, 4.38f, 4.09f, 2.52f, 5.19f, 2.39f, 3.66f, 2.29f, 2.88f};
+static const float KK_MIN[12] = {6.33f, 2.68f, 3.52f, 5.38f, 2.60f, 3.53f, 2.54f, 4.75f, 3.98f, 2.69f, 3.34f, 3.17f};
+static struct {
+    int8_t spl;                                  /* the splice being studied, -1 none */
+    uint8_t nf, f;                               /* its frames, the next */
+    uint32_t stride;
+    float acc[12];
+    float coef[36];
+} st = {-1, 0, 0, 0, {0}, {0}};
+
+int en_reel_keyvec(int spl, float *v)            /* splice spl's 12 pitch classes' weights; 0: not known yet, or silent */
+{
+    int k, m;
+    float sum = 0.0f;
+    if ((unsigned)spl >= rl_meta.nspl)
+        return 0;
+    m = rl_meta.kman[spl];
+    if (m >= 1 && m <= 24) {                     /* by hand: its key's profile */
+        const float *pr = m <= 12 ? KK_MAJ : KK_MIN;
+        const int t = (m - 1) % 12;
+        for (k = 0; k < 12; k++)
+            v[k] = pr[(k - t + 12) % 12];
+        return 1;
+    }
+    if (rl_meta.kok[spl] != RL_KOK)
+        return 0;
+    for (k = 0; k < 12; k++)
+        sum += v[k] = (float)rl_meta.chroma[spl][k];
+    return sum > 0.0f;
+}
+int en_reel_keyman(int spl) { return (unsigned)spl < rl_meta.nspl ? rl_meta.kman[spl] : 0; }
+void en_reel_keyset(int spl, int k)
+{
+    if ((unsigned)spl < RL_NSPL)
+        rl_meta.kman[spl] = (uint8_t)((unsigned)k <= 24u ? k : 0);
+}
+int en_key_guess(const float *v, int *minor)     /* the key (its tonic) a weighting is most like: 24 profiles */
+{
+    int t, k, best = 0;
+    float bs = -1e9f;
+    *minor = 0;
+    for (t = 0; t < 24; t++) {
+        const float *pr = t < 12 ? KK_MAJ : KK_MIN;
+        float c = 0.0f;
+        for (k = 0; k < 12; k++)
+            c += v[k] * pr[(k - t % 12 + 12) % 12];
+        if (c > bs) {
+            bs = c;
+            best = t;
+        }
+    }
+    *minor = best >= 12;
+    return best % 12;
+}
+
+int en_reel_study(void)
+{
+    uint32_t s0, s1, len, a, i;
+    int k, b;
+    float g1[36], g2[36], e[36], tot = 0.0f;
+    if (st.spl < 0) {                            /* the next splice to study: recorded, not being recorded */
+        for (k = 0; k < (int)rl_meta.nspl; k++)
+            if (rl_meta.kok[k] != RL_KOK && !(rl_rec && k == rl_spl) && rl_meta.s1[k] - rl_meta.s0[k] >= RL_MIN)
+                break;
+        if (k >= (int)rl_meta.nspl)
+            return -1;
+        st.spl = (int8_t)k;
+        len = rl_meta.s1[k] - rl_meta.s0[k];
+        st.nf = (uint8_t)(len < ST_FRAME ? 1u : (len - ST_FRAME) / ST_FRAME + 1u > ST_NF ? ST_NF
+                                                                                        : (len - ST_FRAME) / ST_FRAME + 1u);
+        st.stride = st.nf > 1u ? (len - ST_FRAME) / (st.nf - 1u) / RL_BLK * RL_BLK : 0u;
+        st.f = 0;
+        for (k = 0; k < 12; k++)
+            st.acc[k] = 0.0f;
+        for (b = 0; b < 36; b++)                 /* C4 (MIDI 60) .. B6 */
+            st.coef[b] = 2.0f * fm_cosf(FM_TWO_PI * 261.6256f * fm_exp2f((float)b / 12.0f) / RL_SR);
+    }
+    k = st.spl;
+    if (k >= (int)rl_meta.nspl || (rl_rec && k == rl_spl)) {   /* (erased, or being recorded again: later) */
+        st.spl = -1;
+        return -1;
+    }
+    s0 = rl_meta.s0[k];
+    s1 = rl_meta.s1[k];
+    a = s0 + (uint32_t)st.f * st.stride;
+    for (b = 0; b < 36; b++)
+        g1[b] = g2[b] = 0.0f;
+    {                                            /* a frame: decoded a sample at a time, through the 36 filters */
+        uint32_t blk = a / RL_BLK;
+        int pred = rl_hdr[blk].pred, idx = rl_hdr[blk].idx;
+        for (i = 0; i < ST_FRAME && a + i < s1; i++) {
+            float x;
+            if (i && (a + i) % RL_BLK == 0u) {
+                blk = (a + i) / RL_BLK;
+                pred = rl_hdr[blk].pred;
+                idx = rl_hdr[blk].idx;
+            }
+            rl_step(&pred, &idx, rl_nibble(a + i));
+            x = (float)pred * (1.0f / 32768.0f);
+            for (b = 0; b < 36; b++) {
+                const float g0 = x + st.coef[b] * g1[b] - g2[b];
+                g2[b] = g1[b];
+                g1[b] = g0;
+            }
+        }
+    }
+    for (b = 0; b < 36; b++) {
+        e[b] = fm_maxf(g1[b] * g1[b] + g2[b] * g2[b] - st.coef[b] * g1[b] * g2[b], 0.0f);
+        tot += e[b];
+    }
+    if (tot > 1e-6f)                             /* (a frame of silence counts for nothing) */
+        for (b = 0; b < 36; b++)
+            st.acc[b % 12] += e[b] / tot;
+    if (++st.f >= st.nf) {                       /* done: its chroma, 0..255 */
+        float mx = 0.0f;
+        for (b = 0; b < 12; b++)
+            mx = fm_maxf(mx, st.acc[b]);
+        for (b = 0; b < 12; b++)
+            rl_meta.chroma[k][b] = (uint8_t)(mx > 0.0f ? st.acc[b] / mx * 255.0f + 0.5f : 0.0f);
+        rl_meta.kok[k] = RL_KOK;
+        st.spl = -1;
+    }
+    return k;
+}
+
+/* how well the splice's pitch classes (v), transposed by t semitones, sit on the garden's scale; the strongest on the
+ * root counts a little more (a key, not only a scale). 0 .. ~1.2 */
+static float rl_fit(const float *v, int t)
+{
+    const int root = par[P_ROOT];
+    float in = 0.0f, sum = 0.0f, mx = 0.0f;
+    int pc;
+    for (pc = 0; pc < 12; pc++) {
+        const int q = ((pc + t) % 12 + 12) % 12;
+        sum += v[pc];
+        mx = fm_maxf(mx, v[pc]);
+        if (pool >> ((q - root + 12) % 12) & 1u)
+            in += v[pc];
+    }
+    return sum > 0.0f ? in / sum + 0.2f * v[((root - t) % 12 + 12) % 12] / mx : 0.0f;
+}
+static float rl_snap(float s, int spl)           /* Key sync Tape: SPEED's nearest transposition into the garden's key */
+{
+    float v[12], f[12], best = 0.0f, a = fm_fabsf(s);
+    int k, r, kn, pick = 0, dist = 99;
+    if (par[P_ST(KSYNC)] != 2 || a < 0.05f || !en_reel_keyvec(spl, v))
+        return s;
+    for (r = 0; r < 12; r++)
+        best = fm_maxf(best, f[r] = rl_fit(v, r));
+    kn = (int)fm_floorf(12.0f * fm_log2f(a) + 0.5f);
+    for (k = -36; k <= 12; k++) {                /* 2^(-36/12) = 0.125x .. 2x */
+        const int r2 = (k % 12 + 12) % 12, d = k > kn ? k - kn : kn - k;
+        if (f[r2] >= best - 0.03f && d < dist) {
+            dist = d;
+            pick = k;
+        }
+    }
+    return (s < 0.0f ? -1.0f : 1.0f) * fm_exp2f((float)pick / 12.0f);
+}
+
 static void gene_start(int k0, uint32_t s0, float L, float glen, float rate, int morph)
 {
     gene_t *g = &gn[k0];
@@ -387,6 +575,7 @@ static void gene_start(int k0, uint32_t s0, float L, float glen, float rate, int
     if (morph > 75)
         pan = (rl_rand() * 2.0f - 1.0f) * (float)(morph - 75) * 0.04f;
     g->on = 1;
+    g->kill = 0.0f;
     g->cb[0] = g->cb[1] = 0u;                    /* (decoded afresh: what was recorded since is heard) */
     g->dir = rate >= 0.0f;
     g->pos = (float)s0 + st;
@@ -406,16 +595,18 @@ static float rl_al, rl_ar, rl_bl, rl_br;        /* the last two made */
 static uint8_t rl_ph;
 static void reel_play(float *l, float *r, uint32_t n)
 {
-    const int k = rl_pi(TP_ORG), morph = rl_pi(TP_MORPH);
+    const int k = rl_pi(TP_ORG), mk = par[P_TAPE + TP_MORPH];
+    /* (MORPH's gaps, 0 .. 40, only as the knob sets them: modulated from above 40, it stops at 41) */
+    const int morph = mk > 40 && rl_pi(TP_MORPH) < 41 ? 41 : rl_pi(TP_MORPH);
     const float lvl = fm_minf(rl_pf(TP_MIX) * 0.02f, 1.0f),   /* (MIX: the reel full from the middle up) */
                 wd = rl_pf(TP_WOW) * 0.0001f,
                 tc = rl_pf(TP_TONE) >= 99.5f ? 1.0f
                                              : 1.0f - fm_expf(-FM_TWO_PI * 1500.0f *
                                                               fm_exp2f(rl_pf(TP_TONE) * 0.03f) / EN_SR),
-                tgt = en_playing && rl_meta.nspl && lvl > 0.0f ? 1.0f : 0.0f, rate = rl_speed();
+                tgt = en_playing && rl_meta.nspl && lvl > 0.0f ? 1.0f : 0.0f, rate0 = rl_speed();
     uint32_t j, s0, s1;
     float L, glen, iv, pk = 0.0f;
-    int i;
+    int i, spp = 0;
     tape_mods(n);
     for (j = 0; j < n; j++)
         l[j] = r[j] = 0.0f;
@@ -429,13 +620,24 @@ static void reel_play(float *l, float *r, uint32_t n)
         en_reel_level = 0.0f;
         return;
     }
-    {
-        const int sp = k < (int)rl_meta.nspl ? k : (int)rl_meta.nspl - 1;
+    {                                            /* the splice picked; one too short to play: the nearest that plays */
+        int sp = k < (int)rl_meta.nspl ? k : (int)rl_meta.nspl - 1, d;
+        for (d = 0; d < (int)rl_meta.nspl * 2; d++) {
+            const int c = sp + (d & 1 ? (d + 1) / 2 : -(d / 2));
+            if (c >= 0 && c < (int)rl_meta.nspl && rl_meta.s1[c] - rl_meta.s0[c] >= RL_MIN) {
+                sp = c;
+                break;
+            }
+        }
         s0 = rl_meta.s0[sp];
         s1 = rl_meta.s1[sp];
+        spp = sp;
     }
     if (s1 <= s0 + 64u)
         return;
+    const float rate = rl_snap(rate0, spp);     /* (Key sync Tape: in the garden's key) */
+    en_reel_rate = rate;
+    en_reel_spl = (int8_t)spp;
     L = (float)(s1 - s0);
     glen = fm_maxf(L * fm_exp2f((rl_pf(TP_GENE) - 100.0f) * 0.08f), 441.0f);
     if (glen > L)
@@ -499,6 +701,12 @@ static void reel_play(float *l, float *r, uint32_t n)
                 e = g->edge;
                 a = f < e ? f / e : f > 1.0f - e ? (1.0f - f) / e : 1.0f;
                 a = a * a * (3.0f - 2.0f * a);   /* (smoothstep: no corner) */
+                if (g->kill > 0.0f) {            /* shed: faded out */
+                    a *= g->kill;
+                    g->kill -= 1.0f / 110.0f;
+                    if (g->kill <= 0.0f)
+                        g->on = 0;
+                }
                 if (rate != 0.0f) {
                     g->pos += g->inc;
                     while (g->pos >= (float)s1)
@@ -538,18 +746,35 @@ static void reel_play(float *l, float *r, uint32_t n)
         en_reel_gene[i] = gn[i].on ? (int32_t)gn[i].pos : -1;
 }
 
-static int reel_shed(void)                       /* an overload: the gene furthest through let go; 0 none on */
+static void reel_take(void)                      /* a file's reel: its blocks are in, its splices now */
 {
-    int i, best = -1;
+    const void *m = reel_meta_req;
+    int i;
+    if (!m)
+        return;
+    rl_rec = rl_stopping = 0;
+    __builtin_memcpy(&rl_meta, m, sizeof rl_meta);
+    rl_cursor = 0.0f;
+    for (i = 0; i < RL_NG; i++)
+        gn[i].on = 0;
+    en_reel_valid();                             /* (its splices checked; the genes' cached blocks dropped) */
+}
+static int reel_shed(void)                       /* an overload: the gene furthest through let go (never the last one
+                                                  * sounding: the reel stays heard); 0 none to let go */
+{
+    int i, best = -1, on = 0;
     float most = -1.0f;
     for (i = 0; i < RL_NG; i++)
-        if (gn[i].on && gn[i].life / gn[i].len > most) {
-            most = gn[i].life / gn[i].len;
-            best = i;
+        if (gn[i].on && gn[i].kill <= 0.0f) {
+            on++;
+            if (gn[i].life / gn[i].len > most) {
+                most = gn[i].life / gn[i].len;
+                best = i;
+            }
         }
-    if (best < 0)
+    if (on < 2)
         return 0;
-    gn[best].on = 0;
+    gn[best].kill = 1.0f;                        /* (faded out, 5 ms) */
     return 1;
 }
 
@@ -610,6 +835,13 @@ int en_reel_valid(void)                          /* a reel loaded: its metadata 
             rl_meta.nspl = i;
             break;
         }
+    for (i = 0; i < RL_NSPL; i++) {              /* (a reel saved before 1.4.13, or a file's: its keys to study) */
+        if (rl_meta.kok[i] != RL_KOK)
+            rl_meta.kok[i] = 0;
+        if (rl_meta.kman[i] > 24u)
+            rl_meta.kman[i] = 0;
+    }
+    st.spl = -1;
     rl_publish();
     return 1;
 }

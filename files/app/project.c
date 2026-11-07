@@ -11,7 +11,10 @@ static patchstore_t pstore;
 
 const char *piece_name(int i) { return en_piece_name(i); }
 
-static int global_par(int p) { return p == P_TUNE || p == P_MIDI; }
+static int global_par(int p)
+{
+    return p == P_TUNE || p == P_MIDI || (p >= P_ST(CH1) && p <= P_ST(NOTES)) || (p >= P_ST(VMODE) && p <= P_ST(AR4D));
+}
 
 static void recipe(int i, slot_t *s) { en_piece(i, s->par, &s->pool); }
 
@@ -262,13 +265,17 @@ OLD_PROJECT(project_v10, V10_NPARAMS, V10_NPARAMS, fix_v11, 10u)
 OLD_PROJECT(project_v11, V11_NPARAMS, V11_NPARAMS, fix_v11, 11u)
 OLD_PROJECT(project_v12, V12_NPARAMS, P_TMOD, fix_v12, 12u)
 
-/* formats 13 and 14 as stored: the settings to P_SPLIT in OBJ_PROJ (as the formats before, fewer settings), the rest in
- * OBJ_TAPE */
+/* formats 13 .. 15 as stored: the settings to P_SPLIT in OBJ_PROJ (as the formats before, fewer settings), the rest in
+ * OBJ_TAPE (13 and 14: to P_SONGP, the songs' settings from the recipes) */
 OLD_PROJECT(projstore, P_SPLIT, P_SPLIT, fix_none, 13u)
 typedef struct {
     uint32_t magic, format;
     int16_t par[NPIECES + 1][P_NPARAMS - P_SPLIT];   /* each piece's, then the one playing's */
 } tapestore_t;
+typedef struct {
+    uint32_t magic, format;
+    int16_t par[NPIECES + 1][P_SONGP - P_SPLIT];     /* formats 13 and 14's */
+} tapestore14_t;
 _Static_assert(sizeof(projstore_t) <= PLAT_STORE_MAX && sizeof(tapestore_t) <= PLAT_STORE_MAX, "a store object");
 static projstore_t pst PLAT_POOL;
 static tapestore_t tst PLAT_POOL;
@@ -278,7 +285,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
     slot_t r;
     memset(&tst, 0, sizeof tst);
     if (plat_store_load(OBJ_TAPE, &tst, sizeof tst) < 8 || tst.magic != PROJ_MAGIC ||
-        (tst.format != PROJ_FORMAT && tst.format != 13u)) {
+        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 23u))) {
         for (i = 0; i < NPIECES; i++) {
             recipe(i, &r);
             for (p = P_SPLIT; p < P_NPARAMS; p++)
@@ -289,11 +296,28 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
             proj.par[p] = r.par[p];
         return;
     }
-    for (i = 0; i < NPIECES; i++)
+    if (tst.format != PROJ_FORMAT) {             /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to the visual's): the
+                                                  * rest from the recipes */
+        const int upto = tst.format == 23u ? P_ST(VBARS) : tst.format == 22u ? P_ST(VFOLD) : tst.format == 21u ? P_ST(VMOSH) : tst.format == 20u ? P_ST(VMORPH) : tst.format == 19u ? P_ST(VLAYER) : tst.format == 18u ? P_ST(VGEO) : tst.format == 17u ? P_ST(VFEED) : tst.format == 16u ? P_ST(VMODE)
+                         : tst.format == 15u ? P_SETP : P_SONGP;
+        const int16_t *o = (const int16_t *)(const void *)((const uint8_t *)&tst + 8);
+        for (i = 0; i <= NPIECES; i++) {
+            int16_t *par = i < NPIECES ? proj.slot[i].par : proj.par;
+            recipe(i < NPIECES ? i : proj.piece, &r);
+            for (p = P_SPLIT; p < P_NPARAMS; p++)
+                par[p] = p < upto ? o[i * (upto - P_SPLIT) + p - P_SPLIT] : r.par[p];
+            if ((tst.format == 17u || tst.format == 18u) && par[P_ST(VMODE)] == 5)
+                par[P_ST(VMODE)] = 7;            /* (the Score was 5: Plasma and Spiral came before it) */
+            if (tst.format >= 17u && tst.format <= 22u && par[P_ST(VMODE)] == 7)
+                par[P_ST(VMODE)] = 8;            /* (and 7 until XOR came before it) */
+        }
+    } else {
+        for (i = 0; i < NPIECES; i++)
+            for (p = P_SPLIT; p < P_NPARAMS; p++)
+                proj.slot[i].par[p] = tst.par[i][p - P_SPLIT];
         for (p = P_SPLIT; p < P_NPARAMS; p++)
-            proj.slot[i].par[p] = tst.par[i][p - P_SPLIT];
-    for (p = P_SPLIT; p < P_NPARAMS; p++)
-        proj.par[p] = tst.par[NPIECES][p - P_SPLIT];
+            proj.par[p] = tst.par[NPIECES][p - P_SPLIT];
+    }
     if (tst.format == 13u) {                     /* (the reel's modulators' targets: Off first) */
         off_up = 1;
         for (i = 0; i < NPIECES; i++)
@@ -351,13 +375,31 @@ int project_load(void)
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && buf.now.format == 12u) {
         keep_fmt = 12u;
         from_project_v12(&buf.v12);
-    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC && (buf.now.format == PROJ_FORMAT || buf.now.format == 13u)) {
-        if (buf.now.format == 13u)
-            keep_fmt = 13u;                      /* (its patches as they are) */
+    } else if (n >= 8 && buf.now.magic == PROJ_MAGIC &&
+               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 23u))) {
+        if (buf.now.format != PROJ_FORMAT)
+            keep_fmt = buf.now.format;           /* (its patches as they are) */
         from_projstore(&buf.now);                /* (its settings to P_SPLIT; then the reel's from OBJ_TAPE) */
         proj.leds = buf.now.leds;
         tape_from_store();
-        migrated = buf.now.format == 13u;
+        migrated = buf.now.format != PROJ_FORMAT;
+        if (buf.now.format < 24u) {              /* (1.5.0: the pieces are new; the player's settings kept) */
+            slot_t r;
+            int p;
+            for (i = 0; i < NPIECES; i++) {
+                recipe(i, &r);
+                for (p = 0; p < P_NPARAMS; p++)
+                    if (!global_par(p))
+                        proj.slot[i].par[p] = r.par[p];
+                proj.slot[i].pool = r.pool;
+            }
+            recipe(proj.piece, &r);
+            for (p = 0; p < P_NPARAMS; p++)
+                if (!global_par(p))
+                    proj.par[p] = r.par[p];
+            proj.pool = r.pool;
+            keep_fmt = 0;                        /* (their patches from the recipes too) */
+        }
     } else {
         proj.magic = 0;                          /* (none, or another: the defaults below) */
     }
@@ -474,6 +516,15 @@ void project_patch_set(int voice, int off, int v)
     project_patch_send(voice, 0);
 }
 
+void project_patch_all(int voice, const uint8_t *p, int fresh)   /* a whole patch, the voice's own (the generator's) */
+{
+    memcpy(vpatch[voice], p, EN_PATCH);
+    proj.par[P_VX(voice, VX_OWN)] = 1;
+    en_set(P_VX(voice, VX_OWN), 1);
+    project_patch_send(voice, fresh);
+}
+
+static void song_attach(int user);              /* (ui.c) */
 void project_apply(void)
 {
     int i;
@@ -483,6 +534,7 @@ void project_apply(void)
     for (i = 0; i < EN_NVOX; i++)                /* (the voice's own six, as loaded: made by the engine) */
         if (proj.par[P_VX(i, VX_OWN)] || proj.par[EN_VOX_PATCH[i]] >= EN_NFACT)
             project_patch_send(i, 1);
+    song_attach(0);
 }
 
 /* ------------------------------------------------------------- the reel --- */

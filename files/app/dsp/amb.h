@@ -59,7 +59,9 @@ enum {
     P_PLAY = P_VOX + 3 * 42,                          /* then how each voice plays its notes: EN_NVOX of PL_N (P_PL) */
     P_TAPE = P_PLAY + 3 * 11,                         /* then the reel's (TP_*, P_RL) */
     P_TMOD = P_TAPE + 12,                             /* then the reel's five modulators (TM_*, P_TM) */
-    P_NPARAMS = P_TMOD + 5 * 6
+    P_SONGP = P_TMOD + 5 * 6,                         /* then the song's (SG_*) */
+    P_SETP = P_SONGP + 4,                             /* then MIDI's and Key sync (ST_*) */
+    P_NPARAMS = P_SETP + 49
 };
 /* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
  * index and five generative modulators */
@@ -68,7 +70,17 @@ enum { VOX_PAD, VOX_BELLS, VOX_BASS, EN_NVOX };
  * or a voice of the banks loaded from .syx files (EN_NBANK banks of 32 in the flash: source EN_NFACT + bank * 32 + voice) */
 #define EN_NFACT 18
 #define EN_NBANK 16
-#define EN_NSRC (EN_NFACT + EN_NBANK * 32)
+#define EN_NSRC (EN_NFACT + (EN_NBANK + 1) * 32)   /* (and B17, the pads' bank: built in, bank_pads.h) */
+#define EN_PADS_SRC (EN_NFACT + EN_NBANK * 32)
+/* the voice generator (the Gen page): a patch of a kind (EN_GEN_NAME's) made from a seed, BRIGHT and MOTION 0..100 (the
+ * same seed and settings, the same patch); a patch varied by an amount 0..100, from a seed */
+#define EN_NGEN 10
+extern const char *const EN_GEN_NAME[EN_NGEN];
+void en_gen(int kind, int bright, int motion, uint32_t seed, uint8_t *p);
+void en_gen_vary(uint8_t *p, int amount, uint32_t seed);
+#ifdef EN_HOST
+int en_probe(const uint8_t *p, int note, float on_s, float off_s, float *env, int nenv, float *harm);
+#endif
 #define EN_PADPATCHES 6
 #define EN_BELLPATCHES 6
 #define EN_BASSPATCHES 6
@@ -108,10 +120,72 @@ enum { TM_TARGET, TM_DEPTH, TM_RATE, TM_SHAPE, TM_SYNC, TM_SMOOTH, TM_N };
 #define EN_NTMSET 10                              /* Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize */
 #define EN_NTMDEST (EN_NTMSET + 2 * EN_NTMOD)     /* then M1..M5's depth, M1..M5's rate */
 #define P_TM(s, k) (P_TMOD + (s) * TM_N + TM_##k)
+/* the song (a MIDI file's, tools/amb_mid.py): SONG (0 Off, 1..EN_NSONG: its slot), FOLLOW (0 .. 49: the garden's own
+ * lines, their notes from the song's phrases, more as it rises; 50 .. 100: the song's melody on the Loops voice and
+ * its bass on the Bass voice, more of them, all at 100; the chords the song's either way), VARY (its melody's notes
+ * now and then a scale step off, a sixteenth late, left out), START (the bar it begins at and comes round to) */
+enum { SG_SONG, SG_FOLLOW, SG_VARY, SG_START, SG_N };
+#define P_SG(k) (P_SONGP + SG_##k)
+#define EN_NSONG 4
+/* a song's record: "ASNG", 1, its sixteenths (14 bits: two 7-bit bytes), its tempo (two), its root (0..11), its scale
+ * (relative to the root, two 6-bit bytes), its name (12), 8 spare; then a chord a half bar (its pitch classes, two
+ * 6-bit bytes, absolute; its root 0..11, 127 none), then the melody's notes (0 none, a note where it begins), its
+ * lengths, the bass's notes, its lengths: a byte a sixteenth each. Every byte 7-bit (it comes as SysEx) */
+#define EN_SONG_HDR 32
+#define EN_SONG_MAXN 2048
+void en_song(const uint8_t *rec);               /* the song to play (a valid record, read in place), 0 none */
+extern volatile uint32_t en_song_pos;           /* where it is, in sixteenths */
 #define P_RL(k) (P_TAPE + TP_##k)
 _Static_assert(P_TMOD == P_TAPE + TP_N, "the reel's");
-_Static_assert(P_NPARAMS == P_TMOD + EN_NTMOD * TM_N, "the reel's modulators");
-enum { EN_REEL_NEW = 1, EN_REEL_DUB, EN_REEL_ERASE };
+/* MIDI (global: Setup's MIDI page): each voice's channel (1..16, out and in), what notes in do (0 Scale: those on
+ * voice 1's channel add or remove their note from the scale; 1 Play: each voice's channel plays that voice); Key
+ * sync (a piece's: 0 Off, 1 Garden: the garden's root follows the splice playing as SPEED transposes it, and its
+ * tuning the cents left over; 2 Tape: SPEED snaps to a semitone that sets the splice in the garden's key) */
+enum { ST_CH1, ST_CH2, ST_CH3, ST_NOTES, ST_KSYNC, ST_VMODE, ST_VPAL, ST_VTRAIL, ST_VREACT, ST_VFEED, ST_VRGB, ST_VHUE,
+       ST_VSYNC, ST_VGEO, ST_VSIDES, ST_VMIRROR, ST_VSPEED, ST_VLAYER, ST_VBLEND, ST_VMIX, ST_VPULSE,
+       ST_VMORPH, ST_VMUTATE, ST_VFLOW, ST_VCHAOS, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE,
+       ST_VFOLD, ST_VPOSTER, ST_VPIXEL, ST_VKEY, ST_VBARS, ST_VDELAY, ST_VBRIGHT, ST_VEAR,
+       ST_AR1S, ST_AR1T, ST_AR1D, ST_AR2S, ST_AR2T, ST_AR2D, ST_AR3S, ST_AR3T, ST_AR3D, ST_AR4S, ST_AR4T, ST_AR4D, ST_N };
+/* (1.4.17, global) the first page's visual: VISUAL (0 Bloom .. 4 Tunnel, 5 the Score), COLOUR (0 the theme, Ember,
+ * Ice, Acid, Mono), TRAILS, REACT (0..100); (1.4.18) as a video synth: FEEDBACK, RGB, HUE, SYNC (0..100); (1.4.19)
+ * VISUAL 0 Bloom .. 6 Spiral, 7 the Score; its shape: GEOMETRY (0 Off, Polygon, Lissajous, Grid, Mandala, Scope),
+ * SIDES (3..12), MIRROR (0 Off, Mirror, Flip, Quad, Kaleido), SPEED (0..100); (1.4.20) LAYER (0 Off, 1.. a
+ * second picture, Bloom .. Spiral), BLEND (0 Add, Screen, Max, Difference, Mask), MIX, PULSE (0..100); (1.4.22) its
+ * life: MORPH, MUTATE, FLOW, CHAOS (0..100); (1.4.23) broken as data: MOSH, SORT, CORRUPT, SLICE (0..100); (1.4.24)
+ * VISUAL 7 XOR, 8 the Score; GEOMETRY 6 Rutt; its chroma: COLORAMA, POSTER, PIXEL, KEY (0..100); (1.5.0) the screen:
+ * BARS (0 Show, 1 Auto: hidden after DELAY s untouched, 2 Hide), DELAY (1..15), BRIGHT, EAR (its smoothing) (0..100);
+ * the react matrix: four slots, each a SOURCE (EN_AR_NSRC: 0 Off, Level, Bass, Mid, High, Beat, Voice 1..3, Notes,
+ * Chord, LFO, Random), a TARGET (0 Off, 1.. the visual's settings VMODE .. VKEY, then All) and a DEPTH (-100..100) */
+#define EN_AR_NSRC 13
+#define EN_AR_NTGT (ST_VKEY - ST_VMODE + 2)       /* (Off, the settings, All) */
+#define P_ST(k) (P_SETP + ST_##k)
+_Static_assert(P_SONGP == P_TMOD + EN_NTMOD * TM_N && P_SETP == P_SONGP + SG_N && P_NPARAMS == P_SETP + ST_N,
+               "the reel's modulators, the song's, MIDI's");
+/* the splices' keys (reel.c): each studied once recorded (en_reel_study, from the UI, a frame of it a call: the splice
+ * studied, -1 none to study), its 12 pitch classes' weights (en_reel_keyvec: 0 not known yet, or silent); or set by
+ * hand, 1..12 C..B major, 13..24 C..B minor (0: as studied); the key a weighting is most like (its tonic, *minor) */
+int en_reel_study(void);
+int en_reel_keyvec(int spl, float *v);
+int en_reel_keyman(int spl);
+void en_reel_keyset(int spl, int k);
+int en_key_guess(const float *v, int *minor);
+extern volatile float en_reel_rate;               /* the reel's speed as it plays (Key sync Tape: snapped), signed */
+extern volatile int8_t en_reel_spl;               /* the splice playing */
+void en_detune(int dcents);
+/* the engine's ear (the screen's visuals): the mix, mono, a sample in four: six bands' levels (one-pole splits at 150,
+ * 400, 1 k, 2.5 k, 5 kHz; fast up, ~0.2 s down) and its last EN_WAVE_N samples (x 160, a ring, en_wave_w next) */
+#define EN_NBAND 6
+#define EN_WAVE_N 128
+extern volatile float en_bands[EN_NBAND];
+extern volatile int8_t en_wave[EN_WAVE_N];
+extern volatile uint32_t en_wave_w;                       /* the garden's tuning moved by dcents tenths of a cent (Key sync) */
+enum { EN_REEL_NEW = 1, EN_REEL_DUB, EN_REEL_ERASE, EN_REEL_TAKE };
+/* a reel from a file (FITA.html): its blocks and their states written in place (en_reel_mem 1, 3) while it is erased,
+ * then its splices (its 80-byte metadata, as en_reel_mem 0 has it) taken at once */
+void en_reel_take(const void *meta);
+/* what plays into the FM-1 over USB (a phone, a computer), mono, 16-bit, n frames for the next en_render (0: none):
+ * the reel's SOURCE USB records it */
+void en_usb(const int16_t *mono, uint32_t n);
 void en_reel(int op);                             /* a new splice at the end; overdub the one picked (again: stop); erase */
 extern volatile uint8_t en_reel_state, en_reel_nspl;   /* 0 resting, 1 recording a new splice, 2 overdubbing; splices */
 extern volatile uint32_t en_reel_len, en_reel_w;  /* samples recorded (22.05 kHz, of 260096); where it records */
@@ -248,6 +322,11 @@ extern volatile uint32_t en_score_w, en_now;
 /* the render near its time (over 90 %, from the audio interrupt, after it): at the next render's start a gene of the
  * reel (the one furthest through), else the softest bell ringing, is let go; en_sheds counts them */
 void en_overload(void);
+/* the audio's load (%, the app's measure, each render): over 72 % the voices hold fewer notes (the loops three each,
+ * the chord one fewer; over 80 % the loops two, the chord two fewer), the ones over faded out, before an overload sheds */
+void en_load(int pct);
+/* the keys played on a voice's page: note (MIDI) of voice v down (on 1) or up (on 0), apart from the garden */
+void en_key(int v, int note, int on);
 extern volatile uint32_t en_sheds;
 extern volatile int8_t en_scope_v;
 extern volatile uint32_t en_scope_seq;

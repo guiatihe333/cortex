@@ -1,0 +1,16 @@
+# 1.4.9: a phone playing into the FM-1 over USB (here a tone), recorded onto the reel with SOURCE USB (par189 5): a
+# splice of it, and the reel plays it
+wait 300
+usbaudio 330
+tap SEQ
+wait 100
+spin K1 5
+expect par189 5
+tap EDIT
+wait 2000
+tap REC
+wait 200
+expect reelspl 1
+expect reelstate 0
+shot usb.png
+usbaudio 0

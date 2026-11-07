@@ -21,7 +21,7 @@ enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_TAPE, OBJ_NOBJ };
 #define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u, 0xDA000u}   /* the pieces' patches after the panel; the pieces'
                                                                    * reel settings before it, in the data area */
 #define PROJ_MAGIC 0x314F4E45u           /* "ENO1" */
-#define PROJ_FORMAT 14u                  /* 14: Off, every modulator's first target; 13: the reel's five modulators, its settings in OBJ_TAPE (P_SPLIT);
+#define PROJ_FORMAT 24u                  /* 24: CORTEX: the screen, the react matrix (P_ST VBARS ..), the pieces anew; 23: the visual's chroma (P_ST VFOLD ..), XOR (VISUAL's Score 7 -> 8); 22: the visual broken (P_ST VMOSH ..); 21: the visual's life (P_ST VMORPH ..); 20: the visual's layer and pulse (P_ST VLAYER ..); 19: the visual's shape (P_ST VGEO ..), VISUAL's Score 5 -> 7; 18: the video synth (P_ST VFEED ..); 17: the first page's visual (P_ST VMODE ..); 16: MIDI's channels and Key sync (P_SETP, OBJ_TAPE); 15: the song's settings (P_SONGP, OBJ_TAPE); 14: Off, every modulator's first target; 13: the reel's five modulators, its settings in OBJ_TAPE (P_SPLIT);
                                           * 12: the reel's modulators, no pulse; 11: the reel's dry/wet and deck; 10: the reel's settings; 9: the voices
                                           * alike (a ROLE each, its own octave, density, pace, glide,
                                           * an ADSR), AMB-1's eighteen patches; 8: how each voice plays (ENV, GATE); 7:
@@ -38,6 +38,13 @@ enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_TAPE, OBJ_NOBJ };
 /* the reel (amb.h en_reel_mem): its splices at REEL_BASE, its blocks' states a sector on, its samples three on; the
  * splices written last (a reel half written has none) */
 #define REEL_BASE 0xA7000u
+/* the songs (amb.h's record; tools/amb_mid.py): EN_NSONG of SONG_SIZE from SONG_BASE, past the reel, before the
+ * store's objects (0xDA000) */
+#define SONG_BASE 0xCA000u
+#define SONG_SIZE 0x4000u
+_Static_assert(SONG_BASE + EN_NSONG * SONG_SIZE <= 0xDA000u, "the songs before the store's objects");
+const uint8_t *song_rec(int slot);
+void project_patch_all(int voice, const uint8_t *p, int fresh);   /* a whole patch, the voice's own */        /* song slot's record (0..), valid; 0 none */
 int project_reel_save(void);              /* starts saving the reel (-1: it already is) */
 int project_reel_step(void);              /* a sector more: 0 nothing to do, 1 going on, 2 done, -1 a flash error */
 int project_reel_progress(void);          /* 0..100 while saving, -1 not */

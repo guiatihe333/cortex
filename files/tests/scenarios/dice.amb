@@ -2,8 +2,6 @@
 # last roll undone. Garden's Tempo 72 (par18), Evolve 35 (par5), Motion 50 (par15); the bells' first modulator's
 # depth 20 (par74), their Gate 25 (par168)
 wait 300
-tap HOME
-wait 100
 tap SEL
 wait 200
 shot garden_dice.png
@@ -12,9 +10,9 @@ press SEL
 wait 1100
 release SEL
 wait 100
-expect par18 72
-expect par5 35
-expect par15 50
+expect par18 58
+expect par5 40
+expect par15 60
 # SEL held with ARP: Voice 2 whole (its patch, how it plays, its modulators); undone as one
 press SEL
 tap ARP
@@ -25,7 +23,7 @@ press SEL
 wait 1100
 release SEL
 wait 100
-expect par74 20
+expect par74 30
 expect par168 25
 expect view 0
 # on a voice's MOD page (1.4.5): all five, two to four on (the first two always: depths par32, par40), the rest Off

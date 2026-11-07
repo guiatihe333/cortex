@@ -8,16 +8,16 @@ expect par0 50
 # the next piece: Departures, its recipe (tempo 60, no pulse, C# Ionian)
 turn PRESET 1
 expect piece 1
-expect par18 60
+expect par18 66
 expect par3 0
-expect par19 1
-expect pool 0xAB5
+expect par19 9
+expect pool 0x6AD
 wait 8000
 shot departures.png
 # and Voices
 turn PRESET 1
 expect piece 2
-expect par1 0
+expect par1 75
 wait 20000
 shot voices.png
 expect pad_level >10
@@ -47,7 +47,7 @@ expect store_writes 0
 # a tweak, saved, survives a reboot, on the piece it was made on (the Bells page: ARP)
 tap ARP
 spin K1 5
-expect par1 70
+expect par1 55
 turn PRESET 6
 expect piece 6
 tap SAVE
@@ -57,4 +57,4 @@ wait 300
 expect piece 6
 turn PRESET 2
 expect piece 0
-expect par1 70
+expect par1 55

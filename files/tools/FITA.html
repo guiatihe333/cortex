@@ -1,0 +1,459 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MPL-2.0
+     AMB-1 FM6: um arquivo de áudio para a fita do FM-1. Escolha o arquivo, o trecho (até 11,8 s), quantos splices e
+     como cortar; a página codifica como a fita do FM-1 (mono, 22,05 kHz, IMA ADPCM em blocos de 256) e manda pelo
+     USB (Web MIDI, SysEx). Chrome ou Edge. -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fita · AMB-1 FM6</title>
+<style>
+  :root { --bg: #0e0d0b; --panel: #1a1815; --line: #3a352d; --fg: #efe6d4; --dim: #a79a83; --acc: #d9b46a; --sel: rgba(217,180,106,.18); --bad: #ff8a73; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --bg: #faf4e8; --panel: #fffaf0; --line: #d8ccb6; --fg: #3b2f25; --dim: #6e5c4b; --acc: #a8741c; --sel: rgba(168,116,28,.16); --bad: #a3271b; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: .5px; }
+  h2 { font-size: 15px; margin: 28px 0 10px; color: var(--acc); text-transform: uppercase; letter-spacing: 1px; }
+  p { margin: 0 0 12px; }
+  .dim { color: var(--dim); font-size: 13px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin: 10px 0; }
+  button { font: inherit; background: var(--acc); color: var(--bg); border: 0; border-radius: 6px; padding: 7px 16px; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  button:disabled { opacity: .4; cursor: default; }
+  canvas { width: 100%; display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; touch-action: none; }
+  #wave { height: 110px; cursor: grab; }
+  #zoom { height: 140px; margin-top: 10px; cursor: crosshair; }
+  label { cursor: pointer; }
+  input[type=range] { width: 220px; accent-color: var(--acc); }
+  select, input[type=number] { font: inherit; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }
+  progress { width: 100%; height: 8px; accent-color: var(--acc); }
+  #status { min-height: 1.5em; }
+  #alert { color: var(--bad); min-height: 1.5em; }
+  .seg { display: inline-block; min-width: 26px; text-align: center; padding: 2px 6px; margin: 2px; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+  .seg:hover { border-color: var(--acc); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Fita · AMB-1 FM6</h1>
+  <p class="dim">Um trecho de uma música (ou qualquer áudio) direto na fita do FM-1, já cortado em splices. Funciona no
+    Chrome ou no Edge: o navegador pede uma vez para usar o MIDI, permita. Ligue o FM-1 com o AMB-1 FM6 1.4.9 ou mais
+    novo.</p>
+
+  <h2>1 · O arquivo</h2>
+  <div class="row"><input type="file" id="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac,.aif,.aiff">
+    <span id="fileinfo" class="dim"></span></div>
+
+  <h2>2 · O trecho</h2>
+  <p class="dim">Arraste a janela sobre a onda (ou clique onde ela deve começar). A fita tem 11,8 s; mais lento cabe mais
+    tempo, mais grave.</p>
+  <canvas id="wave" width="1600" height="220"></canvas>
+  <div class="row">
+    <label>Duração <input type="range" id="len" min="0.5" max="11.8" step="0.1" value="11.8"> <span id="lenv"></span></label>
+    <label>Velocidade <select id="speed"><option value="1">normal (11,8 s)</option><option value="1.5">2/3 (17,7 s, mais grave)</option><option value="2">metade (23,6 s, uma oitava abaixo)</option></select></label>
+    <button class="ghost" id="playsel" disabled>▶ ouvir o trecho</button>
+    <button class="ghost" id="stop">■</button>
+  </div>
+
+  <h2>3 · Os splices</h2>
+  <div class="row">
+    <label>Quantos <select id="count"><option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></label>
+    <label><input type="radio" name="mode" value="equal" checked> iguais</label>
+    <label><input type="radio" name="mode" value="onsets"> nos ataques</label>
+    <label><input type="radio" name="mode" value="beats"> no tempo</label>
+    <span id="bpm" class="dim"></span>
+  </div>
+  <canvas id="zoom" width="1600" height="280"></canvas>
+  <p class="dim">Arraste as marcas para ajustar. Clique num splice para ouvi-lo: <span id="segs"></span></p>
+  <div class="row">
+    <label><input type="checkbox" id="norm" checked> normalizar o volume</label>
+    <label>fade nas bordas <input type="number" id="fade" min="0" max="50" value="6" style="width:60px"> ms</label>
+  </div>
+
+  <h2>4 · Para o FM-1</h2>
+  <p class="dim">A fita do FM-1 é substituída por este trecho (o FM-1 salva sozinho; o SOURCE da fita mostra File). O
+    ORGANIZE escolhe o splice; os genes, o Morph e os Tape Mod tocam sobre ele.</p>
+  <div class="row"><button id="send" disabled>Mandar para a fita</button></div>
+  <progress id="bar" max="100" value="0"></progress>
+  <p id="status" role="status"></p>
+  <p id="alert" role="alert"></p>
+</main>
+<script>
+// ------------------------------------------------------------------ CORE BEGIN (the FM-1's reel; tested in node)
+var RL_BLK = 256, RL_NBLK = 1016, RL_N = RL_BLK * RL_NBLK, RL_SR = 22050, RL_NSPL = 8, RL_MIN = 2205;
+var RL_MAGIC = 0x4C45455E;
+var RL_STEP = [7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97,
+  107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963,
+  1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484,
+  7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767];
+var RL_IDX = [-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8];
+
+function rlStep(st, n) {                          // reel.c rl_step: a nibble decoded, the state moved
+  var step = RL_STEP[st.idx], d = step >> 3, p;
+  if (n & 4) d += step;
+  if (n & 2) d += step >> 1;
+  if (n & 1) d += step >> 2;
+  p = (n & 8) ? st.pred - d : st.pred + d;
+  st.pred = p > 32767 ? 32767 : p < -32768 ? -32768 : p;
+  p = st.idx + RL_IDX[n];
+  st.idx = p < 0 ? 0 : p > 88 ? 88 : p;
+}
+function rlCode(st, x) {                          // reel.c rl_code: a sample coded
+  var step = RL_STEP[st.idx], d = x - st.pred, n = 0;
+  if (d < 0) { n = 8; d = -d; }
+  if (d >= step) { n |= 4; d -= step; }
+  step >>= 1;
+  if (d >= step) { n |= 2; d -= step; }
+  step >>= 1;
+  if (d >= step) n |= 1;
+  rlStep(st, n);
+  return n;
+}
+// float samples (-1..1, 22.05 kHz) -> the reel: its samples' nibbles (two a byte, the first low), each block's state
+// at its start (pred int16 LE, idx, 0), as the FM-1 writes them (reel.c rl_put: 16384 a full scale)
+function encodeReel(x) {
+  var n = Math.min(x.length, RL_N), nib = new Uint8Array((n + 1) >> 1), hdr = new Uint8Array(RL_NBLK * 4),
+      st = {pred: 0, idx: 0}, i, q, v;
+  for (i = 0; i < n; i++) {
+    if (i % RL_BLK === 0) {
+      var b = i / RL_BLK, p = st.pred & 0xFFFF;
+      hdr[b * 4] = p & 255; hdr[b * 4 + 1] = p >> 8; hdr[b * 4 + 2] = st.idx; hdr[b * 4 + 3] = 0;
+    }
+    v = Math.max(-1.99, Math.min(1.99, x[i])) * 16384;
+    q = rlCode(st, v | 0);
+    if (i & 1) nib[i >> 1] |= q << 4; else nib[i >> 1] = q;
+  }
+  return {n: n, nib: nib, hdr: hdr};
+}
+function decodeReel(r) {                           // as the FM-1 reads it: each block from its own state
+  var out = new Float32Array(r.n), i, b, st;
+  for (b = 0; b * RL_BLK < r.n; b++) {
+    st = {pred: (r.hdr[b * 4] | r.hdr[b * 4 + 1] << 8) << 16 >> 16, idx: r.hdr[b * 4 + 2]};
+    for (i = b * RL_BLK; i < Math.min(r.n, (b + 1) * RL_BLK); i++) {
+      rlStep(st, i & 1 ? r.nib[i >> 1] >> 4 : r.nib[i >> 1] & 15);
+      out[i] = st.pred / 16384;
+    }
+  }
+  return out;
+}
+// splice starts (samples, 0 first, each on a block, each at least RL_MIN long) -> the reel's metadata (rl_meta_t)
+function cleanStarts(starts, n) {
+  var s = starts.map(function (v) { return Math.round(v / RL_BLK) * RL_BLK; }).filter(function (v) { return v >= 0 && v < n; });
+  s.push(0);
+  s.sort(function (a, b) { return a - b; });
+  var out = [];
+  s.forEach(function (v) {
+    if (!out.length || v - out[out.length - 1] >= RL_MIN) out.push(v);
+  });
+  while (out.length > 1 && n - out[out.length - 1] < RL_MIN) out.pop();
+  return out.slice(0, RL_NSPL);
+}
+function makeMeta(n, starts) {
+  var m = new Uint8Array(80), dv = new DataView(m.buffer), k, s = cleanStarts(starts, n);
+  dv.setUint32(0, RL_MAGIC, true); dv.setUint32(4, n, true); dv.setUint32(8, s.length, true); dv.setUint32(12, 0, true);
+  for (k = 0; k < s.length; k++) {
+    dv.setUint32(16 + 4 * k, s[k], true);
+    dv.setUint32(48 + 4 * k, k + 1 < s.length ? s[k + 1] : n, true);
+  }
+  return m;
+}
+// 7 bytes -> 8 SysEx bytes: their top bits, then their low 7 (bank.c unpack7)
+function pack7(d) {
+  var out = [], i, j;
+  for (i = 0; i < d.length; i += 7) {
+    var hi = 0, g = [];
+    for (j = 0; j < 7 && i + j < d.length; j++) { hi |= (d[i + j] >> 7 & 1) << j; g.push(d[i + j] & 127); }
+    out.push(hi);
+    out.push.apply(out, g);
+  }
+  return out;
+}
+// the frames to send: begin, the states, the samples, the splices last, end
+function reelFrames(r, meta) {
+  var TAG = [0x7D, 0x41, 0x4D], f = [{cmd: [0x12], ans: 0x13}], parts = [[1, r.hdr], [2, r.nib], [0, meta]];
+  parts.forEach(function (pp) {
+    var part = pp[0], d = pp[1], c;
+    for (c = 0; c * 256 < d.length; c++)
+      f.push({cmd: [0x10, part, c >> 7, c & 127].concat(pack7(Array.prototype.slice.call(d, c * 256, (c + 1) * 256))), ans: 0x11});
+  });
+  f.push({cmd: [0x14], ans: 0x15});
+  f.forEach(function (x) { x.bytes = [0xF0].concat(TAG, x.cmd, [0xF7]); });
+  return f;
+}
+// splices: equal parts; at the strongest attacks; on the beat (the tempo by the attacks' autocorrelation)
+function flux(x, sr) {
+  var hop = 256, w = 512, e = [], fl = [], i, j;
+  for (i = 0; i + w <= x.length; i += hop) {
+    var s = 0;
+    for (j = 0; j < w; j++) s += x[i + j] * x[i + j];
+    e.push(Math.sqrt(s / w));
+  }
+  for (i = 0; i < e.length; i++) fl.push(i ? Math.max(0, e[i] - e[i - 1]) : 0);
+  return {fl: fl, hop: hop, rate: sr / hop};
+}
+function splitEqual(n, count) {
+  var s = [], k;
+  for (k = 0; k < count; k++) s.push(k * n / count);
+  return s;
+}
+function splitOnsets(x, sr, count) {
+  var f = flux(x, sr), gap = x.length / count / 2 / f.hop, peaks = [], i;
+  for (i = 1; i + 1 < f.fl.length; i++)
+    if (f.fl[i] > 0 && f.fl[i] >= f.fl[i - 1] && f.fl[i] > f.fl[i + 1]) peaks.push(i);
+  peaks.sort(function (a, b) { return f.fl[b] - f.fl[a]; });
+  var pick = [0];
+  for (i = 0; i < peaks.length && pick.length < count; i++)
+    if (pick.every(function (p) { return Math.abs(p - peaks[i]) >= gap; })) pick.push(peaks[i]);
+  return pick.map(function (p) { return p * f.hop; });
+}
+function tempoOf(x, sr) {
+  var f = flux(x, sr), best = 0, bl = 0, lag, i;
+  for (lag = Math.round(f.rate * 60 / 200); lag <= Math.round(f.rate * 60 / 60); lag++) {
+    var s = 0;
+    for (i = lag; i < f.fl.length; i++) s += f.fl[i] * f.fl[i - lag];
+    if (s > best) { best = s; bl = lag; }
+  }
+  return bl ? {bpm: 60 * f.rate / bl, beat: bl * f.hop} : null;
+}
+function splitBeats(x, sr, count) {
+  var t = tempoOf(x, sr);
+  if (!t) return {starts: splitEqual(x.length, count), bpm: 0};
+  var beats = Math.floor(x.length / t.beat), per = Math.max(1, Math.floor(beats / count)), s = [], k;
+  for (k = 0; k < count && k * per * t.beat < x.length; k++) s.push(k * per * t.beat);
+  return {starts: s, bpm: t.bpm, per: per};
+}
+// ------------------------------------------------------------------ CORE END
+
+var $ = function (id) { return document.getElementById(id); };
+var ac = null, src = null, full = null, mono = null, startSec = 0, reel = null, starts = [], drag = -1;
+function ctx() { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); return ac; }
+function say(t) { $("status").textContent = t; $("alert").textContent = ""; }
+function fail(t) { $("alert").textContent = t; }
+function speed() { return parseFloat($("speed").value); }
+function winSec() { return Math.min(parseFloat($("len").value) * speed(), full ? full.duration : 99); }
+
+$("file").addEventListener("change", function (e) {
+  var f = e.target.files[0];
+  if (!f) return;
+  say("Lendo " + f.name + "…");
+  f.arrayBuffer().then(function (b) { return ctx().decodeAudioData(b); }).then(function (buf) {
+    full = buf;
+    mono = new Float32Array(buf.length);
+    for (var c = 0; c < buf.numberOfChannels; c++) {
+      var d = buf.getChannelData(c);
+      for (var i = 0; i < d.length; i++) mono[i] += d[i] / buf.numberOfChannels;
+    }
+    startSec = 0;
+    $("fileinfo").textContent = f.name + " · " + buf.duration.toFixed(1) + " s";
+    $("playsel").disabled = false;
+    say("Escolha o trecho.");
+    render();
+  }).catch(function (err) { fail("Este arquivo não pôde ser lido: " + err.message); });
+});
+
+function drawWave() {
+  var c = $("wave"), g = c.getContext("2d"), w = c.width, h = c.height, cs = getComputedStyle(document.documentElement);
+  g.clearRect(0, 0, w, h);
+  if (!mono) return;
+  var per = mono.length / w, x;
+  g.fillStyle = cs.getPropertyValue("--dim");
+  for (x = 0; x < w; x++) {
+    var a = Math.floor(x * per), b = Math.floor((x + 1) * per), mx = 0;
+    for (var i = a; i < b; i += 4) mx = Math.max(mx, Math.abs(mono[i]));
+    g.fillRect(x, h / 2 - mx * h / 2, 1, Math.max(1, mx * h));
+  }
+  var x0 = startSec / full.duration * w, x1 = (startSec + winSec()) / full.duration * w;
+  g.fillStyle = cs.getPropertyValue("--sel");
+  g.fillRect(x0, 0, x1 - x0, h);
+  g.strokeStyle = cs.getPropertyValue("--acc"); g.lineWidth = 3;
+  g.strokeRect(x0, 1, x1 - x0, h - 2);
+}
+function drawZoom() {
+  var c = $("zoom"), g = c.getContext("2d"), w = c.width, h = c.height, cs = getComputedStyle(document.documentElement);
+  g.clearRect(0, 0, w, h);
+  if (!reel) return;
+  var x = reel.audio, per = x.length / w, i, k;
+  g.fillStyle = cs.getPropertyValue("--fg");
+  for (k = 0; k < w; k++) {
+    var mx = 0;
+    for (i = Math.floor(k * per); i < Math.floor((k + 1) * per); i += 2) mx = Math.max(mx, Math.abs(x[i]));
+    g.fillRect(k, h / 2 - mx * h / 2, 1, Math.max(1, mx * h));
+  }
+  var s = cleanStarts(starts, x.length);
+  g.fillStyle = cs.getPropertyValue("--acc");
+  g.font = "26px monospace";
+  s.forEach(function (v, j) {
+    var px = v / x.length * w;
+    g.fillRect(px - 1, 0, 3, h);
+    g.fillText(String(j + 1), px + 6, 28);
+  });
+  $("segs").innerHTML = s.map(function (v, j) { return '<span class="seg" data-k="' + j + '">' + (j + 1) + "</span>"; }).join("");
+}
+function render() {                               // the window at 22.05 kHz (/ speed), mono; its splices
+  drawWave();
+  if (!full) return;
+  var sec = winSec(), sr = RL_SR / speed(), n = Math.min(Math.floor(sec * sr), RL_N);
+  var off = new OfflineAudioContext(1, n, sr), s = off.createBufferSource();
+  s.buffer = full;
+  s.connect(off.destination);
+  s.start(0, startSec, sec);
+  off.startRendering().then(function (b) {
+    var x = b.getChannelData(0).slice(0);
+    if ($("norm").checked) {
+      var pk = 0;
+      for (var i = 0; i < x.length; i++) pk = Math.max(pk, Math.abs(x[i]));
+      if (pk > 0.001) for (i = 0; i < x.length; i++) x[i] *= 0.7 / pk;
+    }
+    reel = {audio: x};
+    resplit();
+  });
+}
+function resplit() {
+  if (!reel) return;
+  var count = parseInt($("count").value, 10), mode = document.querySelector("input[name=mode]:checked").value;
+  $("bpm").textContent = "";
+  if (mode === "onsets") starts = splitOnsets(reel.audio, RL_SR, count);
+  else if (mode === "beats") {
+    var r = splitBeats(reel.audio, RL_SR, count);
+    starts = r.starts;
+    if (r.bpm) $("bpm").textContent = "~" + Math.round(r.bpm * speed()) + " BPM no original, " + r.per + " tempo(s) por splice";
+  } else starts = splitEqual(reel.audio.length, count);
+  drawZoom();
+  $("send").disabled = false;
+}
+function finalAudio() {                            // with the fades at every splice's edges
+  var x = reel.audio.slice(0), s = cleanStarts(starts, x.length), fn = Math.floor(parseFloat($("fade").value) * RL_SR / 1000), k, i;
+  s.concat([x.length]).forEach(function (b) {
+    for (i = 0; i < fn; i++) {
+      var g = i / fn;
+      if (b - 1 - i >= 0 && b < x.length + 1) x[b - 1 - i] *= g;  // its end
+      if (b + i < x.length) x[b + i] *= g;                           // the next one's start
+    }
+  });
+  return x;
+}
+function playBuf(x) {
+  stop();
+  var b = ctx().createBuffer(1, x.length, RL_SR / 1);
+  b.copyToChannel(x, 0);
+  src = ctx().createBufferSource();
+  src.buffer = b;
+  src.connect(ctx().destination);
+  src.start();
+}
+function stop() { if (src) { try { src.stop(); } catch (e) {} src = null; } }
+$("stop").onclick = stop;
+$("playsel").onclick = function () { if (reel) playBuf(finalAudio()); };
+$("segs").addEventListener("click", function (e) {
+  var k = e.target.dataset && e.target.dataset.k;
+  if (k == null || !reel) return;
+  var s = cleanStarts(starts, reel.audio.length), a = s[+k], b = +k + 1 < s.length ? s[+k + 1] : reel.audio.length;
+  playBuf(finalAudio().slice(a, b));
+});
+["len", "speed", "norm"].forEach(function (id) { $(id).addEventListener("change", function () { if (full) startSec = Math.max(0, Math.min(startSec, full.duration - winSec())); render(); }); });
+$("len").addEventListener("input", function () { $("lenv").textContent = (parseFloat($("len").value) * speed()).toFixed(1) + " s"; });
+$("count").onchange = resplit;
+document.querySelectorAll("input[name=mode]").forEach(function (r) { r.onchange = resplit; });
+$("fade").onchange = drawZoom;
+$("lenv").textContent = "11.8 s";
+
+(function () {                                    // the window: dragged, or clicked into place
+  var c = $("wave"), down = false, grab = 0;
+  function sec(e) { var r = c.getBoundingClientRect(); return (e.clientX - r.left) / r.width * (full ? full.duration : 0); }
+  c.addEventListener("pointerdown", function (e) {
+    if (!full) return;
+    var s = sec(e);
+    down = true; c.setPointerCapture(e.pointerId);
+    grab = s >= startSec && s <= startSec + winSec() ? s - startSec : winSec() / 2;
+    startSec = Math.max(0, Math.min(full.duration - winSec(), s - grab)); drawWave();
+  });
+  c.addEventListener("pointermove", function (e) {
+    if (!down) return;
+    startSec = Math.max(0, Math.min(full.duration - winSec(), sec(e) - grab)); drawWave();
+  });
+  c.addEventListener("pointerup", function () { if (down) { down = false; render(); } });
+})();
+(function () {                                    // the splices' marks, dragged
+  var c = $("zoom");
+  function at(e) { var r = c.getBoundingClientRect(); return (e.clientX - r.left) / r.width * reel.audio.length; }
+  c.addEventListener("pointerdown", function (e) {
+    if (!reel) return;
+    var x = at(e), s = cleanStarts(starts, reel.audio.length), best = -1, bd = 1e9;
+    s.forEach(function (v, j) { if (j && Math.abs(v - x) < bd) { bd = Math.abs(v - x); best = j; } });
+    if (best > 0 && bd < reel.audio.length / 40) { starts = s; drag = best; c.setPointerCapture(e.pointerId); }
+  });
+  c.addEventListener("pointermove", function (e) {
+    if (drag < 1) return;
+    var lo = starts[drag - 1] + RL_MIN, hi = (drag + 1 < starts.length ? starts[drag + 1] : reel.audio.length) - RL_MIN;
+    starts[drag] = Math.max(lo, Math.min(hi, at(e)));
+    drawZoom();
+  });
+  c.addEventListener("pointerup", function () { drag = -1; });
+})();
+
+// ------------------------------------------------------------------ to the FM-1
+function link(midi) {
+  var out = null, inp = null, q = [], waiter = null;
+  midi.outputs.forEach(function (o) { if (!out && /amb|fm-?1/i.test(o.name) && !/ota/i.test(o.name)) out = o; });
+  midi.inputs.forEach(function (i) { if (!inp && /amb|fm-?1/i.test(i.name) && !/ota/i.test(i.name)) inp = i; });
+  if (!out || !inp) return null;
+  inp.onmidimessage = function (m) {
+    var d = Array.prototype.slice.call(m.data);
+    if (d[0] !== 0xF0 || d[1] !== 0x7D || d[2] !== 0x41 || d[3] !== 0x4D) return;
+    if (waiter) { var w = waiter; waiter = null; w(d); } else q.push(d);
+  };
+  return {
+    send: function (b) { out.send(b); },
+    answer: function (cmd, ms) {
+      return new Promise(function (ok) {
+        var t = setTimeout(function () { waiter = null; ok(null); }, ms || 2000);
+        var take = function (d) { if (d[4] === cmd) { clearTimeout(t); ok(d.slice(5, -1)); } else waiter = take; };
+        var d = q.shift();
+        if (d) take(d); else waiter = take;
+      });
+    }
+  };
+}
+$("send").onclick = function () {
+  if (!reel) return;
+  if (!navigator.requestMIDIAccess) { fail("Este navegador não consegue: abra no Chrome ou no Edge."); return; }
+  var x = finalAudio(), r = encodeReel(x), meta = makeMeta(r.n, starts), frames = reelFrames(r, meta);
+  $("send").disabled = true;
+  navigator.requestMIDIAccess({sysex: true}).then(function (midi) {
+    var l = link(midi);
+    if (!l) throw new Error("FM-1 não encontrado: confira o cabo USB e feche outros programas que usem o MIDI dele.");
+    var i = 0;
+    function next() {
+      if (i >= frames.length) {
+        $("bar").value = 100;
+        say("Pronto: " + cleanStarts(starts, r.n).length + " splices na fita (" + (r.n / RL_SR).toFixed(1) + " s). O FM-1 está salvando (SAVING THE REEL na tela).");
+        $("send").disabled = false;
+        return;
+      }
+      var f = frames[i], tries = 0;
+      (function attempt() {
+        l.send(f.bytes);
+        l.answer(f.ans, f.ans === 0x13 ? 3000 : 2000).then(function (a) {
+          if (!a) {
+            if (++tries < 3) return attempt();
+            throw new Error("O FM-1 não respondeu (ele está com o AMB-1 FM6 1.4.9 ou mais novo?).");
+          }
+          if (f.ans === 0x13 && a[0]) throw new Error("O FM-1 está salvando a fita agora: espere terminar e mande de novo.");
+          if (f.ans === 0x11 && a[3]) throw new Error("Um pedaço não foi gravado (parte " + a[0] + ").");
+          i++;
+          $("bar").value = i * 100 / frames.length;
+          if (i % 20 === 0) say("Mandando… " + Math.round(i * 100 / frames.length) + "%");
+          (f.ans === 0x13 ? new Promise(function (ok) { setTimeout(ok, 60); }) : Promise.resolve()).then(next);
+        }).catch(function (e) { fail(e.message); $("send").disabled = false; });
+      })();
+    }
+    say("Mandando…");
+    next();
+  }).catch(function (e) { fail(e.message || "O navegador não deixou usar o MIDI (SysEx): permita nas configurações do site."); $("send").disabled = false; });
+};
+</script>
+</body>
+</html>

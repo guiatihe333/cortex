@@ -12,7 +12,39 @@
  * patches too); storev8 N (as 1.3.95 wrote it, format 8: every GATE at N, the bells on Tubular); storev13 (as 1.4.2 wrote it,
  * format 13: the modulators' targets with no Off before them); bankfake B (a bank of 32 voices, the own patches renamed TEST 01..,
  * sent to bank B as amb_syx.py sends one: 16 SysEx chunks); dx7voice (a DX7 single voice dump, the bass's Pick
- * named DX7 VOICE, as Dexed sends one). */
+ * named DX7 VOICE, as Dexed sends one); songfake N (a test song, 4 bars of C and F, into song slot N as amb_mid.py
+ * sends one); sysexfile PATH (a file of SysEx messages, each as from USB: tools/FITA.html's, written by
+ * tests/host/fita_test.js). */
+/* a song's record for the tests: 4 bars at 100 BPM, C major; C and F a half bar each; a melody a quarter (C E G A
+ * on C, F A C' E on F: the chord's own), the bass each half bar (C2, F2) */
+static int host_song(uint8_t *r)
+{
+    static const uint8_t MEL_C[4] = {72, 76, 79, 76}, MEL_F[4] = {77, 81, 84, 81};
+    const int n = 64, nch = 8, mel = EN_SONG_HDR + 3 * nch;
+    int i;
+    for (i = 0; i < EN_SONG_HDR + 3 * nch + 4 * n; i++)
+        r[i] = 0;
+    r[0] = 'A', r[1] = 'S', r[2] = 'N', r[3] = 'G', r[4] = 1;
+    r[5] = (uint8_t)(n >> 7), r[6] = (uint8_t)(n & 127), r[7] = 0, r[8] = 100, r[9] = 0;
+    r[10] = 0x35, r[11] = 0x2A;                   /* Ionian: 0xAB5 */
+    for (i = 0; i < 12; i++)
+        r[12 + i] = (uint8_t)"TEST SONG   "[i];
+    for (i = 0; i < nch; i++) {                  /* C (0, 4, 7), F (5, 9, 0) */
+        const int m = i & 1 ? (1 << 5 | 1 << 9 | 1) : (1 | 1 << 4 | 1 << 7);
+        r[EN_SONG_HDR + 3 * i] = (uint8_t)(m & 63);
+        r[EN_SONG_HDR + 3 * i + 1] = (uint8_t)(m >> 6 & 63);
+        r[EN_SONG_HDR + 3 * i + 2] = (uint8_t)(i & 1 ? 5 : 0);
+    }
+    for (i = 0; i < n; i += 2) {
+        r[mel + i] = (i / 8) & 1 ? MEL_F[(i / 2) % 4] : MEL_C[(i / 2) % 4];
+        r[mel + n + i] = 2;
+    }
+    for (i = 0; i < n; i += 8) {
+        r[mel + 2 * n + i] = (uint8_t)((i / 8) & 1 ? 41 : 36);
+        r[mel + 3 * n + i] = 8;
+    }
+    return EN_SONG_HDR + 3 * nch + 4 * n;
+}
 static void host_pack(const uint8_t *p, uint8_t *m)   /* a patch as a DX7 bank packs it */
 {
     int o, k;
@@ -64,6 +96,9 @@ static int dice_unmoved(void)
             char nm[24];
             if (moved[i] || k == K_NONE || k == K_OP || k == K_STAGE || k == K_PSTAGE || k == K_SLOT || k == K_TSLOT ||
                 k == K_LEDS || k == K_CPU || k == P_TUNE || k == P_MIDI || k == P_RL(SRC) || k == P_RL(ORG) ||
+                k == P_SG(SONG) || k == P_SG(START) || ((k >= P_SETP && k < P_ST(VBRIGHT)) && !(k >= P_ST(VMODE) && k <= P_ST(VKEY))) ||
+                k == K_RSLOT || k == K_TKEY ||
+                k == K_TSHIFT ||
                 k == KV(TRNSP) || k == KO(MODE))
                 continue;
             view_name(v, nm);
@@ -223,6 +258,36 @@ int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, c
         plat_store_save(OBJ_PATCH, &ps, sizeof ps);
         return 1;
     }
+    if (!strcmp(cmd, "sysexfile")) {             /* a file of SysEx messages (F0 .. F7), each to the app as from USB */
+        static uint8_t d[1u << 20];
+        FILE *f = fopen(a, "rb");
+        size_t n, i, s = 0;
+        if (!f) {
+            printf("sysexfile: no %s\n", a);
+            return 1;
+        }
+        n = fread(d, 1, sizeof d, f);
+        fclose(f);
+        for (i = 0; i < n; i++)
+            if (d[i] == 0xF0)
+                s = i + 1;
+            else if (d[i] == 0xF7 && s)
+                app_sysex(d + s, (uint32_t)(i - s)), s = 0;
+        return 1;
+    }
+    if (!strcmp(cmd, "songfake")) {              /* a song into slot N, as amb_mid.py sends one: chunks, then done */
+        static uint8_t r[0x4000], f[6 + 256];
+        const int slot = atoi(a), n = host_song(r);
+        int c;
+        for (c = 0; c * 256 < n; c++) {
+            f[0] = 0x7D, f[1] = 0x41, f[2] = 0x4D, f[3] = 0x07, f[4] = (uint8_t)slot, f[5] = (uint8_t)c;
+            memcpy(f + 6, r + c * 256, 256);
+            app_sysex(f, 6 + 256);
+        }
+        f[3] = 0x0B;
+        app_sysex(f, 5);
+        return 1;
+    }
     if (!strcmp(cmd, "storev13")) {              /* format 13 (as 1.4.2 wrote it): the targets with no Off before them */
         int i, v, s;
         project_save();
@@ -236,7 +301,15 @@ int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, c
                 tp[P_TM(s, TARGET) - P_SPLIT] = (int16_t)(tp[P_TM(s, TARGET) - P_SPLIT] > 0 ? tp[P_TM(s, TARGET) - P_SPLIT] - 1 : 0);
         }
         plat_store_save(OBJ_PROJ, &pst, sizeof pst);
-        plat_store_save(OBJ_TAPE, &tst, sizeof tst);
+        {                                        /* (its OBJ_TAPE as 1.4.2 had it: to P_SONGP) */
+            static tapestore14_t o;
+            o.magic = tst.magic;
+            o.format = 13u;
+            for (i = 0; i <= NPIECES; i++)
+                for (s = 0; s < P_SONGP - P_SPLIT; s++)
+                    o.par[i][s] = tst.par[i][s];
+            plat_store_save(OBJ_TAPE, &o, sizeof o);
+        }
         return 1;
     }
     if (!strcmp(cmd, "storev8")) {               /* format 8 (as 1.3.95 wrote it): its GATEs at N */
@@ -309,3 +382,17 @@ void app_host_reboot(void)
 }
 
 void app_speak_dump(void) { speak_dump(); }
+
+#ifdef PLAT_WEB
+/* the browser emulator: a SysEx frame from the page (a song or a bank, as a computer sends it over USB; the bytes
+ * between F0 and F7) to the app, which the base emulator only hands to its screen reader */
+#pragma push_macro("__attribute__")
+#undef __attribute__
+static uint8_t web_sx[512];
+__attribute__((used, visibility("default"))) uint8_t *web_app_sysex_buf(void) { return web_sx; }
+__attribute__((used, visibility("default"))) int web_app_sysex(uint32_t n)
+{
+    return app_sysex(web_sx, n > sizeof web_sx ? (uint32_t)sizeof web_sx : n);
+}
+#pragma pop_macro("__attribute__")
+#endif

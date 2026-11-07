@@ -1,0 +1,14 @@
+# 1.4.9: an audio file onto the reel (tools/FITA.html): 3 s of tones and hits, cut at its 4 hits, sent as the page
+# sends it (tests/host/fita_test.js wrote fita.syx); the reel has its 4 splices, SOURCE File (par189 4), saved: after a
+# restart it is still there
+wait 300
+sysexfile tests/scenarios/fita.syx
+wait 200
+expect reelspl 4
+expect par189 4
+tap SEQ
+wait 3000
+shot fita.png
+reboot
+wait 300
+expect reelspl 4

@@ -8,7 +8,12 @@
 #include "ui.c"
 
 /* the engine's MIDI out (clock, notes when MIDI out is on): to USB */
-void en_midi_out(uint32_t st, uint32_t d1, uint32_t d2) { plat_midi_out(st >> 4 | st << 8 | d1 << 16 | d2 << 24); }
+void en_midi_out(uint32_t st, uint32_t d1, uint32_t d2)
+{
+    if (st < 0xF0u && (st & 15u) < EN_NVOX)      /* a voice's: on its channel (Setup's MIDI page) */
+        st = (st & 0xF0u) | ((uint32_t)(proj.par[P_ST(CH1) + (int)(st & 15u)] - 1) & 15u);
+    plat_midi_out(st >> 4 | st << 8 | d1 << 16 | d2 << 24);
+}
 
 /* ---- the contract */
 void app_init(void)
@@ -18,7 +23,14 @@ void app_init(void)
     project_reel_load();                 /* the reel, as it was saved */
     project_apply();
 }
-void app_render(int32_t *lr, uint32_t n, uint32_t gain_q12) { en_render(lr, n, gain_q12); }
+void app_render(int32_t *lr, uint32_t n, uint32_t gain_q12)
+{
+    const int16_t *usb;
+    const uint32_t k = plat_usb_audio_in(&usb);   /* (what plays in over USB, the last render's: SOURCE USB) */
+    en_usb(k ? usb : 0, k < n ? k : n);
+    en_load((int)plat_cpu_pct());               /* (the voices held to it) */
+    en_render(lr, n, gain_q12);
+}
 void app_overload(void) { en_overload(); }
 void app_panic(void)
 {
