@@ -1,0 +1,24 @@
+# 1.5.1: the reel's SOURCE Play 1 (par189 6): on the reel's pages the keys play voice 1 (out on its channel), and a
+# new splice records it; Play All (9): the three voices together
+wait 3500
+tap SEQ
+wait 100
+expect view 6
+spin K1 6
+expect par189 6
+out
+tapkey 5
+wait 100
+expect_out USB 90 3A 64
+tap EDIT
+key 7 down
+wait 1500
+key 7 up
+tap REC
+wait 200
+expect reelspl 1
+spin K1 3
+expect par189 9
+tapkey 9
+wait 100
+expect_out USB 91 3E 64

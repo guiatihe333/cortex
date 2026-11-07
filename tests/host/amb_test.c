@@ -51,6 +51,37 @@ static int popcount(uint32_t m)
 static int32_t buf[2 * 256];
 static float peak, sum2;
 static int bad;
+/* a song's record for the tests: 4 bars at 100 BPM, C major; C and F a half bar each; a melody a quarter (C E G A
+ * on C, F A C' E on F: the chord's own), the bass each half bar (C2, F2) */
+static int test_song(uint8_t *r)
+{
+    static const uint8_t MEL_C[4] = {72, 76, 79, 76}, MEL_F[4] = {77, 81, 84, 81};
+    const int n = 64, nch = 8, mel = EN_SONG_HDR + 3 * nch;
+    int i;
+    for (i = 0; i < EN_SONG_HDR + 3 * nch + 4 * n; i++)
+        r[i] = 0;
+    r[0] = 'A', r[1] = 'S', r[2] = 'N', r[3] = 'G', r[4] = 1;
+    r[5] = (uint8_t)(n >> 7), r[6] = (uint8_t)(n & 127), r[7] = 0, r[8] = 100, r[9] = 0;
+    r[10] = 0x35, r[11] = 0x2A;                   /* Ionian: 0xAB5 */
+    for (i = 0; i < 12; i++)
+        r[12 + i] = (uint8_t)"TEST SONG   "[i];
+    for (i = 0; i < nch; i++) {                  /* C (0, 4, 7), F (5, 9, 0) */
+        const int m = i & 1 ? (1 << 5 | 1 << 9 | 1) : (1 | 1 << 4 | 1 << 7);
+        r[EN_SONG_HDR + 3 * i] = (uint8_t)(m & 63);
+        r[EN_SONG_HDR + 3 * i + 1] = (uint8_t)(m >> 6 & 63);
+        r[EN_SONG_HDR + 3 * i + 2] = (uint8_t)(i & 1 ? 5 : 0);
+    }
+    for (i = 0; i < n; i += 2) {
+        r[mel + i] = (i / 8) & 1 ? MEL_F[(i / 2) % 4] : MEL_C[(i / 2) % 4];
+        r[mel + n + i] = 2;
+    }
+    for (i = 0; i < n; i += 8) {
+        r[mel + 2 * n + i] = (uint8_t)((i / 8) & 1 ? 41 : 36);
+        r[mel + 3 * n + i] = 8;
+    }
+    return EN_SONG_HDR + 3 * nch + 4 * n;
+}
+
 static void run(float secs)
 {
     int blocks = (int)(secs * 44100.0f / 256.0f), b, j;
@@ -1180,14 +1211,22 @@ int main(void)
         en_overload();                           /* one spike: nothing shed */
         run(0.006f);
         CHECK(en_sheds == 0u, "a single overload sheds nothing: %u", (unsigned)en_sheds);
+        run(0.3f);                               /* (a quarter second since: one may shed) */
         en_overload();                           /* lasting (two renders): a gene shed */
         run(0.006f);
         en_overload();
         run(0.006f);
         for (k = 0; k < 4; k++)
             on1 += en_reel_gene[k] >= 0;
-        CHECK(en_sheds == 1u && on1 <= on0 - 1, "a lasting overload sheds the reel's genes: %d then %d, %u shed", on0,
-              on1, (unsigned)en_sheds);
+        CHECK(en_sheds == 1u && on1 >= 1, "a lasting overload sheds, the reel still heard: %d then %d genes, %u shed",
+              on0, on1, (unsigned)en_sheds);
+        for (k = 0; k < 40; k++) {               /* overloads on and on: never the last gene */
+            en_overload();
+            run(0.006f);
+        }
+        for (k = 0, on1 = 0; k < 4; k++)
+            on1 += en_reel_gene[k] >= 0;
+        CHECK(on1 >= 1 && en_reel_level > 0.0f, "overloads on and on: the reel still sounds (%d genes)", on1);
         en_init();
         en_play(1);
     }
@@ -1208,6 +1247,469 @@ int main(void)
         for (k = 0, open = 0; k < EN_SCORE_N; k++)
             open += en_score[k].on && !en_score[k].off;
         CHECK(open == 0u, "the score: stopped, none left sounding (%u)", (unsigned)open);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.8: a splice too short to play is dropped as it stops; Organize on one plays the nearest that plays; a
+     * modulated Morph stays out of the gaps */
+    {
+        int k, quiet = 0;
+        en_init();
+        en_play(1);
+        en_reel(EN_REEL_ERASE);
+        en_reel(EN_REEL_NEW);
+        run(2.0f);
+        en_reel(EN_REEL_NEW);                    /* a second one, stopped at once */
+        run(0.012f);
+        en_reel(EN_REEL_DUB);
+        run(0.05f);
+        CHECK(en_reel_nspl == 1u, "a splice too short is dropped: %u splices", (unsigned)en_reel_nspl);
+        en_set(P_RL(ORG), 1);                    /* (none there: the first plays) */
+        en_set(P_RL(MORPH), 45);
+        en_set(P_TM(0, TARGET), 1 + 3);          /* Morph, deep, quick */
+        en_set(P_TM(0, DEPTH), 100);
+        en_set(P_TM(0, RATE), 70);
+        en_set(P_TM(0, SHAPE), SHAPE_SQUARE);
+        run(1.0f);
+        for (k = 0; k < 60; k++) {
+            run(0.05f);
+            quiet += en_reel_level < 1e-4f;
+        }
+        CHECK(quiet < 6, "a modulated Morph leaves no silence: %d of 60 quiet", quiet);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.8: a key on a voice's page: the voice sounds (its tap), the note goes in the score, and lets go */
+    {
+        float lv = 0.0f;
+        uint32_t k, open = 0;
+        en_init();                               /* (resting: only the key sounds) */
+        run(0.5f);
+        en_key(VOX_BASS, 57, 1);                 /* voice 3: A3 */
+        for (k = 0; k < 20; k++) {
+            run(0.05f);
+            lv = en_vox_level[VOX_BASS] > lv ? en_vox_level[VOX_BASS] : lv;
+        }
+        for (k = 0; k < EN_SCORE_N; k++)
+            open += en_score[k].on && !en_score[k].off && en_score[k].voice == VOX_BASS;
+        CHECK(lv > 0.01f, "a key sounds its voice: level %f", (double)lv);
+        CHECK(open == 1u, "the key's note is in the score, sounding (%u)", (unsigned)open);
+        en_key(VOX_BASS, 57, 0);
+        run(0.1f);
+        for (k = 0, open = 0; k < EN_SCORE_N; k++)
+            open += en_score[k].on && !en_score[k].off && en_score[k].voice == VOX_BASS;
+        CHECK(open == 0u, "let go: its note ends (%u)", (unsigned)open);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.9: a song, FOLLOW 100: the melody (Loops) and the bass (Bass) only the song's notes, the chords its own;
+     * FOLLOW 0: the chords still the song's */
+    {
+        static uint8_t rec[0x4000];
+        uint32_t k, t0;
+        int mel = 0, melbad = 0, bas = 0, basbad = 0, chordbad = 0, t2;
+        test_song(rec);
+        en_init();
+        en_set(P_ROOT, 0);
+        en_pool(0xAB5u);
+        en_set(P_SG(FOLLOW), 100);
+        en_set(P_SG(VARY), 0);
+        en_song(rec);
+        en_play(1);
+        run(0.3f);
+        t0 = en_now;                             /* (the notes from here: the song's) */
+        for (t2 = 0; t2 < 80; t2++) {
+            run(0.05f);
+            if (en_chord_root != 0 && en_chord_root != 5)
+                chordbad++;
+        }
+        for (k = 0; k < EN_SCORE_N; k++) {
+            const en_note_t *e = &en_score[k];
+            if (!e->on || e->on < t0)
+                continue;
+            if (e->voice == VOX_BELLS) {
+                mel++;
+                melbad += !(e->note % 12 == 0 || e->note % 12 == 4 || e->note % 12 == 7 || e->note % 12 == 5 ||
+                            e->note % 12 == 9);
+            } else if (e->voice == VOX_BASS) {
+                bas++;
+                basbad += !(e->note % 12 == 0 || e->note % 12 == 5);
+            }
+        }
+        CHECK(mel > 4 && melbad == 0, "a song followed: the melody's notes (%d, %d not its)", mel, melbad);
+        CHECK(bas > 1 && basbad == 0, "a song followed: the bass's (%d, %d not its)", bas, basbad);
+        CHECK(chordbad == 0, "a song: the chords its own (%d others)", chordbad);
+        CHECK(en_song_pos < 64u, "a song goes round: at %u of 64", (unsigned)en_song_pos);
+        en_song(0);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.10: a song with all three voices on Loops: voice 1 its melody, voice 3 its bass (low), voice 2 its own loops
+     * (it plays on: a voice not playing the song) */
+    {
+        static uint8_t rec[0x4000];
+        uint32_t k, t0;
+        int n2 = 0, n3 = 0, bad3 = 0, v, t1;
+        test_song(rec);
+        en_init();
+        for (v = 0; v < EN_NVOX; v++)
+            en_set(P_PL(v, PL_ROLE), ROLE_LOOPS);
+        en_set(P_ROOT, 0);
+        en_pool(0xAB5u);
+        en_set(P_SG(FOLLOW), 100);
+        en_set(P_SG(VARY), 0);
+        en_song(rec);
+        en_play(1);
+        run(1.0f);
+        for (t1 = 0; t1 < 80; t1++) {           /* (the score holds 48: read it as it goes) */
+            t0 = en_now;
+            run(0.05f);
+            for (k = 0; k < EN_SCORE_N; k++) {
+                const en_note_t *e = &en_score[k];
+                if (!e->on || e->on < t0)
+                    continue;
+                if (e->voice == 1)
+                    n2++;
+                if (e->voice == 2) {
+                    n3++;
+                    bad3 += !(e->note % 12 == 0 || e->note % 12 == 5) || e->note > 60;
+                }
+            }
+        }
+        CHECK(n2 > 0, "all on Loops: voice 2 plays on (%d notes)", n2);
+        CHECK(n3 > 0 && bad3 == 0, "all on Loops: voice 3 the song's bass, low (%d notes, %d not)", n3, bad3);
+        en_song(0);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.10: no Loops voice (Bass, Bass, Chord): the higher Bass voice the song's melody, the other its bass */
+    {
+        static uint8_t rec[0x4000];
+        uint32_t k, t0;
+        int m = 0, mtone = 0, b = 0, bbad = 0, t1;
+        test_song(rec);
+        en_init();
+        en_set(P_PL(0, PL_ROLE), ROLE_BASS);
+        en_set(P_PL(1, PL_ROLE), ROLE_BASS);
+        en_set(P_PL(2, PL_ROLE), ROLE_CHORD);
+        en_set(P_PL(0, PL_OCT), 1);
+        en_set(P_PL(1, PL_OCT), 0);
+        en_set(P_ROOT, 0);
+        en_pool(0xAB5u);
+        en_set(P_SG(FOLLOW), 100);
+        en_set(P_SG(VARY), 0);
+        en_song(rec);
+        en_play(1);
+        run(1.0f);
+        for (t1 = 0; t1 < 80; t1++) {
+            t0 = en_now;
+            run(0.05f);
+            for (k = 0; k < EN_SCORE_N; k++) {
+                const en_note_t *e = &en_score[k];
+                if (!e->on || e->on < t0)
+                    continue;
+                if (e->voice == 0) {
+                    m++;
+                    mtone += e->note % 12 == 4 || e->note % 12 == 7 || e->note % 12 == 9;
+                } else if (e->voice == 1) {
+                    b++;
+                    bbad += !(e->note % 12 == 0 || e->note % 12 == 5);
+                }
+            }
+        }
+        CHECK(m > 8 && mtone > 4, "no Loops: the higher Bass voice the melody (%d notes, %d its E G A)", m, mtone);
+        CHECK(b > 1 && bbad == 0, "no Loops: the other Bass voice the bass (%d notes, %d not)", b, bbad);
+        en_song(0);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.10: a song half sent (its notes erased flash, 0xFF): none of them played (the melody's voice, giving way to
+     * the song at FOLLOW 100, silent), not a note each sixteenth */
+    {
+        static uint8_t rec[0x4000];
+        uint32_t k, t0;
+        int n1 = 0, t1, v, i;
+        const int len = test_song(rec);
+        for (i = EN_SONG_HDR + 3 * 8; i < len; i++)
+            rec[i] = 0xFF;
+        en_init();
+        for (v = 0; v < EN_NVOX; v++)
+            en_set(P_PL(v, PL_ROLE), ROLE_LOOPS);
+        en_set(P_SG(FOLLOW), 100);
+        en_set(P_SG(VARY), 0);
+        en_song(rec);
+        en_play(1);
+        run(0.5f);
+        for (t1 = 0; t1 < 40; t1++) {
+            t0 = en_now;
+            run(0.05f);
+            for (k = 0; k < EN_SCORE_N; k++)
+                n1 += en_score[k].on && en_score[k].on >= t0 && en_score[k].voice == 0;
+        }
+        CHECK(n1 == 0, "a song half sent: its erased notes not played (%d)", n1);
+        en_song(0);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.9: SOURCE USB: the reel records what plays in over USB, not the garden: a tone in, the reel sounds; silence
+     * in (the garden playing), the reel silent */
+    {
+        static int16_t tone[256], quiet[256];
+        float lv[2] = {0.0f, 0.0f};
+        int pass, b, i;
+        for (i = 0; i < 256; i++)
+            tone[i] = (int16_t)(12000.0f * sinf((float)i * (6.2831853f * 4.0f / 256.0f)));
+        for (pass = 0; pass < 2; pass++) {
+            en_init();
+            en_play(1);
+            en_reel(EN_REEL_ERASE);
+            en_set(P_RL(SRC), 5);
+            en_set(P_RL(MIX), 100);              /* (the reel alone, full) */
+            run(1.0f);
+            en_reel(EN_REEL_NEW);
+            for (b = 0; b < 300; b++) {          /* 1.7 s of it in, as app_render hands it on */
+                en_usb(pass ? quiet : tone, 256);
+                en_render(buf, 256, 2048);
+            }
+            en_usb(0, 0);
+            en_reel(EN_REEL_DUB);                /* (stops the recording) */
+            run(0.3f);
+            for (b = 0; b < 20; b++) {
+                run(0.05f);
+                lv[pass] = en_reel_level > lv[pass] ? en_reel_level : lv[pass];
+            }
+        }
+        CHECK(lv[0] > 0.02f && lv[1] < lv[0] * 0.1f, "SOURCE USB: a tone in, the reel %f; silence in, %f", (double)lv[0],
+              (double)lv[1]);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.11: AMS on a carrier (the LFO's amplitude modulation, at no depth) leaves its note as it is: the shift that
+     * made 2^x was the wrong way, so a carrier with AMS sounded at full from the start, past its envelope */
+    {
+        uint8_t p[EN_PATCH + 1], q[EN_PATCH + 1];
+        float e1[64], e2[64], h1, h2;
+        int k;
+        en_gen(0, 50, 0, 7u, p);
+        memcpy(q, p, sizeof q);
+        for (k = 0; k < 6; k++)
+            q[k * EP_OP + EP_AMS] = 3;
+        q[EP_LAMD] = 0;
+        p[EP_LAMD] = 0;
+        en_probe(p, 60, 2.0f, 0.5f, e1, 64, &h1);
+        en_probe(q, 60, 2.0f, 0.5f, e2, 64, &h2);
+        CHECK(e2[0] < 0.2f * e2[30] && fabsf(e2[30] - e1[30]) < 0.2f * e1[30],   /* (msfa's AMS: -1 dB at no depth) */
+              "AMS on the carriers: the attack as without (%f then %f; without %f)", (double)e2[0], (double)e2[30],
+              (double)e1[30]);
+    }
+
+    /* 1.4.11: the generator: every kind's voices valid and sounding; the same seed the same voice; BRIGHT brighter;
+     * a voice varied stays valid and near; the pads' bank (B17) sounds, slow to rise, held */
+    {
+        uint8_t p[EN_PATCH + 1], q[EN_PATCH + 1];
+        float env[80], hd, hb;
+        int kind, s, k, bad = 0, silent = 0, brighter = 0, same = 1;
+        for (kind = 0; kind < EN_NGEN; kind++) {
+            float sd = 0.0f, sb = 0.0f;          /* (BRIGHT: its voices brighter on the whole, seed by seed they vary) */
+            for (s = 1; s <= 4; s++) {
+                en_gen(kind, 50, 50, (uint32_t)s * 77u, p);
+                en_gen(kind, 50, 50, (uint32_t)s * 77u, q);
+                same &= !memcmp(p, q, EN_PATCH);
+                for (k = 0; k < EN_PATCH; k++)
+                    bad += p[k] > en_patch_max(k);
+                en_probe(p, 60, 2.0f, 0.2f, env, 80, &hd);
+                {                                /* (its loudest in the first two seconds: a pluck's is at its start) */
+                    float pk = 0.0f;
+                    for (k = 0; k < 40; k++)
+                        pk = env[k] > pk ? env[k] : pk;
+                    silent += pk < 0.05f || pk > 4.0f;
+                    if (pk < 0.05f || pk > 4.0f)
+                        printf("  the generator: kind %d seed %d, its peak %f\n", kind, s, (double)pk);
+                }
+                en_gen(kind, 0, 50, (uint32_t)s * 77u, p);
+                en_probe(p, 60, 2.0f, 0.2f, env, 80, &hd);
+                en_gen(kind, 100, 50, (uint32_t)s * 77u, p);
+                en_probe(p, 60, 2.0f, 0.2f, env, 80, &hb);
+                sd += hd;
+                sb += hb;
+                memcpy(q, p, sizeof q);
+                en_gen_vary(q, 60, 5u);
+                for (k = 0; k < EN_PATCH; k++)
+                    bad += q[k] > en_patch_max(k);
+            }
+            brighter += sb > sd * 1.1f;
+        }
+        CHECK(bad == 0 && same, "the generator: its voices in range (%d past), a seed the same voice (%d)", bad, same);
+        CHECK(silent == 0, "the generator: every kind sounds, not too loud (%d not)", silent);
+        CHECK(brighter == EN_NGEN, "the generator: BRIGHT brighter (%d kinds of %d)", brighter, EN_NGEN);
+    }
+
+    /* 1.4.12: a patch that dies away (the generator's Pluck) on the Bass voice and on a Chord voice, AMB's envelope: it
+     * goes on sounding (struck each chord, each breath), not struck once and silent */
+    {
+        uint8_t p[EN_PATCH + 1];
+        float first = 0.0f, late = 0.0f;
+        int role, b, j;
+        for (role = 0; role < 2; role++) {
+            en_init();
+            en_set(P_PL(0, PL_ROLE), role ? ROLE_BASS : ROLE_CHORD);
+            en_set(P_PL(1, PL_ROLE), ROLE_LOOPS);
+            en_set(P_PL(2, PL_ROLE), ROLE_LOOPS);
+            en_set(P_PL(0, PL_ENV), ENV_AMB);
+            en_set(P_BELLS, 0);
+            en_set(P_BASS, 0);
+            en_set(P_REVERB, 0);
+            en_set(P_ECHO, 0);
+            en_set(P_DRIFT, 0);                  /* (the chords move quickly: the bass struck often) */
+            en_set(P_PADTONE, EN_PADS_SRC);
+            en_gen(6, 50, 50, 3u, p);
+            en_patch_load(0, p, 1);
+            en_play(1);
+            first = late = 0.0f;
+            for (b = 0; b < (int)(24.0f * 44100.0f / 256.0f); b++) {
+                en_render(buf, 256, 2048);
+                for (j = 0; j < 512; j++) {
+                    const float x = (float)buf[j] * (float)buf[j];
+                    if (b < (int)(8.0f * 44100.0f / 256.0f))
+                        first += x;
+                    else if (b >= (int)(16.0f * 44100.0f / 256.0f))
+                        late += x;
+                }
+            }
+            CHECK(late > 0.1f * first && late > 0.0f, "a dying patch on %s, AMB: it goes on (the last 8 s %g of the first %g)",
+                  role ? "the bass" : "a chord", (double)late, (double)first);
+        }
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.13: a splice's key studied: a D major chord (D F# A) played in over USB onto the reel, studied, its strongest
+     * pitch classes D, F# and A; then Key sync Tape, the garden in C Ionian, SPEED at 1x: the reel snapped to a
+     * semitone near 1x that sets D F# A on C's scale */
+    {
+        static int16_t tone[256];
+        static const float HZ[3] = {293.665f, 369.994f, 440.0f};
+        float kv[12], ph[3] = {0.0f, 0.0f, 0.0f}, rt, sh;
+        int b, i, j, k, top[3], ok = 1, t, guard;
+        en_init();
+        en_set(P_ROOT, 0);
+        en_pool(0xAB5u);
+        en_play(1);
+        en_reel(EN_REEL_ERASE);
+        en_set(P_RL(SRC), 5);
+        en_set(P_RL(MIX), 100);
+        run(0.3f);
+        en_reel(EN_REEL_NEW);
+        for (b = 0; b < 400; b++) {
+            for (i = 0; i < 256; i++) {
+                float x = 0.0f;
+                for (j = 0; j < 3; j++) {
+                    ph[j] += HZ[j] / 44100.0f;
+                    ph[j] -= (float)(int)ph[j];
+                    x += sinf(ph[j] * 6.2831853f) + 0.4f * sinf(ph[j] * 12.566371f);
+                }
+                tone[i] = (int16_t)(x * 5000.0f);
+            }
+            en_usb(tone, 256);
+            en_render(buf, 256, 2048);
+        }
+        en_usb(0, 0);
+        en_reel(EN_REEL_DUB);                    /* (stops the recording) */
+        run(0.2f);
+        for (guard = 0; guard < 200 && en_reel_study() >= 0; guard++)
+            ;
+        CHECK(en_reel_keyvec(0, kv), "a splice's key: studied (%d steps)", guard);
+        for (k = 0; k < 3; k++) {                /* its three strongest */
+            int bi = -1;
+            for (i = 0; i < 12; i++)
+                if ((k < 1 || i != top[0]) && (k < 2 || i != top[1]) && (bi < 0 || kv[i] > kv[bi]))
+                    bi = i;
+            top[k] = bi;
+            ok &= bi == 2 || bi == 6 || bi == 9;
+        }
+        CHECK(ok, "a splice's key: D F# A its strongest (%d %d %d)", top[0], top[1], top[2]);
+        en_set(P_ST(KSYNC), 2);
+        en_set(P_RL(SPEED), 75);
+        run(0.5f);
+        rt = en_reel_rate;
+        sh = 12.0f * log2f(fabsf(rt));
+        t = (int)floorf(sh + 0.5f);
+        CHECK(fabsf(sh - (float)t) < 0.01f && t >= -4 && t <= 4 && t != 0,
+              "Key sync Tape: the reel a semitone shift near 1x (%f: %d)", (double)rt, t);
+        ok = 1;
+        for (k = 0; k < 3; k++)
+            ok &= (0xAB5u >> (((top[k] + t) % 12 + 12) % 12)) & 1u;
+        CHECK(ok, "Key sync Tape: D F# A moved %d, on C's scale", t);
+        en_set(P_ST(KSYNC), 0);
+        run(0.5f);
+        CHECK(fabsf(en_reel_rate - 1.0f) < 0.001f, "Key sync Off: the reel at 1x again (%f)", (double)en_reel_rate);
+        en_reel(EN_REEL_ERASE);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.13: the song moves with the root: the test song (C and F) with the root at D, its melody's notes a tone up */
+    {
+        static uint8_t rec[0x4000];
+        uint32_t k, t0;
+        int mel = 0, bad = 0, t1;
+        test_song(rec);
+        en_init();
+        en_set(P_ROOT, 0);
+        en_pool(0xAB5u);
+        en_set(P_SG(FOLLOW), 100);
+        en_set(P_SG(VARY), 0);
+        en_song(rec);
+        en_set(P_ROOT, 2);                       /* (D: the song a tone up) */
+        en_play(1);
+        run(0.5f);
+        for (t1 = 0; t1 < 80; t1++) {
+            t0 = en_now;
+            run(0.05f);
+            for (k = 0; k < EN_SCORE_N; k++) {
+                const en_note_t *e = &en_score[k];
+                if (!e->on || e->on < t0 || e->voice != VOX_BELLS)
+                    continue;
+                mel++;
+                bad += !(e->note % 12 == 2 || e->note % 12 == 6 || e->note % 12 == 9 || e->note % 12 == 7 ||
+                         e->note % 12 == 11);
+            }
+        }
+        CHECK(mel > 4 && bad == 0, "the song a tone up with the root: its melody (%d, %d not)", mel, bad);
+        CHECK(en_chord_root == 2 || en_chord_root == 7, "the song a tone up: its chords (%d)", en_chord_root);
+        en_song(0);
+        en_init();
+        en_play(1);
+    }
+
+    /* 1.4.14: under load (95 %) a Loops voice keeps two notes sounding, the chord one fewer: the score's notes open at
+     * once on the bells' voice, two at most (a third fading is let go within 6 blocks) */
+    {
+        int t1, most = 0;
+        uint32_t k;
+        en_init();
+        en_set(P_PL(1, PL_DENS), 100);
+        en_set(P_PL(1, PL_PACE), 0);
+        en_play(1);
+        en_load(95);
+        run(2.0f);
+        for (t1 = 0; t1 < 60; t1++) {
+            int open = 0;
+            run(0.05f);
+            for (k = 0; k < EN_SCORE_N; k++)
+                open += en_score[k].on && !en_score[k].off && en_score[k].voice == VOX_BELLS;
+            most = open > most ? open : most;
+        }
+        CHECK(most <= 3, "under load: the loops two notes (and one fading) at most (%d)", most);
+        en_load(0);
         en_init();
         en_play(1);
     }

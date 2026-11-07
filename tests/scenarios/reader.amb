@@ -3,11 +3,11 @@
 wait 200
 listen
 wait 100
-said Partiture page: Tempo 72, Evolve 35, Motion 50, Drift 39 seconds. Piece Garden, D Dorian, growing
+said Cortex page: Tempo 58, Evolve 40, Motion 60, Drift 1 minute 17 seconds. Piece Hypnagogia, D Lydian, growing
 # (the garden follows, queued: the chord, how far to the next, the scale from the root up)
 listen
 where
-said Scale D, E, F, G, A, B, C
+said Scale D, E, F#, Ab and A, B, C#
 # a page settles before it is said
 tap ENV
 wait 300
@@ -27,44 +27,44 @@ wait 300
 # SELECT turns the pages
 turn SELECT -1
 wait 300
-said Space page: Echo 45, Echo time 1 bar, Reverb 65, Size 80
+said Space page: Echo 50, Echo time 2 bars, Reverb 80, Size 95
 spin K2 -1
 wait 300
-said Echo time 1/2.
+said Echo time 1 bar
 tap HOME
 wait 300
-said Partiture page
+said Cortex page: Tempo 58, Evolve 40, Motion 60, Drift 1 minute 17 seconds
 spin K4 20
 wait 300
-said Drift 1 minute 8 seconds
+said Drift 2 minutes 13 seconds
 # HOME + SELECT: the tempo (the Garden's first knob says it)
 press HOME
 turn SELECT 2 200
 release HOME
 wait 300
-said Tempo 74
-# the keys: a note out of the scale and back in; the root stays
-tapkey w1
-said REMOVED G
+said Tempo 59
+# the keys: G into the scale and out (D Lydian has G#), C# out and back in; the root stays
 tapkey w1
 said ADDED G
-tapkey b3
-said ADDED C#
+tapkey w1
+said REMOVED G
 tapkey b3
 said REMOVED C#
+tapkey b3
+said ADDED C#
 tapkey w5
 said THE ROOT STAYS (SETUP)
 # the encoders: the mode, the piece (with its key and tempo)
 turn ALGO 1
-said MODE Phrygian
+said MODE Mixolyd
 turn ALGO -1
-said MODE Dorian
+said MODE Lydian
 turn PRESET 1
-said PIECE Departures, C# Ionian, tempo 60
+said PIECE Theta, A Dorian, tempo 66
 wait 300
 unsaid Level
 turn PRESET -1
-said PIECE Garden, D Dorian, tempo 74
+said PIECE Hypnagogia, D Lydian, tempo 60
 wait 300
 # the buttons' messages, said once
 tap REC
@@ -109,7 +109,7 @@ midi FC 00 00
 wait 300
 said RESTING
 wait 1000
-said Tempo 74
+said Tempo 60
 # WHERE: everything again
 where
-said Partiture page: Tempo 74, Evolve 35, Motion 50, Drift 1 minute 8 seconds. Piece Garden, D Dorian, resting
+said Cortex page: Tempo 60, Evolve 40, Motion 60, Drift 2 minutes 13 seconds. Piece Hypnagogia, D Lydian, resting

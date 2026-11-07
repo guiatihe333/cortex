@@ -1,0 +1,190 @@
+# 1.4.17 .. 1.4.19: the first page's visual, on the whole screen: HOME on the garden, its page (VISUAL par240, COLOUR
+# par241, TRAILS par242, REACT par243); again, the video synth (FEEDBACK par244, RGB par245, HUE par246, SYNC par247);
+# again, its shape (GEOMETRY par248, SIDES par249, MIRROR par250, SPEED par251); each picture as the garden plays
+wait 1500
+tap HOME
+wait 100
+expect view 14
+wait 1500
+shot vis_bloom.png
+spin K1 1
+expect par240 1
+wait 1500
+shot vis_ridge.png
+spin K1 1
+spin K2 1
+wait 2000
+shot vis_prism.png
+spin K1 1
+spin K2 1
+wait 2000
+shot vis_swarm.png
+spin K1 1
+spin K2 1
+wait 2000
+shot vis_tunnel.png
+spin K1 1
+spin K2 1
+wait 2000
+shot vis_plasma.png
+spin K1 1
+wait 2000
+shot vis_spiral.png
+spin K1 1
+expect par240 7
+wait 2000
+shot vis_xor.png
+spin K1 1
+expect par240 8
+wait 300
+shot vis_score.png
+spin K1 -8
+expect par240 0
+tap HOME
+wait 100
+expect view 15
+spin K1 40
+spin K2 40
+spin K3 20
+spin K4 40
+wait 2000
+shot vis_video.png
+tap HOME
+wait 100
+expect view 16
+spin K1 1
+expect par248 1
+spin K3 4
+expect par250 4
+wait 1500
+shot vis_polygon.png
+spin K1 2
+spin K3 -4
+wait 1500
+shot vis_grid.png
+spin K1 1
+spin K2 3
+wait 1500
+shot vis_mandala.png
+# 1.4.20: HOME a fifth time, the layer (LAYER par252, BLEND par253, MIX par254, PULSE par255): Plasma over Bloom, Diff
+spin K1 -3
+tap HOME
+wait 100
+expect view 17
+spin K1 6
+expect par252 6
+spin K2 3
+expect par253 3
+wait 2000
+shot vis_layer.png
+# 1.4.22: HOME a sixth time, its life (MORPH par256, MUTATE par257, FLOW par258, CHAOS par259); the keys play it
+# (F3 .. B3 a picture each: A3, key 4, Tunnel), EDIT a new genome
+spin K1 -6
+tap HOME
+wait 100
+expect view 18
+spin K1 60
+spin K2 40
+spin K3 50
+tapkey 5
+wait 100
+expect par240 5
+tap EDIT
+wait 4000
+shot vis_life.png
+tapkey 0
+wait 3500
+shot vis_life2.png
+# 1.4.23: HOME a seventh time, broken as data (MOSH par260, SORT par261, CORRUPT par262, SLICE par263)
+tap HOME
+wait 100
+expect view 19
+spin K1 40
+spin K2 30
+spin K3 40
+spin K4 30
+wait 3000
+shot vis_mosh.png
+wait 2000
+shot vis_mosh2.png
+# 1.4.24: HOME an eighth time, its chroma (COLORAMA par264, POSTER par265, PIXEL par266, KEY par267); Rutt
+spin K1 -40
+spin K2 -40
+spin K3 -40
+spin K4 -40
+tap HOME
+wait 100
+expect view 20
+spin K1 40
+spin K2 30
+wait 2000
+shot vis_chroma.png
+spin K1 -40
+spin K2 -30
+spin K3 30
+wait 1500
+shot vis_pixel.png
+spin K3 -30
+tap HOME
+wait 100
+expect view 21
+# 1.5.0: HOME a ninth time, the react matrix (slot 1: Bass to Mosh, 40); a tenth, the screen (BARS par272: Auto)
+spin K1 2
+spin K2 3
+spin K3 2
+spin K4 40
+wait 1500
+shot vis_react.png
+tap HOME
+wait 100
+expect view 22
+spin K1 1
+wait 300
+shot vis_screen.png
+wait 5000
+shot vis_hidden.png
+tap HOME
+wait 100
+expect view 0
+tap HOME
+tap HOME
+tap HOME
+wait 100
+spin K1 6
+expect par248 6
+wait 2000
+shot vis_rutt.png
+# 1.4.25: the geometry broken with the picture (Polygon under MOSH, CORRUPT, SLICE high)
+spin K1 -5
+spin K3 -4
+tap HOME
+tap HOME
+tap HOME
+wait 100
+expect view 19
+spin K1 60
+spin K3 60
+spin K4 60
+wait 2500
+shot vis_geo_mosh.png
+spin K1 -25
+spin K3 -40
+spin K4 -45
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+wait 100
+expect view 16
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+wait 100
+expect view 0

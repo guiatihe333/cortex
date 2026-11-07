@@ -1,11 +1,11 @@
 # AMB-1's build settings (fm1-base's tools/build.py: ./build.sh)
 name = "AMB"                   # the build's files: amb.fwsc, amb-X.Y.fwsc
 id_prefix = "FM-1_76"          # package identity, AMB-1 FM6's own (AMB-1's is FM-1_7): releases FM-1_76XXYYZZ
-usb_manufacturer = "AMB-1"
-usb_product = "AMB-1 FM-1"
+usb_manufacturer = "CORTEX"
+usb_product = "CORTEX FM-1"
 ble = false                    # AMB-1 never uses the radio
 usb_audio_in = true            # the music recordable over USB
-usb_audio_out = false
+usb_audio_out = true           # a phone or a computer plays into it (the reel records it: SOURCE USB)
 words = "words.tsv"
 include = ["dsp"]
 o2 = ["dsp/amb.c"]             # the engine, at -O2

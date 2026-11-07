@@ -1,0 +1,42 @@
+# 1.4.13: Setup's MIDI page (GLO, again): each voice's channel (par235..237), Notes in (par238: Scale, Play). Voice 1
+# on channel 5: its knobs' CC go out on it (its INDEX, CC 20); with Play, a note in on channel 5 plays voice 1 (out
+# again on its channel). The reel's sixth page, Tape Key: Key sync (par239)
+wait 300
+tap GLO
+wait 100
+tap GLO
+wait 100
+expect view 13
+spin K1 4
+expect par235 5
+spin K4 1
+expect par238 1
+wait 100
+shot midi.png
+tap ENV
+wait 100
+tap ENV
+wait 100
+tap ENV
+wait 100
+expect view 24
+out
+turn K4 30 100
+expect_out USB B4 14 7F
+midi 94 3C 64
+wait 100
+expect_out USB 94 3C 64
+midi 84 3C 00
+wait 100
+tap SEQ
+tap SEQ
+tap SEQ
+tap SEQ
+tap SEQ
+tap SEQ
+wait 100
+expect view 11
+spin K1 2
+expect par239 2
+wait 100
+shot tape_key.png

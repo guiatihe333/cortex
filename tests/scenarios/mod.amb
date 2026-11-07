@@ -1,19 +1,22 @@
-# each voice's own pages, in three groups: its page button pressed again goes to VOICE, again to OPERATOR, again to
-# MOD, and back; SELECT steps through a group's pages. parN: amb.h (P_VOX 30, a voice's block of 42: OWN, INDEX, five
-# modulators of 8); patV_OFF: voice V's patch byte (amb.h EP_*). Views: the pad's own 11..25, the bells' 26.., the
-# bass's 41..
+# each voice's own pages, in four groups: its page button pressed again goes to GEN (1.4.11), again to VOICE, again
+# to OPERATOR, again to MOD, and back; SELECT steps through a group's pages. parN: amb.h (P_VOX 30, a voice's block of
+# 42: OWN, INDEX, five modulators of 8); patV_OFF: voice V's patch byte (amb.h EP_*). Views: the pad's own 12..27, the
+# bells' 28.., the bass's 44..
 wait 300
 tap ENV
 wait 100
 expect view 1
 tap ENV
 wait 100
-expect view 11
+expect view 23
+tap ENV
+wait 100
+expect view 24
 shot pad_voice.png
 # the patch: the next of the pad's own (Voices), as loaded
-expect par22 0
+expect par22 5
 turn K1 1 10
-expect par22 1
+expect par22 6
 expect par30 0
 # the algorithm: 5 -> 7 (an edit: the patch the voice's own, OWN)
 turn K2 2 10
@@ -22,33 +25,33 @@ expect par30 1
 # OPERATOR: OP3's level, 80 -> 70 (OP3's bytes from 63: its level at 79)
 tap ENV
 wait 100
-expect view 17
+expect view 30
 shot pad_op.png
 turn K1 2 10
 spin K4 -10
-expect pat0_79 70
+expect pat0_79 52
 # OP Env: its stage 2's rate, 30 -> 35 (at 64)
 turn SELECT 1 100
-expect view 18
+expect view 31
 turn K2 1 10
 spin K3 5
-expect pat0_64 35
+expect pat0_64 44
 shot pad_openv.png
 # MOD: the first modulator's depth, Garden's 20 -> 23 (the bells' and the bass's untouched); the second's target
 # (Garden's recipe: Pitch, 5, to 14)
 tap ENV
 wait 100
-expect view 23
+expect view 36
 shot mod.png
 turn K3 3 10
-expect par32 23
-expect par74 20
-expect par116 20
+expect par32 33
+expect par74 30
+expect par116 30
 turn K1 1 10
 turn K2 9 100
 expect par43 15
 turn SELECT 1 100
-expect view 24
+expect view 37
 # back to the pad's page
 tap ENV
 wait 100
@@ -58,14 +61,18 @@ tap ARP
 wait 100
 tap ARP
 wait 100
-expect view 26
+tap ARP
+wait 100
+expect view 40
 turn K1 1 10
 expect par28 7
 tap LFO
 wait 100
 tap LFO
 wait 100
-expect view 41
+tap LFO
+wait 100
+expect view 56
 turn K4 2 10
 expect par115 2
 # another voice's button from a voice's page: that voice's own first page
@@ -75,7 +82,7 @@ expect view 2
 tap SEQ
 wait 100
 expect view 6
-# SEQ again: the reel's pages, Tape, Gene, Deck, Tape Mod 1 and 2, round
+# SEQ again: the reel's pages, Tape, Gene, Deck, Tape Mod 1 and 2, Tape Key (1.4.13), round
 tap SEQ
 wait 100
 expect view 7
@@ -90,17 +97,18 @@ wait 100
 expect view 10
 tap SEQ
 wait 100
+expect view 11
+tap SEQ
+wait 100
 expect view 6
 tap HOME
 wait 100
-tap HOME
-wait 100
 expect view 0
-# SELECT walks the layers' pages only (Setup, then the reel's five, the last)
+# SELECT walks the layers' pages only (Setup, then the reel's five, the song's, the last)
 tap GLO
 wait 100
 turn SELECT 6 100
-expect view 10
+expect view 11
 wav mod.wav
 wait 20000
 wavstop
@@ -109,26 +117,31 @@ expect peak_db_max -0.5
 turn PRESET 1
 turn PRESET -1
 expect par28 7
-expect par32 23
-expect pat0_79 70
+expect par32 33
+expect pat0_79 52
 expect par30 1
 tap SAVE
 reboot
 wait 300
-expect pat0_79 70
+expect pat0_79 52
 expect pat0_134 6
 expect par30 1
-expect par32 23
-# a bank over SysEx (bank 3); the bells' Patch past their own six: the built-in bank 1's first voice (BRASS 1: 66,
-# a B), then 64 on, bank 3's first, the one sent (TEST 01: 84, a T), as loaded
+expect par32 33
+# a bank over SysEx (bank 3); the bells' Patch past their own six: the pads' (B17, 1.4.11) first voice (WARM PAD: 87,
+# a W), then 32 on bank 1's (BRASS 1: 66, a B), 64 more bank 3's first, the one sent (TEST 01: 84, a T), as loaded
 bankfake 2
 wait 100
 tap ARP
 wait 100
 tap ARP
 wait 100
-expect view 26
+tap ARP
+wait 100
+expect view 40
 turn K1 11 10
+expect par28 530
+expect pat1_145 87
+spin K1 32
 expect par28 18
 expect pat1_145 66
 spin K1 64
@@ -153,7 +166,7 @@ midi B0 06 32
 wait 50
 expect pat0_121 50
 # MIDI CC out: a knob turned (the bells' INDEX, CC 20 on channel 2)
-expect view 26
+expect view 40
 out
 turn K4 24 100
 expect par73 24
@@ -165,9 +178,11 @@ tap ENV
 wait 100
 tap ENV
 wait 100
-expect view 11
+tap ENV
+wait 100
+expect view 24
 turn SELECT 1 100
-expect view 12
+expect view 25
 shot pad_play.png
 turn K1 1 10
 expect par156 2

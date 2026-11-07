@@ -1,0 +1,20 @@
+# 1.4.9: a song (a MIDI file's, amb_mid.py: here sent as it would be) into slot 1; GLO, GLO twice more (1.4.13: MIDI between): the SONG page; SONG
+# to 1: its key (C: par19 0), its scale (C major: 0xAB5) and tempo (100: par18) the garden's, and it plays
+wait 300
+songfake 0
+wait 100
+tap GLO
+tap GLO
+tap GLO
+wait 100
+expect view 12
+spin K1 1
+wait 100
+expect par19 0
+expect pool 0xAB5
+expect par18 100
+wait 4000
+shot song.png
+# GLO again: back to Setup
+tap GLO
+expect view 5

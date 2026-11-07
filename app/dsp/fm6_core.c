@@ -580,7 +580,9 @@ static int fm6_note_compute(fm6_note_t *n, const uint8_t *p, int32_t *out, int32
         if (ams) {                                 /* msfa: pt = exp(sensamp / 262144 * 0.07 + 12.2) */
             uint32_t sensamp = (uint32_t)(fm6_umul(amod, ams) >> 24);
             int32_t lg = FM6_AMS_C0 + (int32_t)(fm6_umul(sensamp, FM6_AMS_K) >> 10);
-            uint32_t pt = fm6_mant(lg) << ((lg >> 24) - 16);   /* (2^17.6 .. 2^24.1: shift 1..8) */
+            uint32_t pt = fm6_mant(lg) >> (30 - (lg >> 24));   /* (2^17.6 .. 2^24.1: the Q30 mantissa shifted down
+                                                                * 13 .. 6; AMB-1 FM6 1.4.10: it was shifted up, so an
+                                                                * operator with AMS ran past its envelope, at full) */
             level -= (int32_t)(fm6_umul((uint32_t)level, (uint64_t)pt << 4) >> 28);
         }
         if (!((car >> k) & 1u))

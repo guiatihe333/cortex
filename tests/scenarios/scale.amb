@@ -2,41 +2,53 @@
 wait 300
 # D Dorian: D E F G A B C. F#3 is key 1: add F# (relative 4)
 tapkey 1
-expect pool 0x6BD
+expect pool 0xAC5
 tapkey 1
-expect pool 0x6AD
+expect pool 0xAD5
 # key 9 is D4: the root stays
 tapkey 9
-expect pool 0x6AD
+expect pool 0xAD5
 # the next mode: Phrygian
 turn ALGO 1
-expect par20 2
-expect pool 0x5AB
+expect par20 4
+expect pool 0x6B5
 turn ALGO -1
-expect pool 0x6AD
+expect pool 0xAD5
 # the root up a tone (Setup page, KNOB 1): E Dorian
 tap GLO
 spin K1 2
 expect par19 4
 tap HOME
-expect pool 0x6AD
+expect pool 0xAD5
 wait 300
 shot e_dorian.png
 # pentatonic minor, then strip it down to three notes and try a fourth removal
 turn ALGO 6
-expect par20 7
-expect pool 0x4A9
+expect par20 1
+expect pool 0x6AD
 # E pent min: E G A B D. Remove G (key 2 = G3) and A (key 4 = A3)
 tapkey 2
 tapkey 4
-expect pool 0x481
+expect pool 0x685
 # B (key 6): would leave two
 tapkey 6
-expect pool 0x481
+expect pool 0x605
 wait 300
 shot three.png
 # MIDI in, channel 1: A (note 57) back in
 midi 90 39 64
 wait 20
-expect pool 0x4A1
+expect pool 0x625
 expect dirty 1
+# 1.4.8 (E pent min, its three left: 0x4A1): on a voice's page the keys play the voice, the scale left as it is; back on the Partiture they change it again
+tap ENV
+wait 100
+tapkey 1
+wait 100
+expect pool 0x625
+tap HOME
+wait 100
+tapkey 1
+expect pool 0x621
+tapkey 1
+expect pool 0x625

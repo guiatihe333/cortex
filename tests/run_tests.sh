@@ -34,6 +34,11 @@ if [ -f $B/amb.fwsc ]; then
 else
     echo "  skip update path (no $B/amb.fwsc: ./build.sh)"
 fi
+if command -v node >/dev/null 2>&1; then              # tools/FITA.html's reel coding (its CORE), against the FM-1's
+    run fita node tests/host/fita_test.js tools/FITA.html $OUT/fita.syx
+else
+    echo "  skip fita (no node)"
+fi
 run host-build sh build.sh --host
 if command -v emcc >/dev/null 2>&1; then
     run emu sh -c "sh build.sh --web && node tests/host/emu_test.mjs $B/emu/app.wasm"
