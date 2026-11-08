@@ -61,7 +61,7 @@ enum {
     P_TMOD = P_TAPE + 12,                             /* then the reel's five modulators (TM_*, P_TM) */
     P_SONGP = P_TMOD + 5 * 6,                         /* then the song's (SG_*) */
     P_SETP = P_SONGP + 4,                             /* then MIDI's and Key sync (ST_*) */
-    P_NPARAMS = P_SETP + 49
+    P_NPARAMS = P_SETP + 57
 };
 /* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
  * index and five generative modulators */
@@ -144,7 +144,8 @@ _Static_assert(P_TMOD == P_TAPE + TP_N, "the reel's");
 enum { ST_CH1, ST_CH2, ST_CH3, ST_NOTES, ST_KSYNC, ST_VMODE, ST_VPAL, ST_VTRAIL, ST_VREACT, ST_VFEED, ST_VRGB, ST_VHUE,
        ST_VSYNC, ST_VGEO, ST_VSIDES, ST_VMIRROR, ST_VSPEED, ST_VLAYER, ST_VBLEND, ST_VMIX, ST_VPULSE,
        ST_VMORPH, ST_VMUTATE, ST_VFLOW, ST_VCHAOS, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE,
-       ST_VFOLD, ST_VPOSTER, ST_VPIXEL, ST_VKEY, ST_VBARS, ST_VDELAY, ST_VBRIGHT, ST_VEAR,
+       ST_VFOLD, ST_VPOSTER, ST_VPIXEL, ST_VKEY, ST_VOFREQ, ST_VOSHAPE, ST_VOANGLE, ST_VOSPEED, ST_VOFREQ2,
+       ST_VOCOMB, ST_VOWARP, ST_VOSYNC, ST_VBARS, ST_VDELAY, ST_VBRIGHT, ST_VEAR,
        ST_AR1S, ST_AR1T, ST_AR1D, ST_AR2S, ST_AR2T, ST_AR2D, ST_AR3S, ST_AR3T, ST_AR3D, ST_AR4S, ST_AR4T, ST_AR4D, ST_N };
 /* (1.4.17, global) the first page's visual: VISUAL (0 Bloom .. 4 Tunnel, 5 the Score), COLOUR (0 the theme, Ember,
  * Ice, Acid, Mono), TRAILS, REACT (0..100); (1.4.18) as a video synth: FEEDBACK, RGB, HUE, SYNC (0..100); (1.4.19)
@@ -155,9 +156,14 @@ enum { ST_CH1, ST_CH2, ST_CH3, ST_NOTES, ST_KSYNC, ST_VMODE, ST_VPAL, ST_VTRAIL,
  * VISUAL 7 XOR, 8 the Score; GEOMETRY 6 Rutt; its chroma: COLORAMA, POSTER, PIXEL, KEY (0..100); (1.5.0) the screen:
  * BARS (0 Show, 1 Auto: hidden after DELAY s untouched, 2 Hide), DELAY (1..15), BRIGHT, EAR (its smoothing) (0..100);
  * the react matrix: four slots, each a SOURCE (EN_AR_NSRC: 0 Off, Level, Bass, Mid, High, Beat, Voice 1..3, Notes,
- * Chord, LFO, Random), a TARGET (0 Off, 1.. the visual's settings VMODE .. VKEY, then All) and a DEPTH (-100..100) */
+ * Chord, LFO, Random), a TARGET (0 Off, 1.. the visual's settings VMODE .. VOSYNC, then All) and a DEPTH
+ * (-100..100); (1.5.9) VISUAL 8 Osc, 9 the Score, LAYER 9 Osc; Osc's: FREQ (0..100: half a cycle .. 32 across), WAVE
+ * (0 Sine, Tri, Saw, Square, Noise), ANGLE (0..100: 0 .. 180 degrees), SCROLL (-100..100), FREQ 2 (0 none; a second,
+ * square to it), COMBINE (0 Add, Multiply, Difference, Warp: the second bends the first, Field: the picture bends it),
+ * WARP (0..100), SYNC (0 Free, Notes: the notes' pitch its frequency, Beat: from the top on the beat) */
 #define EN_AR_NSRC 13
-#define EN_AR_NTGT (ST_VKEY - ST_VMODE + 2)       /* (Off, the settings, All) */
+#define EN_AR_NTGT (ST_VOSYNC - ST_VMODE + 2)     /* (Off, the settings, All) */
+#define EN_AR_NTGT24 (ST_VKEY - ST_VMODE + 2)     /* (format 24's All) */
 #define P_ST(k) (P_SETP + ST_##k)
 _Static_assert(P_SONGP == P_TMOD + EN_NTMOD * TM_N && P_SETP == P_SONGP + SG_N && P_NPARAMS == P_SETP + ST_N,
                "the reel's modulators, the song's, MIDI's");

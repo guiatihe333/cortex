@@ -285,7 +285,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
     slot_t r;
     memset(&tst, 0, sizeof tst);
     if (plat_store_load(OBJ_TAPE, &tst, sizeof tst) < 8 || tst.magic != PROJ_MAGIC ||
-        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 23u))) {
+        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 24u))) {
         for (i = 0; i < NPIECES; i++) {
             recipe(i, &r);
             for (p = P_SPLIT; p < P_NPARAMS; p++)
@@ -296,9 +296,26 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
             proj.par[p] = r.par[p];
         return;
     }
-    if (tst.format != PROJ_FORMAT) {             /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to the visual's): the
+    if (tst.format == 24u) {                     /* 24: as now but Osc's eight (from the recipes); the Score 8 -> 9;
+                                                  * a react slot on All to the new All */
+        const int nold = P_NPARAMS - (ST_VBARS - ST_VOFREQ) - P_SPLIT, gap = ST_VBARS - ST_VOFREQ;
+        const int16_t *o = (const int16_t *)(const void *)((const uint8_t *)&tst + 8);
+        for (i = 0; i <= NPIECES; i++) {
+            int16_t *par = i < NPIECES ? proj.slot[i].par : proj.par;
+            int s;
+            recipe(i < NPIECES ? i : proj.piece, &r);
+            for (p = P_SPLIT; p < P_NPARAMS; p++)
+                par[p] = p < P_ST(VOFREQ) ? o[i * nold + p - P_SPLIT]
+                         : p < P_ST(VBARS) ? r.par[p] : o[i * nold + p - gap - P_SPLIT];
+            if (par[P_ST(VMODE)] == 8)
+                par[P_ST(VMODE)] = 9;
+            for (s = 0; s < 4; s++)
+                if (par[P_ST(AR1T) + 3 * s] == EN_AR_NTGT24)
+                    par[P_ST(AR1T) + 3 * s] = EN_AR_NTGT;
+        }
+    } else if (tst.format != PROJ_FORMAT) {      /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to the visual's): the
                                                   * rest from the recipes */
-        const int upto = tst.format == 23u ? P_ST(VBARS) : tst.format == 22u ? P_ST(VFOLD) : tst.format == 21u ? P_ST(VMOSH) : tst.format == 20u ? P_ST(VMORPH) : tst.format == 19u ? P_ST(VLAYER) : tst.format == 18u ? P_ST(VGEO) : tst.format == 17u ? P_ST(VFEED) : tst.format == 16u ? P_ST(VMODE)
+        const int upto = tst.format == 23u ? P_ST(VOFREQ) : tst.format == 22u ? P_ST(VFOLD) : tst.format == 21u ? P_ST(VMOSH) : tst.format == 20u ? P_ST(VMORPH) : tst.format == 19u ? P_ST(VLAYER) : tst.format == 18u ? P_ST(VGEO) : tst.format == 17u ? P_ST(VFEED) : tst.format == 16u ? P_ST(VMODE)
                          : tst.format == 15u ? P_SETP : P_SONGP;
         const int16_t *o = (const int16_t *)(const void *)((const uint8_t *)&tst + 8);
         for (i = 0; i <= NPIECES; i++) {
@@ -310,6 +327,8 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
                 par[P_ST(VMODE)] = 7;            /* (the Score was 5: Plasma and Spiral came before it) */
             if (tst.format >= 17u && tst.format <= 22u && par[P_ST(VMODE)] == 7)
                 par[P_ST(VMODE)] = 8;            /* (and 7 until XOR came before it) */
+            if (par[P_ST(VMODE)] == 8)
+                par[P_ST(VMODE)] = 9;            /* (and 8 until Osc came before it) */
         }
     } else {
         for (i = 0; i < NPIECES; i++)
@@ -376,7 +395,7 @@ int project_load(void)
         keep_fmt = 12u;
         from_project_v12(&buf.v12);
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC &&
-               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 23u))) {
+               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 24u))) {
         if (buf.now.format != PROJ_FORMAT)
             keep_fmt = buf.now.format;           /* (its patches as they are) */
         from_projstore(&buf.now);                /* (its settings to P_SPLIT; then the reel's from OBJ_TAPE) */

@@ -1,0 +1,49 @@
+# 1.5.9: Osc, the video synth's primitive source (LZX's oscillators, Hydra's osc): VISUAL 8 (par240); HOME then goes to
+# its pages, OSC (FREQ par268, WAVE par269, ANGLE par270, SCROLL par271) and OSC 2 (FREQ 2 par272, COMBINE par273, WARP
+# par274, SYNC par275), then on to Video; a screen reader says them. Without Osc in use HOME skips them
+wait 1500
+tap HOME
+wait 100
+expect view 14
+tap HOME
+wait 100
+expect view 15
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+tap HOME
+wait 100
+expect view 0
+tap HOME
+wait 100
+spin K1 8
+expect par240 8
+tap HOME
+wait 100
+expect view 23
+spin K2 3
+expect par269 3
+spin K3 25
+expect par270 25
+listen
+where
+said Wave Square
+wait 1500
+shot osc.png
+tap HOME
+wait 100
+expect view 24
+spin K1 30
+spin K2 1
+expect par273 2
+where
+said Combine Diff
+wait 1500
+shot osc2.png
+tap HOME
+wait 100
+expect view 15

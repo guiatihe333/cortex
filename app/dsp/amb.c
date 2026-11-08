@@ -64,14 +64,17 @@ static const en_param_t PARAMS[P_NPARAMS] = {
 #undef TM_PARAMS
     {"Song", 0, EN_NSONG, 0}, {"Follow", 0, 100, 75}, {"Vary", 0, 100, 20}, {"Start", 0, 127, 0},
     {"V1 channel", 1, 16, 1}, {"V2 channel", 1, 16, 2}, {"V3 channel", 1, 16, 3}, {"Notes in", 0, 1, 0},
-    {"Key sync", 0, 2, 0},     {"Visual", 0, 8, 0},      {"Colour", 0, 4, 0},      {"Trails", 0, 100, 60},
+    {"Key sync", 0, 2, 0},     {"Visual", 0, 9, 0},      {"Colour", 0, 4, 0},      {"Trails", 0, 100, 60},
     {"React", 0, 100, 50},    {"Feedback", 0, 100, 25}, {"RGB", 0, 100, 20},     {"Hue", 0, 100, 10},
     {"Sync", 0, 100, 10},     {"Geometry", 0, 6, 0},    {"Sides", 3, 12, 5},      {"Mirror", 0, 4, 0},
-    {"Speed", 0, 100, 50},    {"Layer", 0, 8, 0},       {"Blend", 0, 4, 0},       {"Mix", 0, 100, 60},
+    {"Speed", 0, 100, 50},    {"Layer", 0, 9, 0},       {"Blend", 0, 4, 0},       {"Mix", 0, 100, 60},
     {"Pulse", 0, 100, 50},    {"Morph", 0, 100, 0},     {"Mutate", 0, 100, 30},   {"Flow", 0, 100, 20},
     {"Chaos", 0, 100, 30},    {"Mosh", 0, 100, 35},     {"Sort", 0, 100, 15},     {"Corrupt", 0, 100, 20},
     {"Slice", 0, 100, 15},    {"Colorama", 0, 100, 0},  {"Poster", 0, 100, 0},    {"Pixel", 0, 100, 0},
-    {"Key", 0, 100, 0},       {"Bars", 0, 2, 0},        {"Delay", 1, 15, 4},      {"Bright", 0, 100, 50},
+    {"Key", 0, 100, 0},
+    {"Freq", 0, 100, 40},     {"Wave", 0, 4, 0},        {"Angle", 0, 100, 0},     {"Scroll", -100, 100, 20},
+    {"Freq 2", 0, 100, 0},    {"Combine", 0, 4, 1},     {"Warp", 0, 100, 30},     {"Osc sync", 0, 2, 0},
+    {"Bars", 0, 2, 0},        {"Delay", 1, 15, 4},      {"Bright", 0, 100, 50},
     {"Ear", 0, 100, 30},
     {"Source 1", 0, EN_AR_NSRC - 1, 2}, {"Target 1", 0, EN_AR_NTGT, 21}, {"Depth 1", -100, 100, 40},
     {"Source 2", 0, EN_AR_NSRC - 1, 4}, {"Target 2", 0, EN_AR_NTGT, 6}, {"Depth 2", -100, 100, 35},
@@ -326,15 +329,25 @@ void en_param_text(int i, int v, char *b)
     else if (i == P_ST(KSYNC))
         s = v == 1 ? "Cortex" : v == 2 ? "Tape" : "Off";
     else if (i == P_ST(VMODE)) {
-        static const char *const VM[9] = {"Bloom", "Ridge", "Prism", "Swarm", "Tunnel", "Plasma", "Spiral", "XOR",
-                                          "Score"};
-        s = VM[(unsigned)v < 9u ? v : 0];
+        static const char *const VM[10] = {"Bloom", "Ridge", "Prism", "Swarm", "Tunnel", "Plasma", "Spiral", "XOR",
+                                           "Osc", "Score"};
+        s = VM[(unsigned)v < 10u ? v : 0];
     } else if (i == P_ST(VGEO)) {
         static const char *const VG[7] = {"Off", "Polygon", "Lissajous", "Grid", "Mandala", "Scope", "Rutt"};
         s = VG[(unsigned)v < 7u ? v : 0];
     } else if (i == P_ST(VLAYER)) {
-        static const char *const VL[9] = {"Off", "Bloom", "Ridge", "Prism", "Swarm", "Tunnel", "Plasma", "Spiral", "XOR"};
-        s = VL[(unsigned)v < 9u ? v : 0];
+        static const char *const VL[10] = {"Off", "Bloom", "Ridge", "Prism", "Swarm", "Tunnel", "Plasma", "Spiral", "XOR",
+                                           "Osc"};
+        s = VL[(unsigned)v < 10u ? v : 0];
+    } else if (i == P_ST(VOSHAPE)) {
+        static const char *const VW[5] = {"Sine", "Tri", "Saw", "Square", "Noise"};
+        s = VW[(unsigned)v < 5u ? v : 0];
+    } else if (i == P_ST(VOCOMB)) {
+        static const char *const VC[5] = {"Add", "Multiply", "Diff", "Warp", "Field"};
+        s = VC[(unsigned)v < 5u ? v : 0];
+    } else if (i == P_ST(VOSYNC)) {
+        static const char *const VS[3] = {"Free", "Notes", "Beat"};
+        s = VS[(unsigned)v < 3u ? v : 0];
     } else if (i == P_ST(VBLEND)) {
         static const char *const VB[5] = {"Add", "Screen", "Max", "Diff", "Mask"};
         s = VB[(unsigned)v < 5u ? v : 0];

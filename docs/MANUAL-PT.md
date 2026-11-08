@@ -1,6 +1,6 @@
 # CORTEX
 
-O CORTEX (1.5.8; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
+O CORTEX (1.5.9; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
 de Brian Eno. Ele toca sozinho desde o momento em que é ligado: três vozes FM (cada uma respirando acordes, tocando
 loops ou deslizando um baixo, como você escolher), um eco curto, um loop de fita e um reverb de placa, e uma fita que grava tudo isso e toca de volta em grãos. Você não toca o AMB-1, você cuida dele:
 escolhe uma peça e uma escala, tira notas, põe de volta, e deixa crescer.
@@ -265,7 +265,7 @@ com a música (os níveis, as batidas, as vozes, as notas). Nessas páginas as t
 
 | Página | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
 | --- | --- | --- | --- | --- |
-| Visual | Visual (Bloom, Ridge, Prism, Swarm, Tunnel, Plasma, Spiral, XOR, Score) | Colour (Theme, Ember, Ice, Acid, Mono) | Trails | React |
+| Visual | Visual (Bloom, Ridge, Prism, Swarm, Tunnel, Plasma, Spiral, XOR, Osc, Score) | Colour (Theme, Ember, Ice, Acid, Mono) | Trails | React |
 | Video | Feedback | RGB | Hue | Sync (uma batida do baixo rasga linhas) |
 | Shape | Geometry (Off, Polygon, Lissajous, Grid, Mandala, Scope, Rutt) | Sides | Mirror (Off, Mirror, Flip, Quad, Kaleido) | Speed |
 | Mix | Layer (uma segunda imagem, ou Off) | Blend (Add, Screen, Max, Diff, Mask) | Mix | Pulse |
@@ -274,6 +274,16 @@ com a música (os níveis, as batidas, as vozes, as notas). Nessas páginas as t
 | Chroma | Colorama | Poster | Pixel | Key |
 | React | Slot (1–4) | Source (Level, Bass, Mid, High, Beat, Voice 1–3, Notes, Chord, LFO, Random) | Target (qualquer ajuste destas páginas, ou All) | Depth |
 | Screen | Bars (Show, Auto, Hide: o nome da página e os knobs sobre a imagem) | Delay | Bright | Ear |
+| Osc | Freq | Wave (Sine, Tri, Saw, Square, Noise) | Angle (0–180°) | Scroll |
+| Osc 2 | Freq 2 (0: nenhum) | Combine (Add, Multiply, Diff, Warp, Field) | Warp | Sync (Free, Notes, Beat) |
+
+**Osc** (1.5.9) é uma imagem feita do zero, como num sistema LZX ou no Hydra: uma onda atravessando a tela (**Freq**
+faixas dela, a **Wave**, num **Angle**, andando pelo **Scroll**) e uma segunda em ângulo reto (**Freq 2**) que o
+**Combine** soma, multiplica (uma grade), tira a diferença, ou deixa entortar a primeira (**Warp**); no **Field** é
+a própria imagem que a entorta, o que com o **Feedback** (página Video) é o modulate do Hydra. **Sync** Notes: a
+altura das notas define a frequência; Beat: as ondas recomeçam na batida. Com o Visual (ou o Layer da Mix) em Osc,
+o HOME vai da página Visual para Osc e Osc 2. Todo ajuste é alvo da React, e o resto da cadeia (o Kaleido do Mirror,
+o Feedback, o Colorama, o Layer) age sobre ela.
 
 ### GLO de novo: MIDI e Song
 

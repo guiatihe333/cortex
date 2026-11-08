@@ -86,19 +86,20 @@ static void ui_blit(uint32_t x, uint32_t y);
  * to the next group (the page it was left on) and from the last back to the layer's page; SELECT steps through the
  * voice's own pages; the voice's button stays lit on them */
 enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_SPACE, V_SETUP, V_TAPE, V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_TKEY, V_SONG,
-       V_MIDI, V_VIS, V_VID, V_SHAPE, V_VMIX, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN, V_MAIN };
+       V_MIDI, V_VIS, V_VID, V_SHAPE, V_VMIX, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN, V_OSC, V_OSC2, V_MAIN };
+#define VIS_OSC 8                               /* (VISUAL's Osc: drawn, not one MORPH turns into) */
 enum { S_GEN, S_VOICE, S_PLAY, S_ADSR, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
 #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
 #define NGROUP 4
 static const uint8_t GROUP0[NGROUP + 1] = {S_GEN, S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
 static const char *const MAIN_NAME[V_MAIN] = {"Cortex", "Voice 1", "Voice 2", "Voice 3", "Space", "Setup", "Tape",
                                               "Gene", "Deck", "Tape Mod", "Tape Mod 2", "Tape Key", "Song", "MIDI", "Visual", "Video", "Shape", "Mix", "Life", "Mosh",
-                                              "Chroma", "React", "Screen"};
+                                              "Chroma", "React", "Screen", "Osc", "Osc 2"};
 static const char *const SUB_NAME[NSUB] = {"Gen", "Patch", "Play", "ADSR", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
 static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_FX, B_GLO, B_SEQ, B_SEQ, B_SEQ, B_SEQ, B_SEQ,
                                          B_SEQ, B_GLO, B_GLO, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME,
-                                         B_HOME, B_HOME};
+                                         B_HOME, B_HOME, B_HOME, B_HOME};
 static int tape_view(int v) { return v >= V_TAPE && v <= V_TKEY; }   /* the reel's six pages (SEQ, again ..) */
 static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
 #define KEY_NOTE0 53                            /* key 0: F3 (MIDI) */
@@ -166,6 +167,8 @@ static const uint16_t MAIN_KNOB[V_MAIN][4] = {
     {P_ST(VFOLD), P_ST(VPOSTER), P_ST(VPIXEL), P_ST(VKEY)},   /* ... its chroma */
     {K_RSLOT, KAR, KAR + 1, KAR + 2},            /* ... what it hears: a react slot's source, target, depth */
     {P_ST(VBARS), P_ST(VDELAY), P_ST(VBRIGHT), P_ST(VEAR)},   /* ... the screen */
+    {P_ST(VOFREQ), P_ST(VOSHAPE), P_ST(VOANGLE), P_ST(VOSPEED)},   /* ... Osc: its oscillator */
+    {P_ST(VOFREQ2), P_ST(VOCOMB), P_ST(VOWARP), P_ST(VOSYNC)},     /* ... a second, how they meet */
 };
 static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_GKIND, K_GBRIGHT, K_GMOTION, K_GVARY},  /* the generator (EDIT: a new voice, REC: varied) */
@@ -209,6 +212,8 @@ static const char *const MAIN_LABEL[V_MAIN][4] = {
     {"Colorama", "Poster", "Pixel", "Key"},
     {"Slot", "Source", "Target", "Depth"},
     {"Bars", "Delay", "Bright", "Ear"},
+    {"Freq", "Wave", "Angle", "Scroll"},
+    {"Freq 2", "Combine", "Warp", "Sync"},
 };
 static const char *const SUB_LABEL[NSUB][4] = {
     {"Kind", "Bright", "Motion", "Vary"},
@@ -288,7 +293,7 @@ static uint32_t ui_lsig;                        /* (they, coarsely: the bands dr
 static uint8_t ui_wash_on;                      /* the bands' ground washed with them (not the visual's) */
 static int theme_of(int v)                     /* a page's palette: the voices', their own pages too */
 {
-    static const uint8_t T[V_MAIN] = {0, 2, 3, 4, 5, 6, 1, 1, 1, 1, 1, 1, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    static const uint8_t T[V_MAIN] = {0, 2, 3, 4, 5, 6, 1, 1, 1, 1, 1, 1, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     return T[view_main(v)];
 }
 #define K_BG (TH->bg)
@@ -1140,6 +1145,18 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
         dice_par(P_ST(AR1T) + ui.rslot * 3, 1, EN_AR_NTGT);
         dice_par(P_ST(AR1D) + ui.rslot * 3, -80, 80);
         break;
+    case V_OSC:                                 /* an oscillator: its frequency, wave, angle, scroll */
+        dice_par(P_ST(VOFREQ), 5, 80);
+        dice_par(P_ST(VOSHAPE), 0, 4);
+        dice_par(P_ST(VOANGLE), 0, 100);
+        dice_par(P_ST(VOSPEED), -60, 60);
+        break;
+    case V_OSC2:                                /* a second, how they meet, how far it bends, its sync */
+        dice_par(P_ST(VOFREQ2), 0, 70);
+        dice_par(P_ST(VOCOMB), 0, 4);
+        dice_par(P_ST(VOWARP), 0, 80);
+        dice_par(P_ST(VOSYNC), 0, 2);
+        break;
     case V_SCREEN:                              /* its light, how it hears (the bars left as they are) */
         dice_par(P_ST(VBRIGHT), 30, 80);
         dice_par(P_ST(VEAR), 0, 80);
@@ -1491,7 +1508,10 @@ static void button(int b)
     int v;
     if (b == B_HOME) {                           /* the garden; again: its visual's page, the video synth's, its
                                                   * shape's, round */
-        set_view(ui.view == V_GARDEN ? V_VIS : ui.view == V_VIS ? V_VID : ui.view == V_VID ? V_SHAPE
+        const int osc = proj.par[P_ST(VMODE)] == VIS_OSC || proj.par[P_ST(VLAYER)] == VIS_OSC + 1;   /* (Osc in use:
+                                                  * its pages after the Visual's) */
+        set_view(ui.view == V_GARDEN ? V_VIS : ui.view == V_VIS ? (osc ? V_OSC : V_VID) : ui.view == V_OSC ? V_OSC2
+                 : ui.view == V_OSC2 ? V_VID : ui.view == V_VID ? V_SHAPE
                  : ui.view == V_SHAPE ? V_VMIX : ui.view == V_VMIX ? V_LIFE : ui.view == V_LIFE ? V_MOSH
                  : ui.view == V_MOSH ? V_CHROMA : ui.view == V_CHROMA ? V_REACT : ui.view == V_REACT ? V_SCREEN
                  : V_GARDEN);
@@ -1521,7 +1541,7 @@ static void button(int b)
         reel_button(b);
         return;
     }
-    if (ui.view >= V_VIS && ui.view <= V_SCREEN && (b == B_EDIT || b == B_REC)) {   /* the visual: a new genome; held */
+    if (ui.view >= V_VIS && ui.view <= V_OSC2 && (b == B_EDIT || b == B_REC)) {   /* the visual: a new genome; held */
         if (b == B_EDIT) {
             vis_mutate(1.0f);
             vhold = 0;
@@ -1749,7 +1769,7 @@ static void input(void)
                 en_key(v, KEY_NOTE0 + (int)i, 1);
             } else if (ui.view == V_GARDEN) {    /* the Partiture: the note in or out of the scale */
                 toggle_note((int)((5u + i) % 12u));
-            } else if (ui.view >= V_VIS && ui.view <= V_SCREEN) {   /* the visual's pages: the keys play it */
+            } else if (ui.view >= V_VIS && ui.view <= V_OSC2) {   /* the visual's pages: the keys play it */
                 vis_key((int)i);
             } else if (tape_view(ui.view) && proj.par[P_RL(SRC)] >= 6) {   /* the reel's, SOURCE Play: the voice
                                                   * (or all three) played, as the reel records it */
@@ -2604,7 +2624,7 @@ static void draw_tape(void)
 #define VF_H 120
 #define VCX 59.5f
 #define VCY 59.5f
-#define VIS_SCORE 8
+#define VIS_SCORE 9
 #define VSEG_N 270
 static uint8_t vf[VF_H][VF_W] PLAT_POOL;
 static uint8_t vtmp[VF_H][VF_W] PLAT_POOL;      /* FEEDBACK: the last frame, turned and zoomed, before it comes back */
@@ -2663,7 +2683,7 @@ static float vis_rnd(void)                       /* 0..1 */
 }
 static int vis_full(void)                        /* the visual on the whole screen now */
 {
-    return (ui.view == V_GARDEN || (ui.view >= V_VIS && ui.view <= V_SCREEN)) && !ui.help &&
+    return (ui.view == V_GARDEN || (ui.view >= V_VIS && ui.view <= V_OSC2)) && !ui.help &&
            proj.par[P_ST(VMODE)] < VIS_SCORE;   /* (the knob's: the matrix reads it in the frame) */
 }
 static void vis_palette(void)                    /* COLOUR: five stops, the page's theme or a palette of its own; HUE */
@@ -2765,9 +2785,12 @@ static void vseg_add(float x0, float y0, float x1, float y1)
         vnseg++;
     }
 }
+static float vo_note = 60.0f;                   /* Osc's SYNC Notes: the last note's pitch, eased */
+static int vo_note_to = 60;
 static void vis_note(int mode, int voice, int note, int vel)   /* a note began: the picture answers it */
 {
     int i, k;
+    vo_note_to = note;
     if ((unsigned)voice >= EN_NVOX)
         voice = 0;
     if (mode == 0) {                             /* Bloom: a ring from its voice's orb, quicker the higher */
@@ -2783,7 +2806,7 @@ static void vis_note(int mode, int voice, int note, int vel)   /* a note began: 
     } else if (mode == 2 || mode == 6) {         /* Prism, Spiral: its pitch class */
         vchroma[note % 12] = fm_minf(vchroma[note % 12] + (float)vel * 0.012f, 1.5f);
     } else if (mode == 3) {                      /* Swarm: sparks from where it sits on the keyboard */
-        const int n = 2 + vel / 25;
+        const int n = 4 + vel / 16;
         for (k = 0, i = 0; i < 48 && k < n; i++)
             if (!vpart[i].on) {
                 vpart[i].on = 1;
@@ -3073,7 +3096,7 @@ static void vis_react(void)                      /* this frame's settings: the k
         if (!src || !tg || !dp)
             continue;
         x = vis_src(src) * (float)dp * 0.01f;
-        for (k = ST_VMODE; k <= ST_VKEY; k++) {
+        for (k = ST_VMODE; k <= ST_VOSYNC; k++) {
             const en_param_t *pi = en_param_info(P_SETP + k);
             const int span = pi->hi - pi->lo;
             int v;
@@ -3287,9 +3310,95 @@ static void vis_step(int mode)                   /* a frame of the field and the
         }
     vbass_prev = vband[0];
 }
+/* Osc (1.5.9): LZX's ramps and oscillators, Hydra's osc() and modulate(): a wave across the field at ANGLE, FREQ
+ * cycles across it, moving by SCROLL; a second (FREQ 2) square to it, met by COMBINE: added, multiplied, their
+ * difference, or bending the first (Warp; Field: the picture as it is bends it, its feedback with it), WARP how far.
+ * SYNC Notes: the notes' pitch its frequency (an octave up, twice the stripes); Beat: from the top on the beat. In
+ * 16.16 phase, a table a wave: integer work, row by row */
+static uint8_t vosin[256] PLAT_POOL, vonz[33] PLAT_POOL;   /* the sine, the noise's 32 points (the pool: made at the
+                                                 * first frame); the other waves worked out */
+static uint8_t vowave_ok;
+static inline int osc_w(int w, int i)            /* wave w at i (a cycle in 256): 0 .. 255 */
+{
+    i &= 255;
+    switch (w) {
+    case 1: return i < 128 ? i * 2 : (255 - i) * 2;   /* Tri */
+    case 2: return i;                                 /* Saw */
+    case 3: return i < 128 ? 255 : 0;                 /* Square */
+    case 4: return (vonz[i >> 3] * (8 - (i & 7)) + vonz[(i >> 3) + 1] * (i & 7)) >> 3;   /* Noise: 32 bumps, smoothed */
+    default: return vosin[i];                         /* Sine */
+    }
+}
+static uint32_t vo_ph1, vo_ph2;
+static uint8_t vo_beat_was;
+static void vis_osc(void)
+{
+    const float ang = (float)VPAR(VOANGLE) * (FM_PI / 100.0f), sc = (float)VPAR(VOSPEED) * 0.01f;
+    float f1 = 0.5f * fm_exp2f((float)VPAR(VOFREQ) * 0.06f), f2 = VPAR(VOFREQ2) ? 0.5f * fm_exp2f((float)VPAR(VOFREQ2) * 0.06f)
+                                                                                : 0.0f;
+    const int w = VPAR(VOSHAPE) < 5 ? VPAR(VOSHAPE) : 0, comb = VPAR(VOCOMB), wa = VPAR(VOWARP) * 2,
+              keep = VPAR(VFEED) * 255 / 100;   /* (drawn clean; FEEDBACK how much of the last frame stays under it) */
+    int x, y;
+    if (!vowave_ok) {                            /* the five waves, a cycle in 256 */
+        uint32_t r = 0x9E3779B9u;
+        int i;
+        for (i = 0; i < 32; i++) {
+            r = r * 1664525u + 1013904223u;
+            vonz[i] = (uint8_t)(r >> 24);
+        }
+        vonz[32] = vonz[0];
+        for (i = 0; i < 256; i++)
+            vosin[i] = (uint8_t)(128.0f + 127.0f * fm_sinf(FM_TWO_PI * (float)i / 256.0f));
+        vowave_ok = 1;
+    }
+    if (VPAR(VOSYNC) == 1) {                     /* Notes: the pitch the frequency (eased, as a slew) */
+        vo_note += ((float)vo_note_to - vo_note) * 0.3f;
+        f1 *= fm_exp2f((vo_note - 60.0f) * (1.0f / 12.0f));
+        if (f2 > 0.0f)
+            f2 *= fm_exp2f((vo_note - 60.0f) * (1.0f / 12.0f));
+    } else if (VPAR(VOSYNC) == 2 && vbeat > 0.95f && !vo_beat_was) {
+        vo_ph1 = vo_ph2 = 0;                     /* Beat: from the top */
+    }
+    vo_beat_was = vbeat > 0.95f;
+    f1 = fm_minf(f1, 60.0f);
+    f2 = fm_minf(f2, 60.0f);
+    vo_ph1 += (uint32_t)(int32_t)(sc * 0.2f * 65536.0f);   /* SCROLL: up to a fifth of a cycle a frame */
+    vo_ph2 -= (uint32_t)(int32_t)(sc * 0.14f * 65536.0f);
+    {
+        const float ca = fm_cosf(ang), sa = fm_sinf(ang);
+        const int32_t dx1 = (int32_t)(ca * f1 * 65536.0f / (float)VF_W), dy1 = (int32_t)(sa * f1 * 65536.0f / (float)VF_W),
+                      dx2 = (int32_t)(-sa * f2 * 65536.0f / (float)VF_W), dy2 = (int32_t)(ca * f2 * 65536.0f / (float)VF_W);
+        for (y = 0; y < VF_H; y++) {
+            int32_t p1 = (int32_t)vo_ph1 - (int32_t)(VCX * (float)dx1) + (int32_t)(((float)y - VCY) * (float)dy1),
+                    p2 = (int32_t)vo_ph2 - (int32_t)(VCX * (float)dx2) + (int32_t)(((float)y - VCY) * (float)dy2);
+            for (x = 0; x < VF_W; x++, p1 += dx1, p2 += dx2) {
+                const int b = f2 > 0.0f ? osc_w(w, (int)((uint32_t)p2 >> 8 & 255u)) : 128;
+                int i1 = (int)((uint32_t)p1 >> 8 & 255u), v;
+                if (comb == 3 && f2 > 0.0f)       /* Warp: the second bends the first */
+                    i1 += ((b - 128) * wa) >> 6;
+                else if (comb == 4)               /* Field: the picture as it is bends it (Hydra's modulate(o0)) */
+                    i1 += (vf[y][x] * wa) >> 6;
+                {
+                    const int a = osc_w(w, i1);
+                    v = f2 <= 0.0f || comb >= 3 ? a : comb == 0 ? (a + b) >> 1 : comb == 1 ? (a * b) >> 8
+                        : a > b ? a - b : b - a;
+                }
+                v = (v * vamp) >> 8;
+                {
+                    const int old = (vdst[y][x] * keep) >> 8;
+                    vdst[y][x] = (uint8_t)(v > old ? v : old);
+                }
+            }
+        }
+    }
+}
 static void vis_draw(int mode, float tr)         /* picture mode into vdst (the field, or LAYER's) */
 {
     int x, y, i, k;
+    if (mode == VIS_OSC) {
+        vis_osc();
+        return;
+    }
     switch (mode) {
     case 0:                                      /* Bloom: an orb a voice, wandering, as big as it is loud; rings */
         for (k = 0; k < EN_NVOX; k++) {
@@ -3354,7 +3463,19 @@ static void vis_draw(int mode, float tr)         /* picture mode into vdst (the 
         break;
     }
     case 3: {                                    /* Swarm: the sparks rise; the bass pushes them out, the highs stir */
-        const float push = (vband[0] + vband[1]) * 0.08f * G(4, 0.3f, 2.0f), stir = (vband[3] + vband[4]) * G(5, 0.1f, 1.5f);
+        const float push = (vband[0] + vband[1]) * 0.08f * G(4, 0.3f, 2.0f), stir = (vband[3] + vband[4]) * G(5, 0.1f, 1.5f),
+                    lvl = fm_minf(en_master_level * vgain * 2.0f, 1.0f);
+        if (vis_rnd() < 0.2f + 0.8f * lvl)       /* (1.5.9: and sparks from the mix as it sounds, not only the notes) */
+            for (i = 0; i < 48; i++)
+                if (!vpart[i].on) {
+                    vpart[i].on = 1;
+                    vpart[i].x = 4.0f + vis_rnd() * (VF_W - 8.0f);
+                    vpart[i].y = VF_H - 2.0f;
+                    vpart[i].vx = (vis_rnd() - 0.5f) * 1.0f;
+                    vpart[i].vy = -(0.6f + 1.6f * lvl) * (0.7f + 0.6f * vis_rnd());
+                    vpart[i].v = (uint8_t)(110 + (int)(120.0f * lvl));
+                    break;
+                }
         for (i = 0; i < 48; i++)
             if (vpart[i].on) {
                 vpart[i].vx += (vpart[i].x < VCX ? -push : push) + fm_sinf(vpart[i].y * 0.2f + vt * 3.0f) * stir * 0.1f;
@@ -3366,8 +3487,10 @@ static void vis_draw(int mode, float tr)         /* picture mode into vdst (the 
                     vpart[i].on = 0;
                     continue;
                 }
-                vf_addf(vpart[i].x, vpart[i].y, vpart[i].v);
-                vpart[i].v = (uint8_t)(vpart[i].v - 2);
+                vf_disc(vpart[i].x, vpart[i].y, 2.6f, vpart[i].v);   /* (a spark, and its streak) */
+                vf_line(vpart[i].x - vpart[i].vx * 6.0f, vpart[i].y - vpart[i].vy * 6.0f, vpart[i].x, vpart[i].y,
+                        vpart[i].v / 2);
+                vpart[i].v = (uint8_t)(vpart[i].v - 1);
             }
         for (x = 0; x < VF_W; x += 2)            /* the ground glows with the mix */
             vf_add(x, VF_H - 1, (int)(160.0f * fm_minf(en_master_level * vgain * 2.0f, 1.0f)));

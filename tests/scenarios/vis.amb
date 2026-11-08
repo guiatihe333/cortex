@@ -128,7 +128,7 @@ spin K3 -30
 tap HOME
 wait 100
 expect view 21
-# 1.5.0: HOME a ninth time, the react matrix (slot 1: Bass to Mosh, 40); a tenth, the screen (BARS par272: Auto)
+# 1.5.0: HOME a ninth time, the react matrix (slot 1: Bass to Mosh, 40); a tenth, the screen (BARS par280: Auto)
 spin K1 2
 spin K2 3
 spin K3 2
