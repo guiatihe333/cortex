@@ -3734,7 +3734,7 @@ static void kb_key(int v, int note, int on)
         const int n = note + 12 * PL(v, OCT);
         kb[k].note = (uint8_t)(n < 0 ? 0 : n > 127 ? 127 : n);
     }
-    __builtin_memcpy(kb[k].vp, vpat[v], sizeof kb[k].vp);
+    mod_patch(VOX_GEN0[v], vpat[v], kb[k].vp);  /* (1.5.11: MOD's DECAY and an operator's envelope, as the voice's) */
     if (PL(v, ENV) == ENV_ADSR)
         adsr_patch(v, kb[k].vp);
     fm_note_on(&kb[k].fm, kb[k].vp, kb[k].note, 100, 1);
@@ -3743,9 +3743,10 @@ static void kb_key(int v, int note, int on)
     kb[k].on = 1;
     midi(0x90u | (uint32_t)v, kb[k].note, 100);
 }
-static void kb_block(void)
+static void kb_block(void)                       /* (1.5.11: each key moved by its voice's modulators, as the voice's
+                                                 * first note is: Timbre, Pitch, Metal, Feedback, Space, Level, LFO PM,
+                                                 * an operator's own) */
 {
-    static const int32_t zero[6] = {0, 0, 0, 0, 0, 0};
     float x[FM6_N];
     int i;
     uint32_t j;
@@ -3755,14 +3756,18 @@ static void kb_block(void)
         int32_t lv, ld;
         if (!kb[i].on)
             continue;
+        mod_t m;
+        int32_t dtb[6], olb[6];
         lv = fm6_lfo_sample(&kb[i].lfo);
         ld = fm6_lfo_delay(&kb[i].lfo);
-        if (fm_voice(&kb[i].fm, p, (float)kb[i].note + lfo_pm(lv, 0.0f), lv, ld, vx[v].index, 0, zero, zero, x)) {
-            const float g = vc[v].vol * vc[v].gain * 0.45f;
+        mod_of(VOX_GEN0[v], p, &m, dtb, olb);
+        if (fm_voice(&kb[i].fm, p, (float)kb[i].note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb, olb, x)) {
+            const float g = vc[v].vol * vc[v].gain * 0.45f * m.lvl,
+                        a = (fm_clampf(m.pan, -1.0f, 1.0f) + 1.0f) * (FM_PI / 4.0f), gl = fm_cosf(a), gr = fm_sinf(a);
             for (j = 0; j < FM6_N; j++) {
                 const float sm = x[j] * g;
-                fm_buf[FB_BELLL][j] += sm * 0.707f;
-                fm_buf[FB_BELLR][j] += sm * 0.707f;
+                fm_buf[FB_BELLL][j] += sm * gl;
+                fm_buf[FB_BELLR][j] += sm * gr;
                 fm_buf[FB_BELLE][j] += sm * 0.5f;
                 fm_vtap[v][j] += sm;
             }

@@ -1,6 +1,6 @@
 # CORTEX
 
-CORTEX (1.5.10; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
+CORTEX (1.5.11; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
 plays itself from the moment it's switched on: three FM voices (each breathing chords, ringing loops or gliding a
 bass, as you choose), a short echo, a tape loop and a plate reverb, and a reel of tape
 that records it all and plays it back as grains. You don't perform it, you tend it: pick a piece and a scale, take
@@ -363,7 +363,7 @@ on the notes sounding.
 | Mod 3 | Spread | Fade | |
 
 Each of a voice's four notes has a generator of its own in each modulator, each at its own pace around Rate; the five
-are summed; the arc deepens them when the garden is full and calms them when sparse (by Motion; a Depth at 100
+are summed (the keys played on a voice's pages too, as its first note: 1.5.11); the arc deepens them when the garden is full and calms them when sparse (by Motion; a Depth at 100
 stays full).
 
 - **Depth:** how far it goes. 0: nothing.
