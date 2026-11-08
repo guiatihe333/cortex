@@ -21,7 +21,7 @@ enum { OBJ_PROJ, OBJ_PANEL, OBJ_PATCH, OBJ_TAPE, OBJ_NOBJ };
 #define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u, 0xDA000u}   /* the pieces' patches after the panel; the pieces'
                                                                    * reel settings before it, in the data area */
 #define PROJ_MAGIC 0x314F4E45u           /* "ENO1" */
-#define PROJ_FORMAT 26u                  /* 26: the video synth's TRANSFORM (P_ST VXZOOM .. VXSHY, before
+#define PROJ_FORMAT 27u                  /* 27: TRANSFORM's TARGET where SHIFT Y was; 26: the video synth's TRANSFORM (P_ST VXZOOM .. VXSHY, before
                                           * VBARS); 25: the video synth's Osc (P_ST VOFREQ .. VOSYNC, before VBARS),
                                           * VISUAL's Score 8 -> 9; 24: CORTEX: the screen, the react matrix (P_ST VBARS ..), the pieces anew; 23: the visual's chroma (P_ST VFOLD ..), XOR (VISUAL's Score 7 -> 8); 22: the visual broken (P_ST VMOSH ..); 21: the visual's life (P_ST VMORPH ..); 20: the visual's layer and pulse (P_ST VLAYER ..); 19: the visual's shape (P_ST VGEO ..), VISUAL's Score 5 -> 7; 18: the video synth (P_ST VFEED ..); 17: the first page's visual (P_ST VMODE ..); 16: MIDI's channels and Key sync (P_SETP, OBJ_TAPE); 15: the song's settings (P_SONGP, OBJ_TAPE); 14: Off, every modulator's first target; 13: the reel's five modulators, its settings in OBJ_TAPE (P_SPLIT);
                                           * 12: the reel's modulators, no pulse; 11: the reel's dry/wet and deck; 10: the reel's settings; 9: the voices

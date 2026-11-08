@@ -74,7 +74,7 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     {"Key", 0, 100, 0},
     {"Freq", 0, 100, 40},     {"Wave", 0, 7, 0},        {"Angle", 0, 100, 0},     {"Scroll", -100, 100, 20},
     {"Freq 2", 0, 100, 0},    {"Combine", 0, 4, 1},     {"Warp", 0, 100, 30},     {"Osc sync", 0, 2, 0},
-    {"Zoom", -100, 100, 0},   {"Rotate", -100, 100, 0}, {"Shift X", -100, 100, 0}, {"Shift Y", -100, 100, 0},
+    {"Zoom", -100, 100, 0},   {"Rotate", -100, 100, 0}, {"Shift", -100, 100, 0},   {"Target", 0, 2, 0},
     {"Bars", 0, 2, 0},        {"Delay", 1, 15, 4},      {"Bright", 0, 100, 50},
     {"Ear", 0, 100, 30},
     {"Source 1", 0, EN_AR_NSRC - 1, 2}, {"Target 1", 0, EN_AR_NTGT, 21}, {"Depth 1", -100, 100, 40},
@@ -346,6 +346,9 @@ void en_param_text(int i, int v, char *b)
     } else if (i == P_ST(VOCOMB)) {
         static const char *const VC[5] = {"Add", "Multiply", "Diff", "Warp", "Field"};
         s = VC[(unsigned)v < 5u ? v : 0];
+    } else if (i == P_ST(VXTGT)) {
+        static const char *const VT[3] = {"Feedback", "Lines", "Both"};
+        s = VT[(unsigned)v < 3u ? v : 0];
     } else if (i == P_ST(VOSYNC)) {
         static const char *const VS[3] = {"Free", "Notes", "Beat"};
         s = VS[(unsigned)v < 3u ? v : 0];

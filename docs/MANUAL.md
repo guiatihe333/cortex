@@ -1,6 +1,6 @@
 # CORTEX
 
-CORTEX (1.5.13; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
+CORTEX (1.5.14; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
 plays itself from the moment it's switched on: three FM voices (each breathing chords, ringing loops or gliding a
 bass, as you choose), a short echo, a tape loop and a plate reverb, and a reel of tape
 that records it all and plays it back as grains. You don't perform it, you tend it: pick a piece and a scale, take
@@ -275,7 +275,7 @@ with the music (its levels, its beats, the voices, the notes). The keys play it 
 | Screen | Bars (Show, Auto, Hide: the page's name and knobs over the picture) | Delay | Bright | Ear |
 | Osc | Freq | Wave (Sine, Tri, Saw, Square, Noise, Rings, Polygon, Spiral) | Angle (0–180°) | Scroll |
 | Osc 2 | Freq 2 (0: none) | Combine (Add, Multiply, Diff, Warp, Field) | Warp | Sync (Free, Notes, Beat) |
-| Transform | Zoom (−100..100) | Rotate (−100..100) | Shift X | Shift Y |
+| Transform | Target (Feedback, Lines, Both) | Zoom (−100..100) | Rotate (−100..100) | Shift (along Osc's Angle) |
 
 **Osc** (1.5.9) is a picture built from nothing, as on an LZX system or in Hydra: a wave across the screen (**Freq**
 stripes of it, its **Wave**, at an **Angle**, moving by **Scroll**), and a second one square to it (**Freq 2**) that
@@ -287,9 +287,10 @@ as they move the other pictures. Every setting is a React target, and the rest o
 Feedback, Colorama, Layer) works on it. Wave's **Rings** (out from the middle), **Polygon** (Hydra's shape(), on Shape's
 Sides, turned by Angle) and **Spiral** (Sides its arms) are shapes rather than stripes.
 
-**Transform** (1.5.12, after Video) moves the feedback, the last frame as it comes back: **Zoom** in or out, **Rotate**
-either way, **Shift X** and **Shift Y** (Hydra's scale, rotate and scroll on the output fed back). With Feedback up,
-they make tunnels, spirals and drifts out of any picture; at Feedback 0 they do nothing.
+**Transform** (after Video) moves what **Target** picks: **Feedback**, the last frame as it comes back (Hydra's scale,
+rotate and scroll on the output fed back: with Feedback up, tunnels, spirals and drifts out of any picture; at
+Feedback 0 nothing); **Lines**, the geometry itself, turned, carried and grown (with Feedback, its echoes left behind
+it); **Both**. **Zoom** in or out, **Rotate** either way, **Shift** along Osc's Angle (0: across).
 
 ### GLO again: MIDI and Song
 

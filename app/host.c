@@ -96,7 +96,7 @@ static int dice_unmoved(void)
             char nm[24];
             if (moved[i] || k == K_NONE || k == K_OP || k == K_STAGE || k == K_PSTAGE || k == K_SLOT || k == K_TSLOT ||
                 k == K_LEDS || k == K_CPU || k == P_TUNE || k == P_MIDI || k == P_RL(SRC) || k == P_RL(ORG) ||
-                k == P_SG(SONG) || k == P_SG(START) || ((k >= P_SETP && k < P_ST(VBRIGHT)) && !(k >= P_ST(VMODE) && k <= P_ST(VXSHY))) ||
+                k == P_SG(SONG) || k == P_SG(START) || ((k >= P_SETP && k < P_ST(VBRIGHT)) && !(k >= P_ST(VMODE) && k <= P_ST(VXTGT))) ||
                 k == K_RSLOT || k == K_TKEY ||
                 k == K_TSHIFT ||
                 k == KV(TRNSP) || k == KO(MODE))

@@ -285,7 +285,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
     slot_t r;
     memset(&tst, 0, sizeof tst);
     if (plat_store_load(OBJ_TAPE, &tst, sizeof tst) < 8 || tst.magic != PROJ_MAGIC ||
-        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 25u))) {
+        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 26u))) {
         for (i = 0; i < NPIECES; i++) {
             recipe(i, &r);
             for (p = P_SPLIT; p < P_NPARAMS; p++)
@@ -315,7 +315,8 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
                 if (par[P_ST(AR1T) + 3 * s] == all)
                     par[P_ST(AR1T) + 3 * s] = EN_AR_NTGT;
         }
-    } else if (tst.format != PROJ_FORMAT) {      /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to the visual's): the
+    } else if (tst.format != PROJ_FORMAT && tst.format != 26u) {   /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to
+                                                  * the visual's): the
                                                   * rest from the recipes */
         const int upto = tst.format == 23u ? P_ST(VOFREQ) : tst.format == 22u ? P_ST(VFOLD) : tst.format == 21u ? P_ST(VMOSH) : tst.format == 20u ? P_ST(VMORPH) : tst.format == 19u ? P_ST(VLAYER) : tst.format == 18u ? P_ST(VGEO) : tst.format == 17u ? P_ST(VFEED) : tst.format == 16u ? P_ST(VMODE)
                          : tst.format == 15u ? P_SETP : P_SONGP;
@@ -338,6 +339,11 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
                 proj.slot[i].par[p] = tst.par[i][p - P_SPLIT];
         for (p = P_SPLIT; p < P_NPARAMS; p++)
             proj.par[p] = tst.par[NPIECES][p - P_SPLIT];
+    }
+    if (tst.format == 26u) {                     /* (26: SHIFT Y's place is TARGET now: Feedback, as before) */
+        for (i = 0; i < NPIECES; i++)
+            proj.slot[i].par[P_ST(VXTGT)] = 0;
+        proj.par[P_ST(VXTGT)] = 0;
     }
     if (tst.format == 13u) {                     /* (the reel's modulators' targets: Off first) */
         off_up = 1;
@@ -397,7 +403,7 @@ int project_load(void)
         keep_fmt = 12u;
         from_project_v12(&buf.v12);
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC &&
-               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 25u))) {
+               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 26u))) {
         if (buf.now.format != PROJ_FORMAT)
             keep_fmt = buf.now.format;           /* (its patches as they are) */
         from_projstore(&buf.now);                /* (its settings to P_SPLIT; then the reel's from OBJ_TAPE) */

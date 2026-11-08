@@ -177,7 +177,7 @@ static const uint16_t MAIN_KNOB[V_MAIN][4] = {
     {P_ST(VBARS), P_ST(VDELAY), P_ST(VBRIGHT), P_ST(VEAR)},   /* ... the screen */
     {P_ST(VOFREQ), P_ST(VOSHAPE), P_ST(VOANGLE), P_ST(VOSPEED)},   /* ... Osc: its oscillator */
     {P_ST(VOFREQ2), P_ST(VOCOMB), P_ST(VOWARP), P_ST(VOSYNC)},     /* ... a second, how they meet */
-    {P_ST(VXZOOM), P_ST(VXROT), P_ST(VXSHX), P_ST(VXSHY)},       /* ... the feedback's transform */
+    {P_ST(VXTGT), P_ST(VXZOOM), P_ST(VXROT), P_ST(VXSHX)},       /* ... a transform: what of it, how */
 };
 static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_GKIND, K_GBRIGHT, K_GMOTION, K_GVARY},  /* the generator (EDIT: a new voice, REC: varied) */
@@ -223,7 +223,7 @@ static const char *const MAIN_LABEL[V_MAIN][4] = {
     {"Bars", "Delay", "Bright", "Ear"},
     {"Freq", "Wave", "Angle", "Scroll"},
     {"Freq 2", "Combine", "Warp", "Sync"},
-    {"Zoom", "Rotate", "Shift X", "Shift Y"},
+    {"Target", "Zoom", "Rotate", "Shift"},
 };
 static const char *const SUB_LABEL[NSUB][4] = {
     {"Kind", "Bright", "Motion", "Vary"},
@@ -1165,7 +1165,7 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
         dice_par(P_ST(VXZOOM), -40, 60);
         dice_par(P_ST(VXROT), -50, 50);
         dice_par(P_ST(VXSHX), -30, 30);
-        dice_par(P_ST(VXSHY), -30, 30);
+        dice_par(P_ST(VXTGT), 0, 2);
         break;
     case V_OSC2:                                /* a second, how they meet, how far it bends, its sync */
         dice_par(P_ST(VOFREQ2), 0, 70);
@@ -2955,6 +2955,34 @@ static void vis_geometry(void)                   /* GEOMETRY's lines, this frame
     default:
         break;
     }
+    {                                            /* (1.5.14) TRANSFORM on the lines too: turned on by ROTATE, carried by
+                                                  * SHIFT (round the screen), grown or shrunk by ZOOM */
+        static float ga, gx, gy;
+        const float sc = fm_exp2f((float)VPAR(VXZOOM) * 0.006f);   /* (x1.5 at 100, x0.66 at -100) */
+        float ca, sa, ox, oy;
+        const float shang = (float)VPAR(VOANGLE) * (FM_PI / 100.0f);
+        if (VPAR(VXTGT) == 0) {                  /* (TARGET Feedback: the lines as drawn) */
+            ga = gx = gy = 0.0f;
+            return;
+        }
+        ga += (float)VPAR(VXROT) * 0.0008f;
+        ga -= ga > FM_PI ? FM_TWO_PI : ga < -FM_PI ? -FM_TWO_PI : 0.0f;
+        gx += (float)VPAR(VXSHX) * 0.04f * fm_cosf(shang);   /* (2 cells a frame, as the feedback's, along ANGLE) */
+        gy += (float)VPAR(VXSHX) * 0.04f * fm_sinf(shang);
+        gx -= gx >= 120.0f ? 240.0f : gx < -120.0f ? -240.0f : 0.0f;
+        gy -= gy >= 120.0f ? 240.0f : gy < -120.0f ? -240.0f : 0.0f;
+        if (!VPAR(VXROT) && !VPAR(VXSHX))
+            ga = gx = gy = 0.0f;                 /* (the knobs back at 0: the lines as drawn) */
+        if (ga == 0.0f && gx == 0.0f && gy == 0.0f && sc == 1.0f)
+            return;
+        ca = fm_cosf(ga) * sc, sa = fm_sinf(ga) * sc, ox = 120.0f - gx, oy = 120.0f - gy;
+        for (i = 0; i < vnseg; i++) {
+            const float x0 = (float)vseg[i].x0 - 120.0f, y0 = (float)vseg[i].y0 - 120.0f, x1 = (float)vseg[i].x1 - 120.0f,
+                        y1 = (float)vseg[i].y1 - 120.0f;
+            vseg[i].x0 = (int16_t)(ox + x0 * ca - y0 * sa), vseg[i].y0 = (int16_t)(oy + x0 * sa + y0 * ca);
+            vseg[i].x1 = (int16_t)(ox + x1 * ca - y1 * sa), vseg[i].y1 = (int16_t)(oy + x1 * sa + y1 * ca);
+        }
+    }
 }
 static void vis_mutate(float amount)             /* the genome's targets thrown (0..1 how far) */
 {
@@ -3130,7 +3158,7 @@ static void vis_react(void)                      /* this frame's settings: the k
         if (!src || !tg || !dp)
             continue;
         x = vis_src(src) * (float)dp * 0.01f;
-        for (k = ST_VMODE; k <= ST_VXSHY; k++) {
+        for (k = ST_VMODE; k <= ST_VXTGT; k++) {
             const en_param_t *pi = en_param_info(P_SETP + k);
             const int span = pi->hi - pi->lo;
             int v;
@@ -3217,10 +3245,14 @@ static void vis_step(int mode)                   /* a frame of the field and the
                                                   * pushes it), fading by TRAILS */
         const float pu = (float)VPAR(VPULSE) * 0.01f, fl = (float)VPAR(VFLOW) * 0.01f,
                     z = (1.0f - 0.07f * fb * G(1, -0.6f, 1.4f) - 0.03f * fb * vband[0] - 0.08f * pu * vbeat) *
-                        (1.0f - (float)VPAR(VXZOOM) * 0.0006f),   /* TRANSFORM's ZOOM: up to 6 % a frame, in or out */
+                        (1.0f - (float)(VPAR(VXTGT) != 1 ? VPAR(VXZOOM) : 0) * 0.0006f),   /* TRANSFORM's ZOOM (TARGET
+                                                  * Feedback or Both): up to 6 % a frame, in or out */
                     an = fb * (0.05f * fm_sinf(vt * 0.37f) + 0.02f * vband[1] + G(2, -0.05f, 0.05f)) +
-                         (float)VPAR(VXROT) * 0.0008f,   /* ROTATE: up to 0.08 rad a frame (90 degrees a second) */
+                         (float)(VPAR(VXTGT) != 1 ? VPAR(VXROT) : 0) * 0.0008f,   /* ROTATE: up to 0.08 rad a frame */
                     ca = fm_cosf(an) * z, sa = fm_sinf(an) * z, ff = G(3, 0.04f, 0.22f), fa = 3.0f * fl * (0.5f + vband[2]);
+        /* SHIFT, along Osc's ANGLE: 2 cells a frame at 100 (TARGET Feedback or Both) */
+        const float sh = VPAR(VXTGT) != 1 ? (float)VPAR(VXSHX) * 0.02f : 0.0f,
+                    shang = (float)VPAR(VOANGLE) * (FM_PI / 100.0f), vshx = sh * fm_cosf(shang), vshy = sh * fm_sinf(shang);
         static int8_t flx[VF_H] PLAT_POOL, fly[VF_W] PLAT_POOL;   /* FLOW: the swirl the feedback is carried by
                                                                     * (sixteenths of a cell) */
         for (y = 0; y < VF_H; y++)
@@ -3230,8 +3262,8 @@ static void vis_step(int mode)                   /* a frame of the field and the
         for (y = 0; y < VF_H; y++)
             for (x = 0; x < VF_W; x++) {
                 const float dx = (float)x - VCX, dy = (float)y - VCY;
-                const float fx = VCX + dx * ca - dy * sa + (float)flx[y] * 0.0625f - (float)VPAR(VXSHX) * 0.02f,
-                            fy = VCY + dx * sa + dy * ca + (float)fly[x] * 0.0625f - (float)VPAR(VXSHY) * 0.02f;   /* (between
+                const float fx = VCX + dx * ca - dy * sa + (float)flx[y] * 0.0625f - vshx,
+                            fy = VCY + dx * sa + dy * ca + (float)fly[x] * 0.0625f - vshy;   /* (between
                                                                                                     * four cells) */
                 const int sx = (int)fm_floorf(fx), sy = (int)fm_floorf(fy), wx = (int)((fx - (float)sx) * 256.0f),
                           wy = (int)((fy - (float)sy) * 256.0f);
@@ -3324,9 +3356,11 @@ static void vis_step(int mode)                   /* a frame of the field and the
     vis_geometry();
     {                                            /* the geometry into the field too, when it is to be broken: the
                                                   * blocks smear it, SORT runs it, CORRUPT misplaces it */
-        const int br = VPAR(VMOSH) + VPAR(VSORT) + VPAR(VCORRUPT);
-        if (br > 0) {
-            const int v = 60 + (br > 150 ? 150 : br);
+        const int br = VPAR(VMOSH) + VPAR(VSORT) + VPAR(VCORRUPT),
+                  tf = VPAR(VFEED) && VPAR(VXTGT) && (VPAR(VXZOOM) || VPAR(VXROT) || VPAR(VXSHX));   /* (and with
+                                                  * FEEDBACK and a TRANSFORM: its echoes carried by it, 1.5.14) */
+        if (br > 0 || tf) {
+            const int v = 60 + (br > 150 ? 150 : br) + (tf ? 60 : 0);
             int i;
             vdst = vf;
             vamp = 256;
