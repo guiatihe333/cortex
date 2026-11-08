@@ -61,6 +61,9 @@ shot vis_mandala.png
 spin K1 -3
 tap HOME
 wait 100
+expect view 26
+tap HOME
+wait 100
 expect view 17
 spin K1 6
 expect par252 6
@@ -132,7 +135,7 @@ spin K3 -30
 tap HOME
 wait 100
 expect view 21
-# 1.5.0: HOME a ninth time, the react matrix (slot 1: Bass to Mosh, 40); a tenth, the screen (BARS par284: Auto)
+# 1.5.0: HOME a ninth time, the react matrix (slot 1: Bass to Mosh, 40); a tenth, the screen (BARS par287: Auto)
 spin K1 2
 spin K2 3
 spin K3 2
@@ -153,13 +156,14 @@ expect view 0
 tap HOME
 tap HOME
 wait 100
-spin K1 6
+spin K1 5
 expect par248 6
 wait 2000
 shot vis_rutt.png
 # 1.4.25: the geometry broken with the picture (Polygon under MOSH, CORRUPT, SLICE high)
 spin K1 -5
 spin K3 -4
+tap HOME
 tap HOME
 tap HOME
 tap HOME
@@ -183,6 +187,7 @@ tap HOME
 tap HOME
 wait 100
 expect view 16
+tap HOME
 tap HOME
 tap HOME
 tap HOME

@@ -17,6 +17,7 @@ tap HOME
 tap HOME
 tap HOME
 tap HOME
+tap HOME
 wait 100
 expect view 0
 tap HOME

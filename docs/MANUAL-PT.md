@@ -1,6 +1,6 @@
 # CORTEX
 
-O CORTEX (1.5.14; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
+O CORTEX (1.5.15; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
 de Brian Eno. Ele toca sozinho desde o momento em que é ligado: três vozes FM (cada uma respirando acordes, tocando
 loops ou deslizando um baixo, como você escolher), um eco curto, um loop de fita e um reverb de placa, e uma fita que grava tudo isso e toca de volta em grãos. Você não toca o AMB-1, você cuida dele:
 escolhe uma peça e uma escala, tira notas, põe de volta, e deixa crescer.
@@ -210,7 +210,7 @@ fita). Cada uma lembra como você a deixou. Segure SAVE 1,5 s para a peça volta
 Uma página em cada botão, quatro valores nos KNOB 1–4; o SELECT passa por elas, e HOME, GLO e SEQ de novo
 dão a volta nas suas, numa ordem só: Partiture, Voice 1, 2, 3, Space, Setup, MIDI, Song, Tape, Gene, Deck, Tape Mod,
 Tape Mod 2, Tape Key, depois o sintetizador de vídeo da fonte para a saída: Visual, Osc e Osc 2 (com o Osc em uso),
-Shape, Mix, Video, Transform, Life, Mosh, Chroma, React, Screen. Os pontos à direita da linha dos knobs seguem essa ordem. Cada
+Shape, Shape 2, Mix, Video, Transform, Life, Mosh, Chroma, React, Screen. Os pontos à direita da linha dos knobs seguem essa ordem. Cada
 voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
 
 ### HOME: Partiture
@@ -272,7 +272,8 @@ com a música (os níveis, as batidas, as vozes, as notas). Nessas páginas as t
 | --- | --- | --- | --- | --- |
 | Visual | Visual (Bloom, Ridge, Prism, Swarm, Tunnel, Plasma, Spiral, XOR, Osc, Score) | Colour (Theme, Ember, Ice, Acid, Mono) | Trails | React |
 | Video | Feedback | RGB | Hue | Sync (uma batida do baixo rasga linhas) |
-| Shape | Geometry (Off, Polygon, Lissajous, Grid, Mandala, Scope, Rutt) | Sides | Mirror (Off, Mirror, Flip, Quad, Kaleido) | Speed |
+| Shape | Geometry (Off, Polygon, Lissajous, Grid, Mandala, Scope, Rutt, Star, Rings, Spirograph, Rose, Cube, Tunnel, Starfield, Circle, Lattice, Spiral) | Sides | Mirror (Off, Mirror, Flip, Quad, Kaleido) | Speed |
+| Shape 2 | Geometry 2 (a mesma lista: uma segunda geometria junto) | Sides 2 | Size 2 (10–200 %, da primeira) | |
 | Mix | Layer (uma segunda imagem, ou Off) | Blend (Add, Screen, Max, Diff, Mask) | Mix | Pulse |
 | Life | Morph | Mutate | Flow | Chaos |
 | Mosh | Mosh | Sort | Corrupt | Slice |

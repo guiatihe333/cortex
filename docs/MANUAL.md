@@ -1,6 +1,6 @@
 # CORTEX
 
-CORTEX (1.5.14; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
+CORTEX (1.5.15; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
 plays itself from the moment it's switched on: three FM voices (each breathing chords, ringing loops or gliding a
 bass, as you choose), a short echo, a tape loop and a plate reverb, and a reel of tape
 that records it all and plays it back as grains. You don't perform it, you tend it: pick a piece and a scale, take
@@ -205,7 +205,7 @@ recipe. Tune, MIDI out and Lights are the same for all.
 
 A page on each button, four values on KNOB 1–4; SELECT steps through them, and HOME, GLO and SEQ
 again go round theirs, in one order: Partiture, Voice 1, 2, 3, Space, Setup, MIDI, Song, Tape, Gene, Deck, Tape Mod,
-Tape Mod 2, Tape Key, then the video synth from its source out: Visual, Osc and Osc 2 (while Osc is in use), Shape, Mix,
+Tape Mod 2, Tape Key, then the video synth from its source out: Visual, Osc and Osc 2 (while Osc is in use), Shape, Shape 2, Mix,
 Video, Transform, Life, Mosh, Chroma, React, Screen. The dots at the right of the knobs' rule are in that order. Each voice has
 more pages of its own (ENV, ARP or LFO again).
 
@@ -266,7 +266,8 @@ with the music (its levels, its beats, the voices, the notes). The keys play it 
 | --- | --- | --- | --- | --- |
 | Visual | Visual (Bloom, Ridge, Prism, Swarm, Tunnel, Plasma, Spiral, XOR, Osc, Score) | Colour (Theme, Ember, Ice, Acid, Mono) | Trails | React |
 | Video | Feedback | RGB | Hue | Sync (a bass hit tears rows) |
-| Shape | Geometry (Off, Polygon, Lissajous, Grid, Mandala, Scope, Rutt) | Sides | Mirror (Off, Mirror, Flip, Quad, Kaleido) | Speed |
+| Shape | Geometry (Off, Polygon, Lissajous, Grid, Mandala, Scope, Rutt, Star, Rings, Spirograph, Rose, Cube, Tunnel, Starfield, Circle, Lattice, Spiral) | Sides | Mirror (Off, Mirror, Flip, Quad, Kaleido) | Speed |
+| Shape 2 | Geometry 2 (the same list: a second geometry at once) | Sides 2 | Size 2 (10–200 %, of the first's) | |
 | Mix | Layer (a second picture, or Off) | Blend (Add, Screen, Max, Diff, Mask) | Mix | Pulse |
 | Life | Morph | Mutate | Flow | Chaos |
 | Mosh | Mosh | Sort | Corrupt | Slice |

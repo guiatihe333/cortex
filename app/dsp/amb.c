@@ -66,7 +66,7 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     {"V1 channel", 1, 16, 1}, {"V2 channel", 1, 16, 2}, {"V3 channel", 1, 16, 3}, {"Notes in", 0, 1, 0},
     {"Key sync", 0, 2, 0},     {"Visual", 0, 9, 0},      {"Colour", 0, 4, 0},      {"Trails", 0, 100, 60},
     {"React", 0, 100, 50},    {"Feedback", 0, 100, 25}, {"RGB", 0, 100, 20},     {"Hue", 0, 100, 10},
-    {"Sync", 0, 100, 10},     {"Geometry", 0, 6, 0},    {"Sides", 3, 12, 5},      {"Mirror", 0, 4, 0},
+    {"Sync", 0, 100, 10},     {"Geometry", 0, 16, 0},    {"Sides", 3, 12, 5},      {"Mirror", 0, 4, 0},
     {"Speed", 0, 100, 50},    {"Layer", 0, 9, 0},       {"Blend", 0, 4, 0},       {"Mix", 0, 100, 60},
     {"Pulse", 0, 100, 50},    {"Morph", 0, 100, 0},     {"Mutate", 0, 100, 30},   {"Flow", 0, 100, 20},
     {"Chaos", 0, 100, 30},    {"Mosh", 0, 100, 35},     {"Sort", 0, 100, 15},     {"Corrupt", 0, 100, 20},
@@ -75,6 +75,7 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     {"Freq", 0, 100, 40},     {"Wave", 0, 7, 0},        {"Angle", 0, 100, 0},     {"Scroll", -100, 100, 20},
     {"Freq 2", 0, 100, 0},    {"Combine", 0, 4, 1},     {"Warp", 0, 100, 30},     {"Osc sync", 0, 2, 0},
     {"Zoom", -100, 100, 0},   {"Rotate", -100, 100, 0}, {"Shift", -100, 100, 0},   {"Target", 0, 2, 0},
+    {"Geometry 2", 0, 16, 0}, {"Sides 2", 3, 12, 6},    {"Size 2", 10, 200, 60},
     {"Bars", 0, 2, 0},        {"Delay", 1, 15, 4},      {"Bright", 0, 100, 50},
     {"Ear", 0, 100, 30},
     {"Source 1", 0, EN_AR_NSRC - 1, 2}, {"Target 1", 0, EN_AR_NTGT, 21}, {"Depth 1", -100, 100, 40},
@@ -333,9 +334,11 @@ void en_param_text(int i, int v, char *b)
         static const char *const VM[10] = {"Bloom", "Ridge", "Prism", "Swarm", "Tunnel", "Plasma", "Spiral", "XOR",
                                            "Osc", "Score"};
         s = VM[(unsigned)v < 10u ? v : 0];
-    } else if (i == P_ST(VGEO)) {
-        static const char *const VG[7] = {"Off", "Polygon", "Lissajous", "Grid", "Mandala", "Scope", "Rutt"};
-        s = VG[(unsigned)v < 7u ? v : 0];
+    } else if (i == P_ST(VGEO) || i == P_ST(VGEO2)) {
+        static const char *const VG[17] = {"Off", "Polygon", "Lissajous", "Grid", "Mandala", "Scope", "Rutt", "Star",
+                                           "Rings", "Spirograph", "Rose", "Cube", "Tunnel", "Starfield", "Circle",
+                                           "Lattice", "Spiral"};
+        s = VG[(unsigned)v < 17u ? v : 0];
     } else if (i == P_ST(VLAYER)) {
         static const char *const VL[10] = {"Off", "Bloom", "Ridge", "Prism", "Swarm", "Tunnel", "Plasma", "Spiral", "XOR",
                                            "Osc"};

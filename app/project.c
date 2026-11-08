@@ -285,7 +285,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
     slot_t r;
     memset(&tst, 0, sizeof tst);
     if (plat_store_load(OBJ_TAPE, &tst, sizeof tst) < 8 || tst.magic != PROJ_MAGIC ||
-        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 26u))) {
+        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 27u))) {
         for (i = 0; i < NPIECES; i++) {
             recipe(i, &r);
             for (p = P_SPLIT; p < P_NPARAMS; p++)
@@ -296,11 +296,13 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
             proj.par[p] = r.par[p];
         return;
     }
-    if (tst.format == 24u || tst.format == 25u) {   /* 24: as now but Osc's eight and TRANSFORM's four (from the
-                                                  * recipes), the Score 8 -> 9; 25: TRANSFORM's four; a react slot on
-                                                  * All to the new All */
-        const int from = tst.format == 24u ? P_ST(VOFREQ) : P_ST(VXZOOM), gap = P_ST(VBARS) - from,
-                  nold = P_NPARAMS - gap - P_SPLIT, all = tst.format == 24u ? EN_AR_NTGT24 : EN_AR_NTGT25;
+    if (tst.format >= 24u && tst.format <= 27u) {   /* 24: as now but Osc's eight, TRANSFORM's four and SHAPE 2's
+                                                  * three (from the recipes), the Score 8 -> 9; 25: TRANSFORM's and
+                                                  * SHAPE 2's; 26, 27: SHAPE 2's (26: SHIFT Y's place TARGET, Feedback);
+                                                  * a react slot on All to the new All */
+        const int from = tst.format == 24u ? P_ST(VOFREQ) : tst.format == 25u ? P_ST(VXZOOM) : P_ST(VGEO2),
+                  gap = P_ST(VBARS) - from, nold = P_NPARAMS - gap - P_SPLIT,
+                  all = tst.format == 24u ? EN_AR_NTGT24 : tst.format == 25u ? EN_AR_NTGT25 : EN_AR_NTGT27;
         const int16_t *o = (const int16_t *)(const void *)((const uint8_t *)&tst + 8);
         for (i = 0; i <= NPIECES; i++) {
             int16_t *par = i < NPIECES ? proj.slot[i].par : proj.par;
@@ -315,7 +317,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
                 if (par[P_ST(AR1T) + 3 * s] == all)
                     par[P_ST(AR1T) + 3 * s] = EN_AR_NTGT;
         }
-    } else if (tst.format != PROJ_FORMAT && tst.format != 26u) {   /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to
+    } else if (tst.format != PROJ_FORMAT) {      /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to
                                                   * the visual's): the
                                                   * rest from the recipes */
         const int upto = tst.format == 23u ? P_ST(VOFREQ) : tst.format == 22u ? P_ST(VFOLD) : tst.format == 21u ? P_ST(VMOSH) : tst.format == 20u ? P_ST(VMORPH) : tst.format == 19u ? P_ST(VLAYER) : tst.format == 18u ? P_ST(VGEO) : tst.format == 17u ? P_ST(VFEED) : tst.format == 16u ? P_ST(VMODE)
@@ -403,7 +405,7 @@ int project_load(void)
         keep_fmt = 12u;
         from_project_v12(&buf.v12);
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC &&
-               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 26u))) {
+               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 27u))) {
         if (buf.now.format != PROJ_FORMAT)
             keep_fmt = buf.now.format;           /* (its patches as they are) */
         from_projstore(&buf.now);                /* (its settings to P_SPLIT; then the reel's from OBJ_TAPE) */

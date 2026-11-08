@@ -19,7 +19,7 @@ tap ENV
 wait 100
 tap ENV
 wait 100
-expect view 27
+expect view 28
 out
 turn K4 30 100
 expect_out USB B4 14 7F

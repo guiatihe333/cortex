@@ -86,7 +86,7 @@ static void ui_blit(uint32_t x, uint32_t y);
  * to the next group (the page it was left on) and from the last back to the layer's page; SELECT steps through the
  * voice's own pages; the voice's button stays lit on them */
 enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_SPACE, V_SETUP, V_TAPE, V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_TKEY, V_SONG,
-       V_MIDI, V_VIS, V_VID, V_SHAPE, V_VMIX, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN, V_OSC, V_OSC2, V_XFORM, V_MAIN };
+       V_MIDI, V_VIS, V_VID, V_SHAPE, V_VMIX, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN, V_OSC, V_OSC2, V_XFORM, V_SHAPE2, V_MAIN };
 #define VIS_OSC 8                               /* (VISUAL's Osc: drawn, not one MORPH turns into) */
 enum { S_GEN, S_VOICE, S_PLAY, S_ADSR, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
 #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
@@ -96,18 +96,19 @@ static const uint8_t GROUP0[NGROUP + 1] = {S_GEN, S_VOICE, S_OP, S_MOD, NSUB};  
  * out (what makes the picture, its shape, a second over it, its motion, its breaking, its colour, what moves it,
  * the screen); Osc's two only while Osc is in use (page_on) */
 static const uint8_t PAGE_ORDER[] = {V_GARDEN, V_PAD, V_BELLS, V_BASS, V_SPACE, V_SETUP, V_MIDI, V_SONG, V_TAPE,
-                                     V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_TKEY, V_VIS, V_OSC, V_OSC2, V_SHAPE, V_VMIX,
+                                     V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_TKEY, V_VIS, V_OSC, V_OSC2, V_SHAPE, V_SHAPE2,
+                                     V_VMIX,
                                      V_VID, V_XFORM, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN};
 _Static_assert(sizeof PAGE_ORDER == V_MAIN, "every layer page once");
 static const char *const MAIN_NAME[V_MAIN] = {"Cortex", "Voice 1", "Voice 2", "Voice 3", "Space", "Setup", "Tape",
                                               "Gene", "Deck", "Tape Mod", "Tape Mod 2", "Tape Key", "Song", "MIDI", "Visual", "Video", "Shape", "Mix", "Life", "Mosh",
                                               "Chroma", "React", "Screen", "Osc", "Osc 2",
-                                              "Transform"};
+                                              "Transform", "Shape 2"};
 static const char *const SUB_NAME[NSUB] = {"Gen", "Patch", "Play", "ADSR", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
 static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_FX, B_GLO, B_SEQ, B_SEQ, B_SEQ, B_SEQ, B_SEQ,
                                          B_SEQ, B_GLO, B_GLO, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME,
-                                         B_HOME, B_HOME, B_HOME, B_HOME, B_HOME};
+                                         B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME};
 static int tape_view(int v) { return v >= V_TAPE && v <= V_TKEY; }   /* the reel's six pages (SEQ, again ..) */
 static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
 #define KEY_NOTE0 53                            /* key 0: F3 (MIDI) */
@@ -178,6 +179,7 @@ static const uint16_t MAIN_KNOB[V_MAIN][4] = {
     {P_ST(VOFREQ), P_ST(VOSHAPE), P_ST(VOANGLE), P_ST(VOSPEED)},   /* ... Osc: its oscillator */
     {P_ST(VOFREQ2), P_ST(VOCOMB), P_ST(VOWARP), P_ST(VOSYNC)},     /* ... a second, how they meet */
     {P_ST(VXTGT), P_ST(VXZOOM), P_ST(VXROT), P_ST(VXSHX)},       /* ... a transform: what of it, how */
+    {P_ST(VGEO2), P_ST(VSIDES2), P_ST(VSIZE2), K_NONE},         /* ... a second geometry */
 };
 static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_GKIND, K_GBRIGHT, K_GMOTION, K_GVARY},  /* the generator (EDIT: a new voice, REC: varied) */
@@ -224,6 +226,7 @@ static const char *const MAIN_LABEL[V_MAIN][4] = {
     {"Freq", "Wave", "Angle", "Scroll"},
     {"Freq 2", "Combine", "Warp", "Sync"},
     {"Target", "Zoom", "Rotate", "Shift"},
+    {"Geometry 2", "Sides 2", "Size 2", ""},
 };
 static const char *const SUB_LABEL[NSUB][4] = {
     {"Kind", "Bright", "Motion", "Vary"},
@@ -303,7 +306,7 @@ static uint32_t ui_lsig;                        /* (they, coarsely: the bands dr
 static uint8_t ui_wash_on;                      /* the bands' ground washed with them (not the visual's) */
 static int theme_of(int v)                     /* a page's palette: the voices', their own pages too */
 {
-    static const uint8_t T[V_MAIN] = {0, 2, 3, 4, 5, 6, 1, 1, 1, 1, 1, 1, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    static const uint8_t T[V_MAIN] = {0, 2, 3, 4, 5, 6, 1, 1, 1, 1, 1, 1, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     return T[view_main(v)];
 }
 #define K_BG (TH->bg)
@@ -1127,7 +1130,7 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
         dice_par(P_ST(VSYNC), 0, 60);
         break;
     case V_SHAPE:                               /* a geometry, its sides, a fold, a pace */
-        dice_par(P_ST(VGEO), 0, 6);
+        dice_par(P_ST(VGEO), 0, 16);
         dice_par(P_ST(VSIDES), 3, 9);
         dice_par(P_ST(VMIRROR), 0, 4);
         dice_par(P_ST(VSPEED), 20, 90);
@@ -1160,6 +1163,11 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
         dice_par(P_ST(VOSHAPE), 0, 7);
         dice_par(P_ST(VOANGLE), 0, 100);
         dice_par(P_ST(VOSPEED), -60, 60);
+        break;
+    case V_SHAPE2:                              /* a second geometry, its sides, its size */
+        dice_par(P_ST(VGEO2), 0, 16);
+        dice_par(P_ST(VSIDES2), 3, 9);
+        dice_par(P_ST(VSIZE2), 30, 150);
         break;
     case V_XFORM:                               /* the feedback zoomed, turned, carried */
         dice_par(P_ST(VXZOOM), -40, 60);
@@ -1536,7 +1544,7 @@ static int page_step(int v, int dir, int visual)   /* the next page shown, dir +
 {
     int i = page_at(v) + dir;
     for (; i >= 0 && i < V_MAIN; i += dir)
-        if (page_on(PAGE_ORDER[i]) && (!visual || (PAGE_ORDER[i] >= V_VIS && PAGE_ORDER[i] <= V_XFORM)))
+        if (page_on(PAGE_ORDER[i]) && (!visual || (PAGE_ORDER[i] >= V_VIS && PAGE_ORDER[i] <= V_SHAPE2)))
             return PAGE_ORDER[i];
     return -1;
 }
@@ -1546,7 +1554,7 @@ static void button(int b)
     if (b == B_HOME) {                           /* the garden; again: its visual's page, the video synth's, its
                                                   * shape's, round */
         /* (the visual's pages in PAGE_ORDER, from the Screen back to the garden) */
-        const int nx = ui.view == V_GARDEN ? V_VIS : ui.view >= V_VIS && ui.view <= V_XFORM ? page_step((int)ui.view, 1, 1)
+        const int nx = ui.view == V_GARDEN ? V_VIS : ui.view >= V_VIS && ui.view <= V_SHAPE2 ? page_step((int)ui.view, 1, 1)
                                                                                          : V_GARDEN;
         set_view(nx < 0 ? V_GARDEN : nx);
         return;
@@ -1575,7 +1583,7 @@ static void button(int b)
         reel_button(b);
         return;
     }
-    if (ui.view >= V_VIS && ui.view <= V_XFORM && (b == B_EDIT || b == B_REC)) {   /* the visual: a new genome; held */
+    if (ui.view >= V_VIS && ui.view <= V_SHAPE2 && (b == B_EDIT || b == B_REC)) {   /* the visual: a new genome; held */
         if (b == B_EDIT) {
             vis_mutate(1.0f);
             vhold = 0;
@@ -1803,7 +1811,7 @@ static void input(void)
                 en_key(v, KEY_NOTE0 + (int)i, 1);
             } else if (ui.view == V_GARDEN) {    /* the Partiture: the note in or out of the scale */
                 toggle_note((int)((5u + i) % 12u));
-            } else if (ui.view >= V_VIS && ui.view <= V_XFORM) {   /* the visual's pages: the keys play it */
+            } else if (ui.view >= V_VIS && ui.view <= V_SHAPE2) {   /* the visual's pages: the keys play it */
                 vis_key((int)i);
             } else if (tape_view(ui.view) && proj.par[P_RL(SRC)] >= 6) {   /* the reel's, SOURCE Play: the voice
                                                   * (or all three) played, as the reel records it */
@@ -2703,7 +2711,7 @@ static uint8_t vchord_was = 255;
 static float vg[VG_N] = {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f},
              vg_to[VG_N] = {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f};
 /* MORPH: the picture now (vcur), the one it turns into (vnext, -1 none) and how far (vmw), the time to the next */
-static int8_t vcur = -1, vnext = -1, vgeo = -1, vlast = -1, vgeo_now;
+static int8_t vcur = -1, vnext = -1, vgeo = -1, vlast = -1, vgeo_now, vrutt;   /* (vrutt: Rutt in either geometry) */
 static uint8_t vlut[256];                       /* CHROMA: the field's light to its palette index (folded, stepped, keyed) */
 static float vmw, vmorph_left;
 static int vamp = 256;                          /* (each picture's light, as it fades in or out: 256 whole) */
@@ -2717,7 +2725,7 @@ static float vis_rnd(void)                       /* 0..1 */
 }
 static int vis_full(void)                        /* the visual on the whole screen now */
 {
-    return (ui.view == V_GARDEN || (ui.view >= V_VIS && ui.view <= V_XFORM)) && !ui.help &&
+    return (ui.view == V_GARDEN || (ui.view >= V_VIS && ui.view <= V_SHAPE2)) && !ui.help &&
            proj.par[P_ST(VMODE)] < VIS_SCORE;   /* (the knob's: the matrix reads it in the frame) */
 }
 static void vis_palette(void)                    /* COLOUR: five stops, the page's theme or a palette of its own; HUE */
@@ -2869,21 +2877,87 @@ static void vis_mirror(int m)                    /* MIRROR: the field folded (Mi
         for (y = 0; y < VF_H / 2; y++)
             memcpy(vf[VF_H - 1 - y], vf[y], VF_W);
 }
+static void geo_lines(int geo, int sides);
+static void geo_transform(void);
+static uint32_t ghash(uint32_t x)                /* (a star's own numbers) */
+{
+    x ^= x >> 16;
+    x *= 0x7FEB352Du;
+    x ^= x >> 15;
+    x *= 0x846CA68Bu;
+    return x ^ (x >> 16);
+}
+static int seg_clip(float *x0, float *y0, float *x1, float *y1)   /* a line to the screen (Liang-Barsky); 0: off it */
+{
+    float t0 = 0.0f, t1 = 1.0f;
+    const float dx = *x1 - *x0, dy = *y1 - *y0, p[4] = {-dx, dx, -dy, dy},
+                q[4] = {*x0 - 0.0f, 238.0f - *x0, *y0 - 0.0f, 239.0f - *y0};
+    int k;
+    for (k = 0; k < 4; k++) {
+        if (p[k] == 0.0f) {
+            if (q[k] < 0.0f)
+                return 0;
+        } else {
+            const float r = q[k] / p[k];
+            if (p[k] < 0.0f) {
+                if (r > t1)
+                    return 0;
+                if (r > t0)
+                    t0 = r;
+            } else {
+                if (r < t0)
+                    return 0;
+                if (r < t1)
+                    t1 = r;
+            }
+        }
+    }
+    *x1 = *x0 + t1 * dx, *y1 = *y0 + t1 * dy;
+    *x0 = *x0 + t0 * dx, *y0 = *y0 + t0 * dy;
+    return 1;
+}
 static void vis_geometry(void)                   /* GEOMETRY's lines, this frame (screen pixels, 240 x 240) */
 {
     static int16_t geo_was = -1;
-    int geo;
-    const int sides = VPAR(VSIDES);
+    int geo, i, n1;
     if (VPAR(VGEO) != geo_was) {       /* (GEOMETRY turned: that one, until MORPH picks another) */
         geo_was = VPAR(VGEO);
         vgeo = -1;
     }
     geo = VPAR(VGEO) && vgeo > 0 && VPAR(VMORPH) ? vgeo : VPAR(VGEO);
     vgeo_now = (int8_t)geo;
+    vrutt = (int8_t)(geo == 6 || VPAR(VGEO2) == 6);
+    vnseg = 0;
+    geo_lines(geo, VPAR(VSIDES));
+    n1 = vnseg;
+    if (VPAR(VGEO2) && VPAR(VGEO2) != 6) {       /* SHAPE 2: a second, its own sides, SIZE 2 of the first's */
+        const float s2 = (float)VPAR(VSIZE2) * 0.01f;
+        geo_lines(VPAR(VGEO2), VPAR(VSIDES2));
+        for (i = n1; i < vnseg; i++) {
+            vseg[i].x0 = (int16_t)(120.0f + ((float)vseg[i].x0 - 120.0f) * s2);
+            vseg[i].y0 = (int16_t)(120.0f + ((float)vseg[i].y0 - 120.0f) * s2);
+            vseg[i].x1 = (int16_t)(120.0f + ((float)vseg[i].x1 - 120.0f) * s2);
+            vseg[i].y1 = (int16_t)(120.0f + ((float)vseg[i].y1 - 120.0f) * s2);
+        }
+    }
+    geo_transform();
+    {                                            /* (the lines clipped at the screen's edge: they wrapped round) */
+        int o = 0;
+        for (i = 0; i < vnseg; i++) {
+            float x0 = vseg[i].x0, y0 = vseg[i].y0, x1 = vseg[i].x1, y1 = vseg[i].y1;
+            if (!seg_clip(&x0, &y0, &x1, &y1))
+                continue;
+            vseg[o].x0 = (int16_t)x0, vseg[o].y0 = (int16_t)y0, vseg[o].x1 = (int16_t)x1, vseg[o].y1 = (int16_t)y1;
+            o++;
+        }
+        vnseg = o;
+    }
+}
+static void geo_lines(int geo, int sides)        /* geometry geo's lines, added */
+{
     const float lvl = fm_minf(en_master_level * vgain * 2.0f, 1.2f) + 0.4f * vbeat * (float)VPAR(VPULSE) * 0.01f;
     const int w = (int)en_wave_w;
     int i, k;
-    vnseg = 0;
     switch (geo) {
     case 1:                                      /* Polygon: three nested, turning against each other */
         for (k = 0; k < 3; k++) {
@@ -2952,9 +3026,141 @@ static void vis_geometry(void)                   /* GEOMETRY's lines, this frame
         }
         break;
     }
+    case 7:                                      /* Star: SIDES points, turning, breathing with the level */
+        for (k = 0; k < 2; k++) {
+            const float R = (60.0f + 40.0f * lvl) * (k ? 0.55f : 1.0f), a0 = vt * (k ? -0.25f : 0.2f);
+            for (i = 0; i < 2 * sides; i++) {
+                const float a = a0 + FM_PI * (float)i / (float)sides, b = a + FM_PI / (float)sides,
+                            ra = i & 1 ? R * 0.42f : R, rb = i & 1 ? R : R * 0.42f;
+                vseg_add(120.0f + ra * fm_cosf(a), 120.0f + ra * fm_sinf(a), 120.0f + rb * fm_cosf(b), 120.0f + rb * fm_sinf(b));
+            }
+        }
+        break;
+    case 8:                                      /* Rings: SIDES circles out from the middle, each a band's */
+        for (k = 0; k < sides; k++) {
+            float z = (float)k / (float)sides + vt * 0.08f;
+            z -= fm_floorf(z);
+            {
+                const float r = 6.0f + 120.0f * z * (0.85f + 0.3f * vband[k % EN_NBAND]);
+                float px = 120.0f + r, py = 120.0f;
+                for (i = 1; i <= 20; i++) {
+                    const float a = FM_TWO_PI * (float)i / 20.0f, x = 120.0f + r * fm_cosf(a), y = 120.0f + r * fm_sinf(a);
+                    vseg_add(px, py, x, y);
+                    px = x, py = y;
+                }
+            }
+        }
+        break;
+    case 9: {                                    /* Spirograph: a hypotrochoid, SIDES lobes, its pen drifting */
+        const float n = (float)sides, d = G(13, 0.4f, 1.2f) + 0.2f * fm_sinf(vt * 0.3f), sc = (70.0f + 25.0f * lvl) / (n - 1.0f + d);
+        float px = 0.0f, py = 0.0f;
+        for (i = 0; i <= 200; i++) {
+            const float t = FM_TWO_PI * (float)i / 200.0f + vt * 0.05f,
+                        x = 120.0f + sc * ((n - 1.0f) * fm_cosf(t) + d * fm_cosf((n - 1.0f) * t)),
+                        y = 120.0f + sc * ((n - 1.0f) * fm_sinf(t) - d * fm_sinf((n - 1.0f) * t));
+            if (i)
+                vseg_add(px, py, x, y);
+            px = x, py = y;
+        }
+        break;
+    }
+    case 10: {                                   /* Rose: r = cos(k t), k from SIDES, petals turning */
+        const float kk = (float)sides * 0.5f, R = 80.0f + 30.0f * lvl;
+        float px = 0.0f, py = 0.0f;
+        for (i = 0; i <= 180; i++) {
+            const float t = FM_TWO_PI * 2.0f * (float)i / 180.0f, r = R * fm_cosf(kk * t),
+                        x = 120.0f + r * fm_cosf(t + vt * 0.15f), y = 120.0f + r * fm_sinf(t + vt * 0.15f);
+            if (i)
+                vseg_add(px, py, x, y);
+            px = x, py = y;
+        }
+        break;
+    }
+    case 11: {                                   /* Cube: a wire cube turning in space, as big as the sound */
+        static const int8_t E[12][2] = {{0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7}, {7, 6}, {6, 4},
+                                        {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+        const float ax = vt * 0.31f, ay = vt * 0.47f, s = 55.0f + 25.0f * lvl;
+        float px[8], py[8];
+        for (i = 0; i < 8; i++) {
+            const float x = i & 1 ? 1.0f : -1.0f, y = i & 2 ? 1.0f : -1.0f, z = i & 4 ? 1.0f : -1.0f,
+                        y1 = y * fm_cosf(ax) - z * fm_sinf(ax), z1 = y * fm_sinf(ax) + z * fm_cosf(ax),
+                        x2 = x * fm_cosf(ay) + z1 * fm_sinf(ay), z2 = -x * fm_sinf(ay) + z1 * fm_cosf(ay),
+                        f = 3.0f / (4.0f + z2);
+            px[i] = 120.0f + x2 * s * f;
+            py[i] = 120.0f + y1 * s * f;
+        }
+        for (i = 0; i < 12; i++)
+            vseg_add(px[E[i][0]], py[E[i][0]], px[E[i][1]], py[E[i][1]]);
+        break;
+    }
+    case 12:                                     /* Tunnel: SIDES-gons going away, their corners joined */
+        for (k = 0; k < 8; k++) {
+            float z = (float)k / 8.0f + vt * 0.12f;
+            z -= fm_floorf(z);
+            {
+                const float r = 8.0f + 150.0f * z * z, a0 = vt * 0.1f + z * 1.5f;
+                for (i = 0; i < sides; i++) {
+                    const float a = a0 + FM_TWO_PI * (float)i / (float)sides, b = a + FM_TWO_PI / (float)sides;
+                    vseg_add(120.0f + r * fm_cosf(a), 120.0f + r * fm_sinf(a), 120.0f + r * fm_cosf(b), 120.0f + r * fm_sinf(b));
+                }
+            }
+        }
+        break;
+    case 13:                                     /* Starfield: stars flying past, streaks as they near */
+        for (k = 0; k < 48; k++) {
+            const uint32_t hs = ghash((uint32_t)k * 2654435761u + 7u);
+            const float a = (float)(hs & 1023u) * (FM_TWO_PI / 1024.0f), sp = 0.08f + 0.06f * (float)(hs >> 10 & 255u) / 255.0f;
+            float z = (float)(hs >> 18 & 1023u) / 1024.0f + vt * sp * (1.0f + lvl);
+            z -= fm_floorf(z);
+            {
+                const float r = 4.0f + 170.0f * z * z * z, r0 = r * (0.85f - 0.2f * lvl);
+                vseg_add(120.0f + r0 * fm_cosf(a), 120.0f + r0 * fm_sinf(a), 120.0f + r * fm_cosf(a), 120.0f + r * fm_sinf(a));
+            }
+        }
+        break;
+    case 14: {                                   /* Circle: the sound wound round a circle (a polar scope) */
+        float px = 0.0f, py = 0.0f;
+        for (i = 0; i <= 128; i++) {
+            const int s = en_wave[(unsigned)((int)w - 128 + (i & 127)) % EN_WAVE_N];
+            const float a = FM_TWO_PI * (float)i / 128.0f + vt * 0.1f, r = 60.0f + (float)s * 0.45f * vgain,
+                        x = 120.0f + r * fm_cosf(a), y = 120.0f + r * fm_sinf(a);
+            if (i)
+                vseg_add(px, py, x, y);
+            px = x, py = y;
+        }
+        break;
+    }
+    case 15: {                                   /* Lattice: three sets of lines at 60 degrees, drifting (triangles) */
+        const float sp = 240.0f / (float)sides, off = vt * 6.0f;
+        for (k = 0; k < 3; k++) {
+            const float a = (float)k * (FM_PI / 3.0f) + vt * 0.02f, ca = fm_cosf(a), sa = fm_sinf(a);
+            for (i = -sides; i <= sides; i++) {
+                float d = (float)i * sp + off;
+                d -= sp * fm_floorf(d / sp + 0.5f) - (float)i * sp;
+                vseg_add(120.0f + d * ca - 200.0f * sa, 120.0f + d * sa + 200.0f * ca, 120.0f + d * ca + 200.0f * sa,
+                         120.0f + d * sa - 200.0f * ca);
+            }
+        }
+        break;
+    }
+    case 16:                                     /* Spiral: SIDES arms out from the middle, turning */
+        for (k = 0; k < sides; k++) {
+            float px = 120.0f, py = 120.0f;
+            for (i = 1; i <= 24; i++) {
+                const float r = (float)i * (4.5f + 1.5f * lvl), a = vt * 0.4f + (float)i * 0.22f + FM_TWO_PI * (float)k / (float)sides,
+                            x = 120.0f + r * fm_cosf(a), y = 120.0f + r * fm_sinf(a);
+                vseg_add(px, py, x, y);
+                px = x, py = y;
+            }
+        }
+        break;
     default:
         break;
     }
+}
+static void geo_transform(void)
+{
+    int i;
     {                                            /* (1.5.14) TRANSFORM on the lines too: turned on by ROTATE, carried by
                                                   * SHIFT (round the screen), grown or shrunk by ZOOM */
         static float ga, gx, gy;
@@ -3158,7 +3364,7 @@ static void vis_react(void)                      /* this frame's settings: the k
         if (!src || !tg || !dp)
             continue;
         x = vis_src(src) * (float)dp * 0.01f;
-        for (k = ST_VMODE; k <= ST_VXTGT; k++) {
+        for (k = ST_VMODE; k <= ST_VSIZE2; k++) {
             const en_param_t *pi = en_param_info(P_SETP + k);
             const int span = pi->hi - pi->lo;
             int v;
@@ -3209,7 +3415,7 @@ static void vis_step(int mode)                   /* a frame of the field and the
             vmw = 0.0f;
             vmorph_left = 40.0f - 34.0f * (float)VPAR(VMORPH) * 0.01f + 6.0f * vis_rnd();
             if (VPAR(VGEO))
-                vgeo = (int8_t)(1 + (int)(vis_rnd() * 6.0f));
+                vgeo = (int8_t)(1 + (int)(vis_rnd() * 15.99f));
         }
     }
     vis_palette();
@@ -3733,7 +3939,7 @@ static void vis_band(int y0, int h)
                 v = (v + step / 2) / step * step;
             if (i < kth)
                 v = 0;
-            if (vgeo_now == 6)
+            if (vrutt)
                 v = v * 3 / 10;                  /* (Rutt: the picture under its lines) */
             v = v * (VPAR(VBRIGHT) + 50) / 100;  /* BRIGHT */
             vlut[i] = (uint8_t)(v > 255 ? 255 : v);
@@ -3823,7 +4029,7 @@ static void vis_band(int y0, int h)
             vis_seg(xa, ya, xb, yb, VPAR(VFOLD) || VPAR(VPOSTER) ? gcc : gc, y0, h);
         }
     }
-    if (vgeo_now == 6) {                         /* Rutt: 32 scanlines, each lifted by the picture's light under it
+    if (vrutt) {                                 /* Rutt: 32 scanlines, each lifted by the picture's light under it
                                                   * (the Rutt/Etra scan processor), coloured by it */
         const float lift = 0.10f + 0.12f * vgain;
         int j;

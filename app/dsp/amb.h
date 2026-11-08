@@ -61,7 +61,7 @@ enum {
     P_TMOD = P_TAPE + 12,                             /* then the reel's five modulators (TM_*, P_TM) */
     P_SONGP = P_TMOD + 5 * 6,                         /* then the song's (SG_*) */
     P_SETP = P_SONGP + 4,                             /* then MIDI's and Key sync (ST_*) */
-    P_NPARAMS = P_SETP + 61
+    P_NPARAMS = P_SETP + 64
 };
 /* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
  * index and five generative modulators */
@@ -145,7 +145,7 @@ enum { ST_CH1, ST_CH2, ST_CH3, ST_NOTES, ST_KSYNC, ST_VMODE, ST_VPAL, ST_VTRAIL,
        ST_VSYNC, ST_VGEO, ST_VSIDES, ST_VMIRROR, ST_VSPEED, ST_VLAYER, ST_VBLEND, ST_VMIX, ST_VPULSE,
        ST_VMORPH, ST_VMUTATE, ST_VFLOW, ST_VCHAOS, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE,
        ST_VFOLD, ST_VPOSTER, ST_VPIXEL, ST_VKEY, ST_VOFREQ, ST_VOSHAPE, ST_VOANGLE, ST_VOSPEED, ST_VOFREQ2,
-       ST_VOCOMB, ST_VOWARP, ST_VOSYNC, ST_VXZOOM, ST_VXROT, ST_VXSHX, ST_VXTGT, ST_VBARS, ST_VDELAY, ST_VBRIGHT, ST_VEAR,
+       ST_VOCOMB, ST_VOWARP, ST_VOSYNC, ST_VXZOOM, ST_VXROT, ST_VXSHX, ST_VXTGT, ST_VGEO2, ST_VSIDES2, ST_VSIZE2, ST_VBARS, ST_VDELAY, ST_VBRIGHT, ST_VEAR,
        ST_AR1S, ST_AR1T, ST_AR1D, ST_AR2S, ST_AR2T, ST_AR2D, ST_AR3S, ST_AR3T, ST_AR3D, ST_AR4S, ST_AR4T, ST_AR4D, ST_N };
 /* (1.4.17, global) the first page's visual: VISUAL (0 Bloom .. 4 Tunnel, 5 the Score), COLOUR (0 the theme, Ember,
  * Ice, Acid, Mono), TRAILS, REACT (0..100); (1.4.18) as a video synth: FEEDBACK, RGB, HUE, SYNC (0..100); (1.4.19)
@@ -162,7 +162,10 @@ enum { ST_CH1, ST_CH2, ST_CH3, ST_NOTES, ST_KSYNC, ST_VMODE, ST_VPAL, ST_VTRAIL,
  * square to it), COMBINE (0 Add, Multiply, Difference, Warp: the second bends the first, Field: the picture bends it),
  * WARP (0..100), SYNC (0 Free, Notes: the notes' pitch its frequency, Beat: from the top on the beat) */
 #define EN_AR_NSRC 13
-#define EN_AR_NTGT (ST_VXTGT - ST_VMODE + 2)      /* (Off, the settings, All); (1.5.12) TRANSFORM's ZOOM, ROTATE,
+#define EN_AR_NTGT (ST_VSIZE2 - ST_VMODE + 2)     /* (1.5.15: GEOMETRY 0 .. 16; SHAPE 2's GEOMETRY 2, SIDES 2,
+                                                  * SIZE 2) */
+#define EN_AR_NTGT27 (ST_VXTGT - ST_VMODE + 2)    /* (format 27's All) */
+/* (Off, the settings, All); (1.5.12) TRANSFORM's ZOOM, ROTATE,
                                                   * SHIFT (-100..100; 1.5.14: along Osc's ANGLE), TARGET (1.5.14: 0
                                                   * Feedback, 1 Lines, 2 Both); Osc's WAVE 5 Rings, 6 Polygon, 7 Spiral */
 #define EN_AR_NTGT25 (ST_VOSYNC - ST_VMODE + 2)   /* (format 25's All) */
