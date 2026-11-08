@@ -357,7 +357,8 @@ on the notes sounding.
 | Mod 3 | Spread | Fade | |
 
 Each of a voice's four notes has a generator of its own in each modulator, each at its own pace around Rate; the five
-are summed; the arc deepens them when the garden is full and calms them when sparse.
+are summed; the arc deepens them when the garden is full and calms them when sparse (by Motion; a Depth at 100
+stays full).
 
 - **Depth:** how far it goes. 0: nothing.
 - **Rate:** a cycle from 60 seconds to an eighth of a second. With Sync at Tempo: a note value, 8 bars to 1/16.
@@ -365,7 +366,8 @@ are summed; the arc deepens them when the garden is full and calms them when spa
   random values); Chaos (the logistic map, jumping); Env (from each note's start, falling to nothing over a cycle).
 - **Target:** **Off** (the default: the modulator does nothing), or the voice's: **Timbre** (the modulators' level, ±12 dB), **Ratio** (harmonic steps, ×1 to ×5),
   **Metal** (the modulators out of tune with each other), **Feedback**, **Decay** (each new note's envelopes),
-  **Pitch** (±30 cents), **Space** (the stereo field), **All**, **Level** (a tremolo, to −10 dB), **LFO PM** (the
+  **Pitch** (±30 cents), **Space** (the stereo field), **All** (Timbre, Metal, Feedback, Decay, Pitch and Space
+  together, each as strong as alone), **Level** (a tremolo, to −10 dB), **LFO PM** (the
   patch's vibrato, deeper). And any operator's own, **OP1**..**OP6**: **Level**, **Ratio**, **Fine**, **Atk**,
   **Dec**, **Sus**, **Rel**. And the voice's own modulators: **M1**..**M5** **depth** (±50) or **rate** (±2
   octaves): one modulator moving another.

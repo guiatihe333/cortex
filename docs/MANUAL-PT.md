@@ -364,7 +364,8 @@ nas notas que estão soando.
 | Mod 3 | Spread | Fade | |
 
 Cada uma das quatro notas de uma voz tem seu próprio gerador em cada modulador, cada um no seu ritmo em torno do
-Rate; os cinco se somam; o arco os aprofunda quando o jardim está cheio e os acalma quando está esparso.
+Rate; os cinco se somam; o arco os aprofunda quando o jardim está cheio e os acalma quando está esparso
+(pelo Motion; com Depth em 100 fica cheio).
 
 - **Depth:** o quanto vai. 0: desligado.
 - **Rate:** um ciclo de 60 segundos a um oitavo de segundo. Com Sync em Tempo: uma figura, de 8 compassos a 1/16.
@@ -373,7 +374,8 @@ Rate; os cinco se somam; o arco os aprofunda quando o jardim está cheio e os ac
   ao longo de um ciclo).
 - **Target:** **Off** (o padrão: o modulador não faz nada), ou da voz: **Timbre** (o nível dos moduladores, ±12 dB), **Ratio** (passos harmônicos, ×1 a ×5),
   **Metal** (os moduladores desafinados entre si), **Feedback**, **Decay** (os envelopes de cada nota nova),
-  **Pitch** (±30 cents), **Space** (o estéreo), **All**, **Level** (um tremolo, até −10 dB), **LFO PM** (o vibrato
+  **Pitch** (±30 cents), **Space** (o estéreo), **All** (Timbre, Metal, Feedback, Decay, Pitch e Space
+  juntos, cada um tão forte quanto sozinho), **Level** (um tremolo, até −10 dB), **LFO PM** (o vibrato
   do patch, mais fundo). E os de qualquer operador, **OP1**..**OP6**: **Level**, **Ratio**, **Fine**, **Atk**,
   **Dec**, **Sus**, **Rel**. E os próprios moduladores da voz: **M1**..**M5**, **depth** (±50) ou **rate** (±2
   oitavas): um modulador movendo outro.

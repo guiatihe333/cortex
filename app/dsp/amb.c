@@ -1288,7 +1288,9 @@ static void mod_step(void)                      /* once an FM6 block */
             }
         }
         for (s = 0; s < EN_NSLOT; s++) {
-            vx[v].s[s].deff = fm_clampf((vx[v].s[s].depth + dd[s]) * (1.0f + 0.35f * arcm), 0.0f, 1.0f);
+            vx[v].s[s].deff = fm_clampf((vx[v].s[s].depth + dd[s]) *   /* the arc: deeper when full, calmer when
+                                                 * sparse; a DEPTH at 100 stays full (1.5.9) */
+                                            (vx[v].s[s].depth >= 0.995f ? 1.0f : 1.0f + 0.35f * arcm), 0.0f, 1.0f);
             mrate[v][s] = vx[v].s[s].rate * fm_exp2f(rr[s]);
         }
     }
@@ -1377,7 +1379,8 @@ static void mod_of(int g, const uint8_t *p, mod_t *m, int32_t *dt, int32_t *ol)
     for (s = 0; s < EN_NSLOT; s++) {
         const mslot_t *x = &v->s[s];
         const gen_t *q = &gen[s][g];
-        const float d = en_mod[s][g], k = x->dest == MOD_ALL ? 0.7f : 1.0f, up = (d + x->deff) * 0.5f;   /* 0..deff */
+        const float d = en_mod[s][g], k = 1.0f, up = (d + x->deff) * 0.5f;   /* 0..deff (1.5.9: All as strong as each
+                                                 * alone; it was 0.7) */
         int32_t metal = 0, ratio = 0, nm = 0;
         if (d == 0.0f && x->deff <= 0.0f && q->pitch == 0.0f && q->pan == 0.0f && q->ratio == 0.0f && q->fine == 0.0f)
             continue;
@@ -1434,9 +1437,8 @@ static const uint8_t *mod_patch(int g, const uint8_t *src, uint8_t *dst)
         if (d == 0.0f)
             continue;
         if (mod_on(x, MOD_DECAY)) {
-            const float k = x->dest == MOD_ALL ? 0.7f : 1.0f;
-            dm += (int)(20.0f * k * d);
-            dc += (int)(6.0f * k * d);
+            dm += (int)(20.0f * d);                 /* (All as strong as Decay alone) */
+            dc += (int)(6.0f * d);
             any = 1;
         }
         if (x->dest >= MOD_OP && x->dest < MOD_MSLOT) {
