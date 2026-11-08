@@ -281,7 +281,10 @@ GLO on Setup opens **MIDI**, then **Song**, then back to Setup.
   **Follow** how closely the voices follow its melody and bass (at 100, every note; from 50 up, more and more; a song
   chosen sets it to 100), **Vary** leaves notes out, a scale step off or a sixteenth late, now and then; **Start**
   the bar it starts from. Its chords lead the garden's while it plays, moved to the garden's root, and the Chord
-  voices change with them at once. On Envelope Patch or ADSR its notes last as long as in the file.
+  voices change with them at once. On Envelope Patch or ADSR its notes last as long as in the file. Its melody goes
+  to the first Loops voice (else the highest Bass voice), its bass to the lowest Bass voice (else another Loops
+  voice), at their own pitches moved by the voice's Octave; a voice's Glide is shortened for them, to a quarter of
+  each note at most; a voice with no part of it plays the garden's own.
 
 ### ENV, ARP or LFO again: a voice's own pages
 

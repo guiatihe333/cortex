@@ -907,6 +907,7 @@ typedef struct {
     float vel, out, lv;                         /* the loops: the strike's velocity, the patch's level, MOD's LEVEL */
     int32_t wait, held;                         /* the loops: samples until it rings (a hand), until it is let go */
     int32_t slen;                               /* the loops: a song's note, held this long (samples; 0: the Gate's) */
+    uint8_t moff;                               /* the loops: its MIDI note already let go (a newer one at its pitch) */
     uint8_t midi_note, hand, gen, up;           /* hand: 1 fading out of the old key, 2 into the new; gen: the patch it
                                                  * sings (its voice's gen as it started); up: its key let go */
     uint8_t on, rung, loop, fade;               /* the loops: sounding, started, its loop; shed: blocks to silence */
@@ -923,6 +924,8 @@ typedef struct {
     int rs;                                     /* the bass: blocks to a new patch's restrike (the knob at rest) */
     int32_t held;                               /* the bass: samples until its key is let go; 0 let go */
     int32_t slen;                               /* the bass: a song's note, held this long at its strike (0: the Gate's) */
+    float sglide;                               /* the bass: a song's note's glide, quick enough for its length (0: GLIDE's) */
+    uint8_t mon;                                /* the bass: its MIDI note on (sent, not yet let go) */
     float xf;                                   /* the bass: the restrike's fade */
     int8_t loop_note[EN_NLOOP][EN_LOOP_MAX];    /* the loops: each loop's notes (scale steps from the chord), -1 rest */
     uint8_t loop_vel[EN_NLOOP][EN_LOOP_MAX], loop_pos[EN_NLOOP], loop_rest[EN_NLOOP];
@@ -1541,16 +1544,29 @@ static void bass_note(int v, int n)             /* the bass voice to note n (MID
     voice_t *c = &vc[v];
     c->n[0].target = (float)n;
     c->pc = (uint8_t)(n % 12);
-    if (en_playing && c->n[0].midi_note != n) {
-        midi(0x80u | (uint32_t)v, c->n[0].midi_note, 0);
+    if (en_playing && (c->n[0].midi_note != n || !c->mon)) {   /* (the same pitch again once let go: on again) */
+        if (c->mon)
+            midi(0x80u | (uint32_t)v, c->n[0].midi_note, 0);
         midi(0x90u | (uint32_t)v, (uint32_t)n, 80);
+        c->mon = 1;
     }
     if (c->n[0].midi_note != n)                  /* a new note for MOD (its fade, SYNC Note, the envelope) */
         gen_note(GEN(v, 0));
     c->strike = 1;                               /* (heard with the patch's envelopes: each chord struck) */
     c->n[0].midi_note = (uint8_t)n;
 }
-static void bass_to(int v, int pc) { bass_note(v, 36 + pc % 12 + 12 * PL(v, OCT)); }   /* C2..B2, octaves down or up */
+static void bass_to(int v, int pc)              /* C2..B2, octaves down or up (the garden's: GLIDE's glide) */
+{
+    vc[v].sglide = 0.0f;
+    bass_note(v, 36 + pc % 12 + 12 * PL(v, OCT));
+}
+static void bass_song(int v, int n, int len16)   /* a song's note on a Bass voice, its length; its glide a quarter of it
+                                                 * at most */
+{
+    vc[v].slen = (int32_t)((float)len16 * step_len);
+    vc[v].sglide = len16 > 0 ? 4.0f / ((float)len16 * step_len) : 0.0f;
+    bass_note(v, n);
+}
 static void key_moved(void)                     /* a new key or scale: the chords hand off, the basses to the root */
 {
     int v;
@@ -2480,9 +2496,18 @@ static void bell_voice(int v, int l, int n, float vel, int32_t wait, int32_t sle
             best = i;
         }
     }
+    for (i = 0; i < NPOLY; i++) {               /* (another note of this pitch still held: its MIDI off now, before
+                                                 * the new one's on, not after it, cutting it) */
+        vnote_t *o = &c->n[i];
+        if (i != best && o->on && !o->moff && o->midi_note == (uint8_t)n) {
+            midi(0x80u | (uint32_t)v, o->midi_note, 0);
+            o->moff = 1;
+        }
+    }
     b = &c->n[best];
-    if (b->on)
+    if (b->on && !b->moff)
         midi(0x80u | (uint32_t)v, b->midi_note, 0);
+    b->moff = 0;
     b->on = 1;
     b->rung = 0;
     b->fade = 0;
@@ -2658,25 +2683,29 @@ static void song_step(void)                      /* a sixteenth of the song */
         while (n < 36)
             n += 12;
         if (vc[v].role == ROLE_BASS) {
-            vc[v].slen = (int32_t)((float)song_at(1, pos) * step_len);   /* (its length, as the file has it) */
-            bass_note(v, n > 96 ? n - 12 : n);   /* (one at a time, on the beat) */
-        } else {
-            bell_voice(v, pos & 3, n, 0.55f + 0.004f * (float)(song_at(1, pos) < 8 ? song_at(1, pos) : 8) * 10.0f, wait,
+            bass_song(v, n > 96 ? n - 12 : n, song_at(1, pos));   /* (one at a time; its length, as the file has it) */
+        } else {                                 /* (4. one place, a little right of the middle: loop 2's) */
+            bell_voice(v, 1, n, 0.55f + 0.004f * (float)(song_at(1, pos) < 8 ? song_at(1, pos) : 8) * 10.0f, wait,
                        (int32_t)((float)song_at(1, pos) * step_len));
         }
     }
     if (f > 0.0f && (n = song_at(2, pos)) != 0 && (v = song_bass_v) >= 0 && frand() < f) {   /* the bass */
         n += song_tr();
-        if (vc[v].role == ROLE_BASS) {
-            vc[v].slen = (int32_t)((float)song_at(3, pos) * step_len);   /* (its length, as the file has it) */
-            bass_to(v, n % 12);                  /* (its octave the voice's) */
+        if (vc[v].role == ROLE_BASS) {           /* (2. its own pitch, with the voice's Octave; folded only past E1 ..
+                                                 * C4) */
+            n += 12 * PL(v, OCT);
+            while (n > 60)
+                n -= 12;
+            while (n < 28)
+                n += 12;
+            bass_song(v, n, song_at(3, pos));
         } else {                                 /* on a Loops voice, low */
             n += 12 * PL(v, OCT);
             while (n > 60)
                 n -= 12;
             while (n < 36)
                 n += 12;
-            bell_voice(v, 3, n, 0.8f, 0, (int32_t)((float)song_at(3, pos) * step_len));
+            bell_voice(v, 3, n, 0.8f, 0, (int32_t)((float)song_at(3, pos) * step_len));   /* (a little left) */
         }
     }
     if (++song_pos >= (uint32_t)song_n)
@@ -3252,6 +3281,7 @@ static void play_start(int from_top)
                 c->n[0].note = c->n[0].target;
             c->strike = 1;
             midi(0x90u | (uint32_t)v, c->n[0].midi_note, 80);
+            c->mon = 1;
         }
     }
     if (!en_ext)
@@ -3262,6 +3292,8 @@ static void play_stop(void)
 {
     int v, i;
     en_playing = 0;
+    for (v = 0; v < EN_NVOX; v++)
+        vc[v].mon = 0;                           /* (all notes off goes out below) */
     pad_gate = 0.0f;
     for (v = 0; v < EN_NVOX; v++) {             /* on the patch's envelopes (or the ADSR): every note let go, its
                                                  * release ends it (AMB's: the slow fade alone) */
@@ -3521,7 +3553,9 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
             n->held -= FM6_N;
             if (n->held <= 0) {
                 fm6_note_key(&n->fm, p, 0);
-                midi(0x80u | (uint32_t)v, n->midi_note, 0);   /* (MIDI out let go with it) */
+                if (!n->moff)
+                    midi(0x80u | (uint32_t)v, n->midi_note, 0);   /* (MIDI out let go with it) */
+                n->moff = 1;
             }
         }
         lv = fm6_lfo_sample(&n->lfo);
@@ -3597,7 +3631,9 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
         }
         if (c->held > 0 && (c->held -= FM6_N) <= 0) {
             fm6_note_key(&n->fm, n->vp, 0);
-            midi(0x80u | (uint32_t)v, n->midi_note, 0);   /* (MIDI out let go with it) */
+            if (c->mon)
+                midi(0x80u | (uint32_t)v, n->midi_note, 0);   /* (MIDI out let go with it) */
+            c->mon = 0;
         }
     }
     c->strike = 0;
@@ -3611,7 +3647,7 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
                     xt = c->xs ? 0.0f : 1.0f;
         float amp = n->amp, gl, gr, xf = c->xf;
         int32_t lv = fm6_lfo_sample(&n->lfo), ld = fm6_lfo_delay(&n->lfo);
-        n->note += (n->target - n->note) * fm_minf((float)FM6_N * c->glide_k, 1.0f);   /* GLIDE */
+        n->note += (n->target - n->note) * fm_minf((float)FM6_N * fm_maxf(c->glide_k, c->sglide), 1.0f);   /* GLIDE */
         mod_of(GEN(v, 0), n->vp, &m, dtb, olb);
         gl = (1.0f - fm_maxf(m.pan, 0.0f) * 0.5f) * m.lvl;   /* SPACE: the bass leans a little, never far */
         gr = (1.0f + fm_minf(m.pan, 0.0f) * 0.5f) * m.lvl;

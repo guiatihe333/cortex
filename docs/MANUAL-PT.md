@@ -288,7 +288,9 @@ GLO na Setup abre a **MIDI**, depois a **Song**, e volta à Setup.
   mais; escolher uma música o põe em 100), **Vary** de vez em quando deixa notas de fora, um grau da escala ao lado
   ou uma semicolcheia atrasada; **Start** o compasso em que ela começa. Enquanto toca, os acordes dela conduzem os do
   jardim, levados à tônica do jardim, e as vozes Chord mudam junto na hora. Com Envelope Patch ou ADSR as notas
-  dela duram o que duram no arquivo.
+  dela duram o que duram no arquivo. A melodia vai para a primeira voz Loops (senão a voz Bass mais aguda),
+  o baixo para a voz Bass mais grave (senão outra Loops), nas alturas do arquivo deslocadas pela Octave da voz; o
+  Glide encurta para elas, no máximo um quarto de cada nota; uma voz sem parte na música toca o jardim.
 
 ### ENV, ARP ou LFO de novo: as páginas de uma voz
 
