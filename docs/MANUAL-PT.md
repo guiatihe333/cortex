@@ -1,6 +1,6 @@
 # CORTEX
 
-O CORTEX (1.5.11; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
+O CORTEX (1.5.12; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
 de Brian Eno. Ele toca sozinho desde o momento em que é ligado: três vozes FM (cada uma respirando acordes, tocando
 loops ou deslizando um baixo, como você escolher), um eco curto, um loop de fita e um reverb de placa, e uma fita que grava tudo isso e toca de volta em grãos. Você não toca o AMB-1, você cuida dele:
 escolhe uma peça e uma escala, tira notas, põe de volta, e deixa crescer.
@@ -210,7 +210,7 @@ fita). Cada uma lembra como você a deixou. Segure SAVE 1,5 s para a peça volta
 Uma página em cada botão, quatro valores nos KNOB 1–4; o SELECT passa por elas, e HOME, GLO e SEQ de novo
 dão a volta nas suas, numa ordem só: Partiture, Voice 1, 2, 3, Space, Setup, MIDI, Song, Tape, Gene, Deck, Tape Mod,
 Tape Mod 2, Tape Key, depois o sintetizador de vídeo da fonte para a saída: Visual, Osc e Osc 2 (com o Osc em uso),
-Shape, Mix, Video, Life, Mosh, Chroma, React, Screen. Os pontos à direita da linha dos knobs seguem essa ordem. Cada
+Shape, Mix, Video, Transform, Life, Mosh, Chroma, React, Screen. Os pontos à direita da linha dos knobs seguem essa ordem. Cada
 voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
 
 ### HOME: Partiture
@@ -279,8 +279,9 @@ com a música (os níveis, as batidas, as vozes, as notas). Nessas páginas as t
 | Chroma | Colorama | Poster | Pixel | Key |
 | React | Slot (1–4) | Source (Level, Bass, Mid, High, Beat, Voice 1–3, Notes, Chord, LFO, Random) | Target (qualquer ajuste destas páginas, ou All) | Depth |
 | Screen | Bars (Show, Auto, Hide: o nome da página e os knobs sobre a imagem) | Delay | Bright | Ear |
-| Osc | Freq | Wave (Sine, Tri, Saw, Square, Noise) | Angle (0–180°) | Scroll |
+| Osc | Freq | Wave (Sine, Tri, Saw, Square, Noise, Rings, Polygon, Spiral) | Angle (0–180°) | Scroll |
 | Osc 2 | Freq 2 (0: nenhum) | Combine (Add, Multiply, Diff, Warp, Field) | Warp | Sync (Free, Notes, Beat) |
+| Transform | Zoom (−100..100) | Rotate (−100..100) | Shift X | Shift Y |
 
 **Osc** (1.5.9) é uma imagem feita do zero, como num sistema LZX ou no Hydra: uma onda atravessando a tela (**Freq**
 faixas dela, a **Wave**, num **Angle**, andando pelo **Scroll**) e uma segunda em ângulo reto (**Freq 2**) que o
@@ -289,7 +290,12 @@ a própria imagem que a entorta, o que com o **Feedback** (página Video) é o m
 altura das notas define a frequência; Beat: as ondas recomeçam na batida. Com o Visual (ou o Layer da Mix) em Osc,
 o HOME vai da página Visual para Osc e Osc 2; o Morph da Life não o troca, e o genoma da Life e o Speed da
 Shape o movem como movem as outras imagens. Todo ajuste é alvo da React, e o resto da cadeia (o Kaleido do Mirror,
-o Feedback, o Colorama, o Layer) age sobre ela.
+o Feedback, o Colorama, o Layer) age sobre ela. No Wave, **Rings** (anéis saindo do centro), **Polygon** (o shape() do
+Hydra, nos Sides da página Shape, girado pelo Angle) e **Spiral** (Sides são os braços) são formas, não faixas.
+
+**Transform** (1.5.12, depois da Video) move o feedback, o quadro anterior voltando: **Zoom** para dentro ou para fora,
+**Rotate** para um lado ou outro, **Shift X** e **Shift Y** (o scale, o rotate e o scroll do Hydra na saída
+realimentada). Com o Feedback alto, fazem túneis, espirais e derivas de qualquer imagem; com Feedback 0 não fazem nada.
 
 ### GLO de novo: MIDI e Song
 

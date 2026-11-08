@@ -7,9 +7,9 @@ tap ENV
 wait 100
 tap ENV
 wait 100
-expect view 26
-turn SELECT 1 100
 expect view 27
+turn SELECT 1 100
+expect view 28
 spin K2 -100
 expect par157 4
 listen

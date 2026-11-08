@@ -86,7 +86,7 @@ static void ui_blit(uint32_t x, uint32_t y);
  * to the next group (the page it was left on) and from the last back to the layer's page; SELECT steps through the
  * voice's own pages; the voice's button stays lit on them */
 enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_SPACE, V_SETUP, V_TAPE, V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_TKEY, V_SONG,
-       V_MIDI, V_VIS, V_VID, V_SHAPE, V_VMIX, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN, V_OSC, V_OSC2, V_MAIN };
+       V_MIDI, V_VIS, V_VID, V_SHAPE, V_VMIX, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN, V_OSC, V_OSC2, V_XFORM, V_MAIN };
 #define VIS_OSC 8                               /* (VISUAL's Osc: drawn, not one MORPH turns into) */
 enum { S_GEN, S_VOICE, S_PLAY, S_ADSR, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
 #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
@@ -97,16 +97,17 @@ static const uint8_t GROUP0[NGROUP + 1] = {S_GEN, S_VOICE, S_OP, S_MOD, NSUB};  
  * the screen); Osc's two only while Osc is in use (page_on) */
 static const uint8_t PAGE_ORDER[] = {V_GARDEN, V_PAD, V_BELLS, V_BASS, V_SPACE, V_SETUP, V_MIDI, V_SONG, V_TAPE,
                                      V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_TKEY, V_VIS, V_OSC, V_OSC2, V_SHAPE, V_VMIX,
-                                     V_VID, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN};
+                                     V_VID, V_XFORM, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN};
 _Static_assert(sizeof PAGE_ORDER == V_MAIN, "every layer page once");
 static const char *const MAIN_NAME[V_MAIN] = {"Cortex", "Voice 1", "Voice 2", "Voice 3", "Space", "Setup", "Tape",
                                               "Gene", "Deck", "Tape Mod", "Tape Mod 2", "Tape Key", "Song", "MIDI", "Visual", "Video", "Shape", "Mix", "Life", "Mosh",
-                                              "Chroma", "React", "Screen", "Osc", "Osc 2"};
+                                              "Chroma", "React", "Screen", "Osc", "Osc 2",
+                                              "Transform"};
 static const char *const SUB_NAME[NSUB] = {"Gen", "Patch", "Play", "ADSR", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
 static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_FX, B_GLO, B_SEQ, B_SEQ, B_SEQ, B_SEQ, B_SEQ,
                                          B_SEQ, B_GLO, B_GLO, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME,
-                                         B_HOME, B_HOME, B_HOME, B_HOME};
+                                         B_HOME, B_HOME, B_HOME, B_HOME, B_HOME};
 static int tape_view(int v) { return v >= V_TAPE && v <= V_TKEY; }   /* the reel's six pages (SEQ, again ..) */
 static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
 #define KEY_NOTE0 53                            /* key 0: F3 (MIDI) */
@@ -176,6 +177,7 @@ static const uint16_t MAIN_KNOB[V_MAIN][4] = {
     {P_ST(VBARS), P_ST(VDELAY), P_ST(VBRIGHT), P_ST(VEAR)},   /* ... the screen */
     {P_ST(VOFREQ), P_ST(VOSHAPE), P_ST(VOANGLE), P_ST(VOSPEED)},   /* ... Osc: its oscillator */
     {P_ST(VOFREQ2), P_ST(VOCOMB), P_ST(VOWARP), P_ST(VOSYNC)},     /* ... a second, how they meet */
+    {P_ST(VXZOOM), P_ST(VXROT), P_ST(VXSHX), P_ST(VXSHY)},       /* ... the feedback's transform */
 };
 static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_GKIND, K_GBRIGHT, K_GMOTION, K_GVARY},  /* the generator (EDIT: a new voice, REC: varied) */
@@ -221,6 +223,7 @@ static const char *const MAIN_LABEL[V_MAIN][4] = {
     {"Bars", "Delay", "Bright", "Ear"},
     {"Freq", "Wave", "Angle", "Scroll"},
     {"Freq 2", "Combine", "Warp", "Sync"},
+    {"Zoom", "Rotate", "Shift X", "Shift Y"},
 };
 static const char *const SUB_LABEL[NSUB][4] = {
     {"Kind", "Bright", "Motion", "Vary"},
@@ -300,7 +303,7 @@ static uint32_t ui_lsig;                        /* (they, coarsely: the bands dr
 static uint8_t ui_wash_on;                      /* the bands' ground washed with them (not the visual's) */
 static int theme_of(int v)                     /* a page's palette: the voices', their own pages too */
 {
-    static const uint8_t T[V_MAIN] = {0, 2, 3, 4, 5, 6, 1, 1, 1, 1, 1, 1, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    static const uint8_t T[V_MAIN] = {0, 2, 3, 4, 5, 6, 1, 1, 1, 1, 1, 1, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     return T[view_main(v)];
 }
 #define K_BG (TH->bg)
@@ -1154,9 +1157,15 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
         break;
     case V_OSC:                                 /* an oscillator: its frequency, wave, angle, scroll */
         dice_par(P_ST(VOFREQ), 5, 80);
-        dice_par(P_ST(VOSHAPE), 0, 4);
+        dice_par(P_ST(VOSHAPE), 0, 7);
         dice_par(P_ST(VOANGLE), 0, 100);
         dice_par(P_ST(VOSPEED), -60, 60);
+        break;
+    case V_XFORM:                               /* the feedback zoomed, turned, carried */
+        dice_par(P_ST(VXZOOM), -40, 60);
+        dice_par(P_ST(VXROT), -50, 50);
+        dice_par(P_ST(VXSHX), -30, 30);
+        dice_par(P_ST(VXSHY), -30, 30);
         break;
     case V_OSC2:                                /* a second, how they meet, how far it bends, its sync */
         dice_par(P_ST(VOFREQ2), 0, 70);
@@ -1527,7 +1536,7 @@ static int page_step(int v, int dir, int visual)   /* the next page shown, dir +
 {
     int i = page_at(v) + dir;
     for (; i >= 0 && i < V_MAIN; i += dir)
-        if (page_on(PAGE_ORDER[i]) && (!visual || (PAGE_ORDER[i] >= V_VIS && PAGE_ORDER[i] <= V_OSC2)))
+        if (page_on(PAGE_ORDER[i]) && (!visual || (PAGE_ORDER[i] >= V_VIS && PAGE_ORDER[i] <= V_XFORM)))
             return PAGE_ORDER[i];
     return -1;
 }
@@ -1537,7 +1546,7 @@ static void button(int b)
     if (b == B_HOME) {                           /* the garden; again: its visual's page, the video synth's, its
                                                   * shape's, round */
         /* (the visual's pages in PAGE_ORDER, from the Screen back to the garden) */
-        const int nx = ui.view == V_GARDEN ? V_VIS : ui.view >= V_VIS && ui.view <= V_OSC2 ? page_step((int)ui.view, 1, 1)
+        const int nx = ui.view == V_GARDEN ? V_VIS : ui.view >= V_VIS && ui.view <= V_XFORM ? page_step((int)ui.view, 1, 1)
                                                                                          : V_GARDEN;
         set_view(nx < 0 ? V_GARDEN : nx);
         return;
@@ -1566,7 +1575,7 @@ static void button(int b)
         reel_button(b);
         return;
     }
-    if (ui.view >= V_VIS && ui.view <= V_OSC2 && (b == B_EDIT || b == B_REC)) {   /* the visual: a new genome; held */
+    if (ui.view >= V_VIS && ui.view <= V_XFORM && (b == B_EDIT || b == B_REC)) {   /* the visual: a new genome; held */
         if (b == B_EDIT) {
             vis_mutate(1.0f);
             vhold = 0;
@@ -1794,7 +1803,7 @@ static void input(void)
                 en_key(v, KEY_NOTE0 + (int)i, 1);
             } else if (ui.view == V_GARDEN) {    /* the Partiture: the note in or out of the scale */
                 toggle_note((int)((5u + i) % 12u));
-            } else if (ui.view >= V_VIS && ui.view <= V_OSC2) {   /* the visual's pages: the keys play it */
+            } else if (ui.view >= V_VIS && ui.view <= V_XFORM) {   /* the visual's pages: the keys play it */
                 vis_key((int)i);
             } else if (tape_view(ui.view) && proj.par[P_RL(SRC)] >= 6) {   /* the reel's, SOURCE Play: the voice
                                                   * (or all three) played, as the reel records it */
@@ -2708,7 +2717,7 @@ static float vis_rnd(void)                       /* 0..1 */
 }
 static int vis_full(void)                        /* the visual on the whole screen now */
 {
-    return (ui.view == V_GARDEN || (ui.view >= V_VIS && ui.view <= V_OSC2)) && !ui.help &&
+    return (ui.view == V_GARDEN || (ui.view >= V_VIS && ui.view <= V_XFORM)) && !ui.help &&
            proj.par[P_ST(VMODE)] < VIS_SCORE;   /* (the knob's: the matrix reads it in the frame) */
 }
 static void vis_palette(void)                    /* COLOUR: five stops, the page's theme or a palette of its own; HUE */
@@ -3121,7 +3130,7 @@ static void vis_react(void)                      /* this frame's settings: the k
         if (!src || !tg || !dp)
             continue;
         x = vis_src(src) * (float)dp * 0.01f;
-        for (k = ST_VMODE; k <= ST_VOSYNC; k++) {
+        for (k = ST_VMODE; k <= ST_VXSHY; k++) {
             const en_param_t *pi = en_param_info(P_SETP + k);
             const int span = pi->hi - pi->lo;
             int v;
@@ -3207,8 +3216,10 @@ static void vis_step(int mode)                   /* a frame of the field and the
     if (fb > 0.0f && keep) {                     /* FEEDBACK: the last frame back in, zoomed in and turned (the bass
                                                   * pushes it), fading by TRAILS */
         const float pu = (float)VPAR(VPULSE) * 0.01f, fl = (float)VPAR(VFLOW) * 0.01f,
-                    z = 1.0f - 0.07f * fb * G(1, -0.6f, 1.4f) - 0.03f * fb * vband[0] - 0.08f * pu * vbeat,
-                    an = fb * (0.05f * fm_sinf(vt * 0.37f) + 0.02f * vband[1] + G(2, -0.05f, 0.05f)),
+                    z = (1.0f - 0.07f * fb * G(1, -0.6f, 1.4f) - 0.03f * fb * vband[0] - 0.08f * pu * vbeat) *
+                        (1.0f - (float)VPAR(VXZOOM) * 0.0006f),   /* TRANSFORM's ZOOM: up to 6 % a frame, in or out */
+                    an = fb * (0.05f * fm_sinf(vt * 0.37f) + 0.02f * vband[1] + G(2, -0.05f, 0.05f)) +
+                         (float)VPAR(VXROT) * 0.0008f,   /* ROTATE: up to 0.08 rad a frame (90 degrees a second) */
                     ca = fm_cosf(an) * z, sa = fm_sinf(an) * z, ff = G(3, 0.04f, 0.22f), fa = 3.0f * fl * (0.5f + vband[2]);
         static int8_t flx[VF_H] PLAT_POOL, fly[VF_W] PLAT_POOL;   /* FLOW: the swirl the feedback is carried by
                                                                     * (sixteenths of a cell) */
@@ -3219,8 +3230,8 @@ static void vis_step(int mode)                   /* a frame of the field and the
         for (y = 0; y < VF_H; y++)
             for (x = 0; x < VF_W; x++) {
                 const float dx = (float)x - VCX, dy = (float)y - VCY;
-                const float fx = VCX + dx * ca - dy * sa + (float)flx[y] * 0.0625f,
-                            fy = VCY + dx * sa + dy * ca + (float)fly[x] * 0.0625f;   /* (between
+                const float fx = VCX + dx * ca - dy * sa + (float)flx[y] * 0.0625f - (float)VPAR(VXSHX) * 0.02f,
+                            fy = VCY + dx * sa + dy * ca + (float)fly[x] * 0.0625f - (float)VPAR(VXSHY) * 0.02f;   /* (between
                                                                                                     * four cells) */
                 const int sx = (int)fm_floorf(fx), sy = (int)fm_floorf(fy), wx = (int)((fx - (float)sx) * 256.0f),
                           wy = (int)((fy - (float)sy) * 256.0f);
@@ -3356,6 +3367,33 @@ static inline int osc_w(int w, int i)            /* wave w at i (a cycle in 256)
 }
 static uint32_t vo_ph1, vo_ph2;
 static uint8_t vo_beat_was;
+static inline float vo_atan2(float y, float x)   /* (an arctangent within 0.01 rad: enough for a picture) */
+{
+    const float ax = fm_fabsf(x), ay = fm_fabsf(y), a = fm_minf(ax, ay) / (fm_maxf(ax, ay) + 1e-9f), s = a * a;
+    float r = ((-0.0464964749f * s + 0.15931422f) * s - 0.327622764f) * s * a + a;
+    if (ay > ax)
+        r = 1.57079637f - r;
+    if (x < 0.0f)
+        r = 3.14159274f - r;
+    return y < 0.0f ? -r : r;
+}
+/* Osc's radial waves (WAVE 5 .. 7): its phase at (x, y) in a cycle's 256ths: Rings, out from the middle; Polygon, the
+ * same on SIDES sides (Hydra's shape(), turned by ANGLE); Spiral, the rings wound into SIDES arms */
+static int vo_radial(int w, int x, int y, float f1, float ang, int n, uint32_t ph)
+{
+    const float dx = (float)x - VCX, dy = (float)y - VCY, r = fm_sqrtf(dx * dx + dy * dy) * (1.0f / (float)VF_W);
+    float q = r;
+    if (w != 5) {
+        const float th = vo_atan2(dy, dx) - ang;
+        if (w == 6) {                           /* (the polygon's distance: its sides' apothem across the sector) */
+            const float sec = FM_TWO_PI / (float)n, t = th - sec * fm_floorf(th / sec) - sec * 0.5f;
+            q = r * fm_cosf(FM_PI / (float)n) / fm_cosf(t);
+        } else {                                /* (n arms: the angle a turn of n cycles) */
+            q = r + th * (float)n / (FM_TWO_PI * fm_maxf(f1, 0.1f));
+        }
+    }
+    return (int)((q * f1 + (float)ph * (1.0f / 65536.0f)) * 256.0f) & 255;
+}
 static void vis_osc(void)
 {
     const float ang = (float)VPAR(VOANGLE) * (FM_PI / 100.0f) + (vg[2] - 0.5f) * 0.6f,   /* (LIFE's genome turns it, */
@@ -3363,7 +3401,8 @@ static void vis_osc(void)
                                                   * paces it, as the other pictures) */
     float f1 = 0.5f * fm_exp2f((float)VPAR(VOFREQ) * 0.06f), f2 = VPAR(VOFREQ2) ? 0.5f * fm_exp2f((float)VPAR(VOFREQ2) * 0.06f)
                                                                                 : 0.0f;
-    const int w = VPAR(VOSHAPE) < 5 ? VPAR(VOSHAPE) : 0, comb = VPAR(VOCOMB), wa = VPAR(VOWARP) * 2,
+    const int w = VPAR(VOSHAPE) < 8 ? VPAR(VOSHAPE) : 0, comb = VPAR(VOCOMB), wa = VPAR(VOWARP) * 2,
+              ns = VPAR(VSIDES) < 3 ? 3 : VPAR(VSIDES),
               keep = VPAR(VFEED) * 255 / 100;   /* (drawn clean; FEEDBACK how much of the last frame stays under it) */
     int x, y;
     if (!vowave_ok) {                            /* the five waves, a cycle in 256 */
@@ -3400,7 +3439,7 @@ static void vis_osc(void)
                     p2 = (int32_t)vo_ph2 - (int32_t)(VCX * (float)dx2) + (int32_t)(((float)y - VCY) * (float)dy2);
             for (x = 0; x < VF_W; x++, p1 += dx1, p2 += dx2) {
                 const int b = f2 > 0.0f ? osc_w(w, (int)((uint32_t)p2 >> 8 & 255u)) : 128;
-                int i1 = (int)((uint32_t)p1 >> 8 & 255u), v;
+                int i1 = w >= 5 ? vo_radial(w, x, y, f1, ang, ns, vo_ph1) : (int)((uint32_t)p1 >> 8 & 255u), v;
                 if (comb == 3 && f2 > 0.0f)       /* Warp: the second bends the first */
                     i1 += ((b - 128) * wa) >> 6;
                 else if (comb == 4)               /* Field: the picture as it is bends it (Hydra's modulate(o0)) */

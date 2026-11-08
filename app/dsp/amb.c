@@ -72,8 +72,9 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     {"Chaos", 0, 100, 30},    {"Mosh", 0, 100, 35},     {"Sort", 0, 100, 15},     {"Corrupt", 0, 100, 20},
     {"Slice", 0, 100, 15},    {"Colorama", 0, 100, 0},  {"Poster", 0, 100, 0},    {"Pixel", 0, 100, 0},
     {"Key", 0, 100, 0},
-    {"Freq", 0, 100, 40},     {"Wave", 0, 4, 0},        {"Angle", 0, 100, 0},     {"Scroll", -100, 100, 20},
+    {"Freq", 0, 100, 40},     {"Wave", 0, 7, 0},        {"Angle", 0, 100, 0},     {"Scroll", -100, 100, 20},
     {"Freq 2", 0, 100, 0},    {"Combine", 0, 4, 1},     {"Warp", 0, 100, 30},     {"Osc sync", 0, 2, 0},
+    {"Zoom", -100, 100, 0},   {"Rotate", -100, 100, 0}, {"Shift X", -100, 100, 0}, {"Shift Y", -100, 100, 0},
     {"Bars", 0, 2, 0},        {"Delay", 1, 15, 4},      {"Bright", 0, 100, 50},
     {"Ear", 0, 100, 30},
     {"Source 1", 0, EN_AR_NSRC - 1, 2}, {"Target 1", 0, EN_AR_NTGT, 21}, {"Depth 1", -100, 100, 40},
@@ -340,8 +341,8 @@ void en_param_text(int i, int v, char *b)
                                            "Osc"};
         s = VL[(unsigned)v < 10u ? v : 0];
     } else if (i == P_ST(VOSHAPE)) {
-        static const char *const VW[5] = {"Sine", "Tri", "Saw", "Square", "Noise"};
-        s = VW[(unsigned)v < 5u ? v : 0];
+        static const char *const VW[8] = {"Sine", "Tri", "Saw", "Square", "Noise", "Rings", "Polygon", "Spiral"};
+        s = VW[(unsigned)v < 8u ? v : 0];
     } else if (i == P_ST(VOCOMB)) {
         static const char *const VC[5] = {"Add", "Multiply", "Diff", "Warp", "Field"};
         s = VC[(unsigned)v < 5u ? v : 0];

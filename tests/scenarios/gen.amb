@@ -6,7 +6,7 @@ tap ENV
 wait 100
 tap ENV
 wait 100
-expect view 25
+expect view 26
 expect par30 0
 tap EDIT
 wait 100

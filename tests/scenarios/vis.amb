@@ -83,6 +83,9 @@ wait 2000
 shot vis_video.png
 tap HOME
 wait 100
+expect view 25
+tap HOME
+wait 100
 expect view 18
 spin K1 60
 spin K2 40
@@ -129,7 +132,7 @@ spin K3 -30
 tap HOME
 wait 100
 expect view 21
-# 1.5.0: HOME a ninth time, the react matrix (slot 1: Bass to Mosh, 40); a tenth, the screen (BARS par280: Auto)
+# 1.5.0: HOME a ninth time, the react matrix (slot 1: Bass to Mosh, 40); a tenth, the screen (BARS par284: Auto)
 spin K1 2
 spin K2 3
 spin K3 2
@@ -161,6 +164,7 @@ tap HOME
 tap HOME
 tap HOME
 tap HOME
+tap HOME
 wait 100
 expect view 19
 spin K1 60
@@ -179,6 +183,7 @@ tap HOME
 tap HOME
 wait 100
 expect view 16
+tap HOME
 tap HOME
 tap HOME
 tap HOME
