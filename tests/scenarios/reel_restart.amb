@@ -1,0 +1,28 @@
+# 1.5.13: the reel sounds at once after PLAY stops and starts again, and after SPEED leaves Stop, forwards or reversed
+# (it waited a whole gene interval: at GENE 100 as long as the splice, a turn of the tape in silence)
+wait 3500
+tap SEQ
+wait 100
+tap EDIT
+wait 4000
+tap REC
+wait 200
+expect reelspl 1
+spin K2 100
+spin K4 -50
+expect par192 25
+wait 2000
+tap PLAY
+wait 3000
+tap PLAY
+peakreset
+wait 500
+expect peak_db_min -40
+spin K4 25
+expect par192 50
+wait 3000
+spin K4 -25
+expect par192 25
+peakreset
+wait 500
+expect peak_db_min -40

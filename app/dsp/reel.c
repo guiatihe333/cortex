@@ -642,6 +642,15 @@ static void reel_play(float *l, float *r, uint32_t n)
     glen = fm_maxf(L * fm_exp2f((rl_pf(TP_GENE) - 100.0f) * 0.08f), 441.0f);
     if (glen > L)
         glen = L;
+    {                                            /* (1.5.13) no gene sounding (after STOP, the tape stopped, a new
+                                                  * splice): the next at once, not after a whole interval (as long as
+                                                  * the splice, or longer, at GENE 100: silent a turn, reversed or not) */
+        int any = 0;
+        for (i = 0; i < RL_NG; i++)
+            any |= gn[i].on;
+        if (!any && rl_spawn > 0.0f)
+            rl_spawn = 0.0f;
+    }
     iv = morph <= 40 ? glen * (1.0f + (float)(40 - morph) * 0.1f)            /* gaps */
          : morph <= 55 ? glen * 0.97f                                       /* one after another, joined */
                        : glen / (1.0f + (float)(morph - 55) / 15.0f);       /* overlapping, to four */
