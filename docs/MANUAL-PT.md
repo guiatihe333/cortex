@@ -1,6 +1,6 @@
 # CORTEX
 
-O CORTEX (1.5.9; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
+O CORTEX (1.5.10; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
 de Brian Eno. Ele toca sozinho desde o momento em que é ligado: três vozes FM (cada uma respirando acordes, tocando
 loops ou deslizando um baixo, como você escolher), um eco curto, um loop de fita e um reverb de placa, e uma fita que grava tudo isso e toca de volta em grãos. Você não toca o AMB-1, você cuida dele:
 escolhe uma peça e uma escala, tira notas, põe de volta, e deixa crescer.
@@ -207,8 +207,11 @@ fita). Cada uma lembra como você a deixou. Segure SAVE 1,5 s para a peça volta
 
 ## 7. As páginas
 
-Uma página em cada botão, quatro valores nos KNOB 1–4; o SELECT passa por elas: Partiture, Voice 1, 2, 3, Space, Setup,
-Tape, Gene, Deck, Tape Mod, Tape Mod 2. Cada voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
+Uma página em cada botão, quatro valores nos KNOB 1–4; o SELECT passa por elas, e HOME, GLO e SEQ de novo
+dão a volta nas suas, numa ordem só: Partiture, Voice 1, 2, 3, Space, Setup, MIDI, Song, Tape, Gene, Deck, Tape Mod,
+Tape Mod 2, Tape Key, depois o sintetizador de vídeo da fonte para a saída: Visual, Osc e Osc 2 (com o Osc em uso),
+Shape, Mix, Video, Life, Mosh, Chroma, React, Screen. Os pontos à direita da linha dos knobs seguem essa ordem. Cada
+voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
 
 ### HOME: Partiture
 
@@ -253,7 +256,9 @@ As três iguais:
 - **Root:** a tônica do tom.
 - **Tune:** afinação fina, ±50 cents.
 - **MIDI out:** ligado ou desligado.
-- **Lights:** On: as teclas acendem a escala e os botões apagados brilham de leve. Keys: só as teclas. Off.
+- **Lights:** On: as teclas acendem a escala e os botões apagados brilham de leve. Keys: só as teclas. Off. Visual
+  (1.5.10): onde o sintetizador de vídeo está na tela, as teclas seguem a luz dele, a imagem atravessando o teclado
+  (acesa, meia, fraca ou apagada; as teclas têm uma cor só, então a luz, não as cores); fora dele, a escala como no On.
 
 O canto de cima à direita desta página mostra quanto do tempo do FM-1 o som está usando (CPU) e, depois de um
 **X**, quantas vezes desde que ligou o som não coube no tempo (uma sobrecarga: veja [Problemas](#s11)).
@@ -282,7 +287,8 @@ faixas dela, a **Wave**, num **Angle**, andando pelo **Scroll**) e uma segunda e
 **Combine** soma, multiplica (uma grade), tira a diferença, ou deixa entortar a primeira (**Warp**); no **Field** é
 a própria imagem que a entorta, o que com o **Feedback** (página Video) é o modulate do Hydra. **Sync** Notes: a
 altura das notas define a frequência; Beat: as ondas recomeçam na batida. Com o Visual (ou o Layer da Mix) em Osc,
-o HOME vai da página Visual para Osc e Osc 2. Todo ajuste é alvo da React, e o resto da cadeia (o Kaleido do Mirror,
+o HOME vai da página Visual para Osc e Osc 2; o Morph da Life não o troca, e o genoma da Life e o Speed da
+Shape o movem como movem as outras imagens. Todo ajuste é alvo da React, e o resto da cadeia (o Kaleido do Mirror,
 o Feedback, o Colorama, o Layer) age sobre ela.
 
 ### GLO de novo: MIDI e Song

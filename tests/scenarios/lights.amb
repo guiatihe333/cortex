@@ -1,0 +1,20 @@
+# 1.5.10: Lights Visual (Setup's LIGHTS, 3): the keys follow the video synth's picture across them (lit #, half or
+# dim +, off .), changing with it; on a page without the picture, the scale as On
+wait 1500
+tap GLO
+wait 100
+expect view 5
+spin K4 2
+listen
+where
+said Lights Visual
+tap HOME
+wait 2000
+leds
+wait 700
+leds
+wait 700
+leds
+tap GLO
+wait 300
+leds

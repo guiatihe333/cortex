@@ -92,6 +92,13 @@ enum { S_GEN, S_VOICE, S_PLAY, S_ADSR, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP
 #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
 #define NGROUP 4
 static const uint8_t GROUP0[NGROUP + 1] = {S_GEN, S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
+/* (1.5.10) the layers' pages in the order SELECT, HOME and the page dots take them: the video synth from its source
+ * out (what makes the picture, its shape, a second over it, its motion, its breaking, its colour, what moves it,
+ * the screen); Osc's two only while Osc is in use (page_on) */
+static const uint8_t PAGE_ORDER[] = {V_GARDEN, V_PAD, V_BELLS, V_BASS, V_SPACE, V_SETUP, V_MIDI, V_SONG, V_TAPE,
+                                     V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_TKEY, V_VIS, V_OSC, V_OSC2, V_SHAPE, V_VMIX,
+                                     V_VID, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN};
+_Static_assert(sizeof PAGE_ORDER == V_MAIN, "every layer page once");
 static const char *const MAIN_NAME[V_MAIN] = {"Cortex", "Voice 1", "Voice 2", "Voice 3", "Space", "Setup", "Tape",
                                               "Gene", "Deck", "Tape Mod", "Tape Mod 2", "Tape Key", "Song", "MIDI", "Visual", "Video", "Shape", "Mix", "Life", "Mosh",
                                               "Chroma", "React", "Screen", "Osc", "Osc 2"};
@@ -506,7 +513,7 @@ static void knob_range(int k, int *lo, int *hi)
     } else if (k == K_TKEY || k == K_TSHIFT) {
         *hi = k == K_TKEY ? 24 : 0;
     } else {
-        *hi = k == K_LEDS ? 2 : k == K_CPU ? 100 : 0;
+        *hi = k == K_LEDS ? 3 : k == K_CPU ? 100 : 0;
     }
 }
 
@@ -707,7 +714,7 @@ static void knob_text(int k, char *b)
     } else if (off >= 0) {
         patch_text(off, v, b);
     } else if (k == K_LEDS) {                    /* On: the keys, and the unlit buttons glow; Keys: no glow */
-        cat_s(b, v == 2 ? "Keys" : v ? "On" : "Off");
+        cat_s(b, v == 3 ? "Visual" : v == 2 ? "Keys" : v ? "On" : "Off");
     } else if (k == K_CPU) {
         b = cat_i(b, v, 0);
         cat_s(b, "%");
@@ -1503,18 +1510,36 @@ static void reel_button(int b)                  /* on the reel's pages: REC over
         say("TAPE", en_reel_nspl ? "OVERDUB" : "RECORDING");
     }
 }
+static int page_on(int v)                       /* a layer page shown in the round (Osc's: Osc in use) */
+{
+    return (v != V_OSC && v != V_OSC2) || proj.par[P_ST(VMODE)] == VIS_OSC || proj.par[P_ST(VLAYER)] == VIS_OSC + 1;
+}
+static int page_at(int v)                       /* its place in PAGE_ORDER */
+{
+    int i;
+    for (i = 0; i < V_MAIN; i++)
+        if (PAGE_ORDER[i] == v)
+            return i;
+    return 0;
+}
+static int page_step(int v, int dir, int visual)   /* the next page shown, dir +1 / -1 (-1: none that way); visual:
+                                                 * the video synth's alone */
+{
+    int i = page_at(v) + dir;
+    for (; i >= 0 && i < V_MAIN; i += dir)
+        if (page_on(PAGE_ORDER[i]) && (!visual || (PAGE_ORDER[i] >= V_VIS && PAGE_ORDER[i] <= V_OSC2)))
+            return PAGE_ORDER[i];
+    return -1;
+}
 static void button(int b)
 {
     int v;
     if (b == B_HOME) {                           /* the garden; again: its visual's page, the video synth's, its
                                                   * shape's, round */
-        const int osc = proj.par[P_ST(VMODE)] == VIS_OSC || proj.par[P_ST(VLAYER)] == VIS_OSC + 1;   /* (Osc in use:
-                                                  * its pages after the Visual's) */
-        set_view(ui.view == V_GARDEN ? V_VIS : ui.view == V_VIS ? (osc ? V_OSC : V_VID) : ui.view == V_OSC ? V_OSC2
-                 : ui.view == V_OSC2 ? V_VID : ui.view == V_VID ? V_SHAPE
-                 : ui.view == V_SHAPE ? V_VMIX : ui.view == V_VMIX ? V_LIFE : ui.view == V_LIFE ? V_MOSH
-                 : ui.view == V_MOSH ? V_CHROMA : ui.view == V_CHROMA ? V_REACT : ui.view == V_REACT ? V_SCREEN
-                 : V_GARDEN);
+        /* (the visual's pages in PAGE_ORDER, from the Screen back to the garden) */
+        const int nx = ui.view == V_GARDEN ? V_VIS : ui.view >= V_VIS && ui.view <= V_OSC2 ? page_step((int)ui.view, 1, 1)
+                                                                                         : V_GARDEN;
+        set_view(nx < 0 ? V_GARDEN : nx);
         return;
     }
     if (b == B_GLO) {                            /* Setup; again: MIDI, the song's page, round */
@@ -1803,9 +1828,9 @@ static void input(void)
                 itoa_u((uint32_t)proj.par[P_TEMPO], t);
                 say("TEMPO", t);
             }
-        } else if (ui.view < V_MAIN) {            /* the layers' pages, one after another */
-            int v = (int)ui.view + (e > 0 ? 1 : -1);
-            if (v >= 0 && v < V_MAIN)
+        } else if (ui.view < V_MAIN) {            /* the layers' pages, one after another (PAGE_ORDER) */
+            const int v = page_step((int)ui.view, e > 0 ? 1 : -1, 0);
+            if (v >= 0)
                 set_view(v);
         } else {                                 /* a voice's own, one after another; before the first its layer's */
             int x = view_vox(ui.view), s = view_sub(ui.view) + (e > 0 ? 1 : -1);
@@ -3137,7 +3162,7 @@ static void vis_step(int mode)                   /* a frame of the field and the
             vmw = 0.0f;
         }
     }
-    if (VPAR(VMORPH) && vnext < 0) {   /* MORPH: now and then another picture, the geometry with it */
+    if (VPAR(VMORPH) && vnext < 0 && VPAR(VMODE) != VIS_OSC) {   /* (not Osc: a picture made by hand) */   /* MORPH: now and then another picture, the geometry with it */
         vmorph_left -= 0.05f;
         if (vmorph_left <= 0.0f) {
             int n = (int)(vis_rnd() * 8.0f);
@@ -3333,7 +3358,9 @@ static uint32_t vo_ph1, vo_ph2;
 static uint8_t vo_beat_was;
 static void vis_osc(void)
 {
-    const float ang = (float)VPAR(VOANGLE) * (FM_PI / 100.0f), sc = (float)VPAR(VOSPEED) * 0.01f;
+    const float ang = (float)VPAR(VOANGLE) * (FM_PI / 100.0f) + (vg[2] - 0.5f) * 0.6f,   /* (LIFE's genome turns it, */
+                sc = (float)VPAR(VOSPEED) * 0.01f * (0.25f + 1.75f * (float)VPAR(VSPEED) * 0.01f) * 0.5f;   /* SPEED
+                                                  * paces it, as the other pictures) */
     float f1 = 0.5f * fm_exp2f((float)VPAR(VOFREQ) * 0.06f), f2 = VPAR(VOFREQ2) ? 0.5f * fm_exp2f((float)VPAR(VOFREQ2) * 0.06f)
                                                                                 : 0.0f;
     const int w = VPAR(VOSHAPE) < 5 ? VPAR(VOSHAPE) : 0, comb = VPAR(VOCOMB), wa = VPAR(VOWARP) * 2,
@@ -3360,8 +3387,8 @@ static void vis_osc(void)
         vo_ph1 = vo_ph2 = 0;                     /* Beat: from the top */
     }
     vo_beat_was = vbeat > 0.95f;
-    f1 = fm_minf(f1, 60.0f);
-    f2 = fm_minf(f2, 60.0f);
+    f1 = fm_minf(f1 * G(1, 0.8f, 1.25f), 60.0f);   /* (and LIFE's genome breathes in its frequencies) */
+    f2 = fm_minf(f2 * G(3, 0.8f, 1.25f), 60.0f);
     vo_ph1 += (uint32_t)(int32_t)(sc * 0.2f * 65536.0f);   /* SCROLL: up to a fifth of a cycle a frame */
     vo_ph2 -= (uint32_t)(int32_t)(sc * 0.14f * 65536.0f);
     {
@@ -4041,8 +4068,8 @@ static void draw_knobs(void)
         xt = xd - 5 - text_w(&FONT_XS, t);
         cv_rect(4, 5, xt - 9, 1, K_LINE);
         cv_text(xt, -1, &FONT_XS, t, K_ACC);
-        for (k = 0; k < V_MAIN; k++)
-            cv_round(xd + k * 6, 3, 4, 4, 2, k == view_main(ui.view) ? K_ACC : K_LINE);
+        for (k = 0; k < V_MAIN; k++)              /* (in PAGE_ORDER) */
+            cv_round(xd + k * 6, 3, 4, 4, 2, PAGE_ORDER[k] == view_main(ui.view) ? K_ACC : K_LINE);
     }
     for (i = 0; i < 4; i++) {
         int k = view_knob(ui.view, (int)i), lo, hi, v, hot = now_touch && ui.touched == (int)i;
@@ -4081,11 +4108,39 @@ static void leds(void)
         b |= 1u << B_PLAY;
     if (en_frozen)
         b |= 1u << B_REC;
+    if (proj.leds == 3 && vis_ok && vis_full()) {   /* Visual: the keys the picture across them, its middle third:
+                                                  * each key its column's brightest, against the frame's; lit,
+                                                  * half, dim, off (the buttons glow as On) */
+        uint8_t col[32];
+        uint32_t kb = 0, km = 0, kd = 0;
+        int mx = 1, x, y;
+        for (i = 0; i < NKEYS; i++) {
+            int m = 0;
+            x = (int)((i * VF_W + VF_W / 2) / NKEYS);
+            for (y = VF_H / 3; y < VF_H * 2 / 3; y += 2)
+                m = vf[y][x] > m ? vf[y][x] : m;
+            col[i] = (uint8_t)m;
+            mx = m > mx ? m : mx;
+        }
+        for (i = 0; i < NKEYS; i++) {
+            const int l = col[i] * 255 / (mx < 96 ? 96 : mx);   /* (a dark frame stays dark) */
+            if (l > 170)
+                kb |= 1u << i;
+            else if (l > 100)
+                km |= 1u << i;
+            else if (l > 40)
+                kd |= 1u << i;
+        }
+        plat_lights(b, kb, ~b & ((1u << NB) - 1u), kd, 1);
+        plat_lights_mid(0, km);
+        return;
+    }
     if (proj.leds)
         for (i = 0; i < NKEYS; i++)
             if (ap >> ((5u + i) % 12u) & 1u)
                 k |= 1u << i;
-    plat_glow(proj.leds == 1);
+    plat_lights_mid(0, 0);
+    plat_glow(proj.leds == 1 || proj.leds == 3);
     plat_leds(b, k);
 }
 

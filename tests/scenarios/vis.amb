@@ -42,15 +42,6 @@ spin K1 -8
 expect par240 0
 tap HOME
 wait 100
-expect view 15
-spin K1 40
-spin K2 40
-spin K3 20
-spin K4 40
-wait 2000
-shot vis_video.png
-tap HOME
-wait 100
 expect view 16
 spin K1 1
 expect par248 1
@@ -80,6 +71,16 @@ shot vis_layer.png
 # 1.4.22: HOME a sixth time, its life (MORPH par256, MUTATE par257, FLOW par258, CHAOS par259); the keys play it
 # (F3 .. B3 a picture each: A3, key 4, Tunnel), EDIT a new genome
 spin K1 -6
+# 1.5.10: the video synth's motion after the layer (PAGE_ORDER): FEEDBACK par244, RGB par245, HUE par246, SYNC par247
+tap HOME
+wait 100
+expect view 15
+spin K1 40
+spin K2 40
+spin K3 20
+spin K4 40
+wait 2000
+shot vis_video.png
 tap HOME
 wait 100
 expect view 18
@@ -148,7 +149,6 @@ wait 100
 expect view 0
 tap HOME
 tap HOME
-tap HOME
 wait 100
 spin K1 6
 expect par248 6
@@ -157,6 +157,7 @@ shot vis_rutt.png
 # 1.4.25: the geometry broken with the picture (Polygon under MOSH, CORRUPT, SLICE high)
 spin K1 -5
 spin K3 -4
+tap HOME
 tap HOME
 tap HOME
 tap HOME
@@ -176,9 +177,9 @@ tap HOME
 tap HOME
 tap HOME
 tap HOME
-tap HOME
 wait 100
 expect view 16
+tap HOME
 tap HOME
 tap HOME
 tap HOME

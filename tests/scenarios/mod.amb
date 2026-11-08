@@ -104,11 +104,11 @@ expect view 6
 tap HOME
 wait 100
 expect view 0
-# SELECT walks the layers' pages only (Setup, then the reel's five, the song's, the last)
+# SELECT walks the layers' pages only, in PAGE_ORDER (Setup, MIDI, Song, then the reel's: Tape Mod the sixth)
 tap GLO
 wait 100
 turn SELECT 6 100
-expect view 11
+expect view 9
 wav mod.wav
 wait 20000
 wavstop

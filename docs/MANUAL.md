@@ -1,6 +1,6 @@
 # CORTEX
 
-CORTEX (1.5.9; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
+CORTEX (1.5.10; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
 plays itself from the moment it's switched on: three FM voices (each breathing chords, ringing loops or gliding a
 bass, as you choose), a short echo, a tape loop and a plate reverb, and a reel of tape
 that records it all and plays it back as grains. You don't perform it, you tend it: pick a piece and a scale, take
@@ -203,8 +203,11 @@ recipe. Tune, MIDI out and Lights are the same for all.
 
 ## 7. The pages
 
-A page on each button, four values on KNOB 1–4; SELECT steps through them: Partiture, Voice 1, 2, 3, Space, Setup, Tape,
-Gene, Deck, Tape Mod, Tape Mod 2. Each voice has more pages of its own (ENV, ARP or LFO again).
+A page on each button, four values on KNOB 1–4; SELECT steps through them, and HOME, GLO and SEQ
+again go round theirs, in one order: Partiture, Voice 1, 2, 3, Space, Setup, MIDI, Song, Tape, Gene, Deck, Tape Mod,
+Tape Mod 2, Tape Key, then the video synth from its source out: Visual, Osc and Osc 2 (while Osc is in use), Shape, Mix,
+Video, Life, Mosh, Chroma, React, Screen. The dots at the right of the knobs' rule are in that order. Each voice has
+more pages of its own (ENV, ARP or LFO again).
 
 ### HOME: Partiture
 
@@ -247,7 +250,9 @@ The three alike:
 - **Root:** the key's root note.
 - **Tune:** fine tuning, ±50 cents.
 - **MIDI out:** on or off.
-- **Lights:** On: the keys light the scale and the unlit buttons glow dimly. Keys: the key lights only. Off.
+- **Lights:** On: the keys light the scale and the unlit buttons glow dimly. Keys: the key lights only. Off. Visual
+  (1.5.10): where the video synth is on the screen, the keys follow its light, the picture across the keyboard (lit,
+  half, dim or off; the keys have one colour, so its light, not its colours); elsewhere, the scale as On.
 
 The top right of this page shows how much of the FM-1's time the sound takes (CPU) and, after an **X**, how many
 times since it started the sound ran out of time (an overload: see [Troubleshooting](#s11)).
@@ -276,7 +281,8 @@ stripes of it, its **Wave**, at an **Angle**, moving by **Scroll**), and a secon
 **Combine** adds, multiplies (a grid), takes the difference of, or lets bend the first (**Warp**); **Field** lets the
 picture as it is bend it, which with **Feedback** (the Video page) is Hydra's modulate. **Sync** Notes: the notes'
 pitch sets the frequency; Beat: the waves start again on the beat. With Visual (or Mix's Layer) at Osc, HOME goes
-from the Visual page to Osc and Osc 2. Every setting is a React target, and the rest of the chain (Mirror's Kaleido,
+from the Visual page to Osc and Osc 2; Life's Morph leaves it alone, and Life's genome and Shape's Speed move it
+as they move the other pictures. Every setting is a React target, and the rest of the chain (Mirror's Kaleido,
 Feedback, Colorama, Layer) works on it.
 
 ### GLO again: MIDI and Song

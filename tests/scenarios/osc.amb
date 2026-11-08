@@ -7,7 +7,7 @@ wait 100
 expect view 14
 tap HOME
 wait 100
-expect view 15
+expect view 16
 tap HOME
 tap HOME
 tap HOME
@@ -46,4 +46,4 @@ wait 1500
 shot osc2.png
 tap HOME
 wait 100
-expect view 15
+expect view 16
