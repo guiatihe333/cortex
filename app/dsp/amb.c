@@ -906,6 +906,7 @@ typedef struct {
     float hf;                                   /* a chord: a handoff's fade (1 normal) */
     float vel, out, lv;                         /* the loops: the strike's velocity, the patch's level, MOD's LEVEL */
     int32_t wait, held;                         /* the loops: samples until it rings (a hand), until it is let go */
+    int32_t slen;                               /* the loops: a song's note, held this long (samples; 0: the Gate's) */
     uint8_t midi_note, hand, gen, up;           /* hand: 1 fading out of the old key, 2 into the new; gen: the patch it
                                                  * sings (its voice's gen as it started); up: its key let go */
     uint8_t on, rung, loop, fade;               /* the loops: sounding, started, its loop; shed: blocks to silence */
@@ -921,6 +922,7 @@ typedef struct {
                                                  * as on the patch's, struck each time (patch_decays) */
     int rs;                                     /* the bass: blocks to a new patch's restrike (the knob at rest) */
     int32_t held;                               /* the bass: samples until its key is let go; 0 let go */
+    int32_t slen;                               /* the bass: a song's note, held this long at its strike (0: the Gate's) */
     float xf;                                   /* the bass: the restrike's fade */
     int8_t loop_note[EN_NLOOP][EN_LOOP_MAX];    /* the loops: each loop's notes (scale steps from the chord), -1 rest */
     uint8_t loop_vel[EN_NLOOP][EN_LOOP_MAX], loop_pos[EN_NLOOP], loop_rest[EN_NLOOP];
@@ -966,6 +968,14 @@ static const uint8_t *mod_patch(int g, const uint8_t *src, uint8_t *dst);
 static void gen_note(int g);
 /* the ADSR: the carriers' envelope from the four knobs (attack, decay to the sustain's level, release), as DX7 rates
  * (99 at once .. 24 over seconds) and levels; the modulators keep the patch's */
+static uint8_t adsr_level(int s)                /* the Sustain, s % of full, as a DX7 level (0.75 dB a step) */
+{
+    float l;
+    if (s <= 0)
+        return 0;
+    l = 99.0f + 20.0f * fm_log2f((float)s * 0.01f) * 0.30103f / 0.75f;
+    return (uint8_t)(l < 0.0f ? 0.0f : l + 0.5f);
+}
 static void adsr_patch(int v, uint8_t *p)
 {
     const uint32_t car = fm6_carriers(p[FP_ALG] & 31u);
@@ -980,7 +990,7 @@ static void adsr_patch(int v, uint8_t *p)
         o[FP_R1 + 2] = 99;
         o[FP_R1 + 3] = (uint8_t)(99 - r * 3 / 4);
         o[FP_L1] = 99;
-        o[FP_L1 + 1] = o[FP_L1 + 2] = (uint8_t)(su * 99 / 100);
+        o[FP_L1 + 1] = o[FP_L1 + 2] = adsr_level(su);
         o[FP_L1 + 3] = 0;
     }
 }
@@ -1057,6 +1067,7 @@ static void chord_handoff(int v)
 /* a chord change: a note the new chord doesn't have fades out in about a second and breathes in on its new note; a
  * note the chords share holds to the end of its breath */
 static int chord_pcs[4], chord_nt;
+static const uint8_t *song;                     /* (the song playing: below) */
 static void chord_leave(int v)
 {
     int i, k;
@@ -1065,8 +1076,8 @@ static void chord_leave(int v)
         int pc = n->midi_note % 12, shared = 0;
         for (k = 0; k < chord_nt; k++)
             shared |= chord_pcs[k] == pc;
-        if (n->amp > 0.002f && !shared && !n->hand)
-            n->hand = 1;
+        if (n->amp > 0.002f && !shared && (!n->hand || (song && n->hand == 2)))
+            n->hand = 1;                         /* (a song's chords: again, from where its fade in got to) */
         else if (n->amp <= 0.002f && !n->hand)
             n->note = n->target;
     }
@@ -1076,8 +1087,8 @@ static void chord_coefs(int v, int i)           /* every FM6 block (32 samples):
 {
     vnote_t *n = &vc[v].n[i];
     float br;
-    if (n->hand == 1) {                         /* out of the old key */
-        n->hf -= HAND_STEP;
+    if (n->hand == 1) {                         /* out of the old key (a song's chords: four times as quick) */
+        n->hf -= song ? 4.0f * HAND_STEP : HAND_STEP;
         if (n->hf <= 0.0f) {
             n->hf = 0.0f;
             n->hand = 2;
@@ -1085,7 +1096,7 @@ static void chord_coefs(int v, int i)           /* every FM6 block (32 samples):
             chord_breathe(v, i);
         }
     } else if (n->hand == 2) {                  /* into the new */
-        n->hf += HAND_STEP * 0.6f;
+        n->hf += song ? 2.5f * HAND_STEP : HAND_STEP * 0.6f;
         if (n->hf >= 1.0f) {
             n->hf = 1.0f;
             n->hand = 0;
@@ -1104,6 +1115,8 @@ static void chord_coefs(int v, int i)           /* every FM6 block (32 samples):
                                                  * at GATE of it (its sounding part, 0.9), the level steady */
         if (!n->up && n->t >= (GATE_NAT(v) ? step_len * n->rate * (1.0f / 32.0f) : GATE_F(v) * 0.9f)) {
             fm6_note_key(&n->fm, n->vp, 0);
+            if (en_playing)
+                midi(0x80u | (uint32_t)v, n->midi_note, 0);   /* (MIDI out let go with it) */
             n->up = 1;
         }
         br = 0.7f;
@@ -2436,7 +2449,7 @@ static float fm_gain(const fm6_note_t *n, const uint8_t *p)   /* a note's loudes
     return (float)g * FM_SCALE;
 }
 
-static void bell_voice(int v, int l, int n, float vel, int32_t wait)
+static void bell_voice(int v, int l, int n, float vel, int32_t wait, int32_t slen)
 {
     voice_t *c = &vc[v];
     int i, best = 0;
@@ -2480,6 +2493,7 @@ static void bell_voice(int v, int l, int n, float vel, int32_t wait)
     b->gl = fm_cosf(p);
     b->gr = fm_sinf(p);
     b->wait = wait;
+    b->slen = slen;
     if (first_role(ROLE_LOOPS) == v)
         en_loop_glow[l] = 1.0f;
     midi(0x90u | (uint32_t)v, (uint32_t)n, (uint32_t)(vel * 110.0f));
@@ -2490,9 +2504,9 @@ static void bell_ring(int v, int l, int slot)
     int n = bell_note(v, l, vc[v].loop_note[l][slot]);
     float vel = (float)vc[v].loop_vel[l][slot] * 0.01f;
     int32_t wait = irand(2600);                 /* a human hand: up to 60 ms late */
-    bell_voice(v, l, n, vel, wait);
+    bell_voice(v, l, n, vel, wait, 0);
     if (n + 12 <= 103 && frand() < 0.08f + 0.12f * fm_maxf(arcm, 0.0f))
-        bell_voice(v, l, n + 12, vel * 0.4f, wait + 300 + irand(2000));   /* now and then, its octave */
+        bell_voice(v, l, n + 12, vel * 0.4f, wait + 300 + irand(2000), 0);   /* now and then, its octave */
 }
 
 /* ------------------------------------------------------------------ a song --- */
@@ -2643,14 +2657,18 @@ static void song_step(void)                      /* a sixteenth of the song */
             n -= 12;
         while (n < 36)
             n += 12;
-        if (vc[v].role == ROLE_BASS)
+        if (vc[v].role == ROLE_BASS) {
+            vc[v].slen = (int32_t)((float)song_at(1, pos) * step_len);   /* (its length, as the file has it) */
             bass_note(v, n > 96 ? n - 12 : n);   /* (one at a time, on the beat) */
-        else
-            bell_voice(v, pos & 3, n, 0.55f + 0.004f * (float)(song_at(1, pos) < 8 ? song_at(1, pos) : 8) * 10.0f, wait);
+        } else {
+            bell_voice(v, pos & 3, n, 0.55f + 0.004f * (float)(song_at(1, pos) < 8 ? song_at(1, pos) : 8) * 10.0f, wait,
+                       (int32_t)((float)song_at(1, pos) * step_len));
+        }
     }
     if (f > 0.0f && (n = song_at(2, pos)) != 0 && (v = song_bass_v) >= 0 && frand() < f) {   /* the bass */
         n += song_tr();
         if (vc[v].role == ROLE_BASS) {
+            vc[v].slen = (int32_t)((float)song_at(3, pos) * step_len);   /* (its length, as the file has it) */
             bass_to(v, n % 12);                  /* (its octave the voice's) */
         } else {                                 /* on a Loops voice, low */
             n += 12 * PL(v, OCT);
@@ -2658,7 +2676,7 @@ static void song_step(void)                      /* a sixteenth of the song */
                 n -= 12;
             while (n < 36)
                 n += 12;
-            bell_voice(v, 3, n, 0.8f, 0);
+            bell_voice(v, 3, n, 0.8f, 0, (int32_t)((float)song_at(3, pos) * step_len));
         }
     }
     if (++song_pos >= (uint32_t)song_n)
@@ -3489,8 +3507,9 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
             n->pr = n->gr;
             n->out = c->gain;
             n->lv = 1.0f;
-            if (PL(v, ENV) != ENV_AMB) {         /* the patch's envelopes (or the ADSR): held GATE of a bar */
-                n->held = (int32_t)(GATE_NAT(v) ? step_len : step_len * 16.0f * GATE_F(v));
+            if (PL(v, ENV) != ENV_AMB) {         /* the patch's envelopes (or the ADSR): held GATE of a bar (a
+                                                 * song's note: its own length) */
+                n->held = n->slen > 0 ? n->slen : (int32_t)(GATE_NAT(v) ? step_len : step_len * 16.0f * GATE_F(v));
             } else {                             /* AMB-1's: a bell held at a sustain let go after a beat */
                 uint32_t car = fm6_carriers(p[FP_ALG] & 31u), j2, sus = 0;
                 for (j2 = 0; j2 < 6u; j2++)
@@ -3500,8 +3519,10 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
             n->rung = 1;
         } else if (n->held > 0) {
             n->held -= FM6_N;
-            if (n->held <= 0)
+            if (n->held <= 0) {
                 fm6_note_key(&n->fm, p, 0);
+                midi(0x80u | (uint32_t)v, n->midi_note, 0);   /* (MIDI out let go with it) */
+            }
         }
         lv = fm6_lfo_sample(&n->lfo);
         ld = fm6_lfo_delay(&n->lfo);
@@ -3570,13 +3591,17 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
             } else {
                 const int st = bass_step(v);
                 note_strike(v, 0, vpat[v], (int32_t)n->target, 100, n->amp < 1e-4f);
-                c->held = (int32_t)(GATE_NAT(v) ? step_len : (st ? (float)st * step_len : drift_total) * GATE_F(v));
+                c->held = c->slen > 0 ? c->slen         /* (a song's note: its own length) */
+                          : (int32_t)(GATE_NAT(v) ? step_len : (st ? (float)st * step_len : drift_total) * GATE_F(v));
             }
         }
-        if (c->held > 0 && (c->held -= FM6_N) <= 0)
+        if (c->held > 0 && (c->held -= FM6_N) <= 0) {
             fm6_note_key(&n->fm, n->vp, 0);
+            midi(0x80u | (uint32_t)v, n->midi_note, 0);   /* (MIDI out let go with it) */
+        }
     }
     c->strike = 0;
+    c->slen = 0;
     if (n->amp < 1e-5f && !en_playing) {
         n->amp = 0.0f;
     } else {

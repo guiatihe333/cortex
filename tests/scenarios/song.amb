@@ -13,6 +13,10 @@ wait 100
 expect par19 0
 expect pool 0xAB5
 expect par18 100
+# 1.5.8: a song chosen by hand plays every note of it: Follow to 100
+listen
+where
+said Follow 100
 wait 4000
 shot song.png
 # GLO again: back to Setup

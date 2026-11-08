@@ -1,6 +1,6 @@
 # CORTEX
 
-O CORTEX (1.5.7; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
+O CORTEX (1.5.8; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
 de Brian Eno. Ele toca sozinho desde o momento em que é ligado: três vozes FM (cada uma respirando acordes, tocando
 loops ou deslizando um baixo, como você escolher), um eco curto, um loop de fita e um reverb de placa, e uma fita que grava tudo isso e toca de volta em grãos. Você não toca o AMB-1, você cuida dele:
 escolhe uma peça e uma escala, tira notas, põe de volta, e deixa crescer.
@@ -284,9 +284,11 @@ GLO na Setup abre a **MIDI**, depois a **Song**, e volta à Setup.
   essa voz. A linha de cima conta o que chega por cada porta (U o USB, J o conector, B o Bluetooth) e o canal da
   última nota.
 - **Song:** uma música de um arquivo MIDI (veja [MIDI](#s9)) toca pelo jardim: **Song** a escolhe (Off, ou o slot
-  1–4), **Follow** o quanto as vozes seguem a melodia e o baixo dela (de 50 para cima, cada vez mais), **Vary** de
-  vez em quando deixa notas de fora, um grau da escala ao lado ou uma semicolcheia atrasada; **Start** o compasso em
-  que ela começa. Enquanto toca, os acordes dela conduzem os do jardim, levados à tônica do jardim.
+  1–4), **Follow** o quanto as vozes seguem a melodia e o baixo dela (em 100, todas as notas; de 50 para cima, cada vez
+  mais; escolher uma música o põe em 100), **Vary** de vez em quando deixa notas de fora, um grau da escala ao lado
+  ou uma semicolcheia atrasada; **Start** o compasso em que ela começa. Enquanto toca, os acordes dela conduzem os do
+  jardim, levados à tônica do jardim, e as vozes Chord mudam junto na hora. Com Envelope Patch ou ADSR as notas
+  dela duram o que duram no arquivo.
 
 ### ENV, ARP ou LFO de novo: as páginas de uma voz
 
@@ -315,7 +317,8 @@ em que foi deixado. O alto da tela diz qual voz e qual página. Cada peça guard
 - **Envelope:** como as notas são moldadas. **AMB:** o do AMB-1 (um acorde respira, os loops soltam uma nota presa
   depois de um tempo, o baixo é uma nota segurada que entra devagar). **Patch** (o padrão): cada nota é tocada e
   solta depois do **Gate**, então os envelopes do próprio patch são ouvidos, e editá-los muda o som. **ADSR:** o
-  mesmo, com o envelope dos carriers vindo dos quatro knobs da página ADSR (os moduladores mantêm os do patch).
+  mesmo, com o envelope dos carriers vindo dos quatro knobs da página ADSR (os moduladores mantêm os do patch); o Sustain é um nível (70 % cerca de −3 dB,
+  50 % −6 dB).
 - **Gate:** quanto tempo a nota fica pressionada: da respiração de um acorde, de um compasso nos loops, de um acorde
   (ou um passo) no baixo. Todo para baixo, **Natural** (1.5.7): cada nota fica pressionada uma semicolcheia, como uma tecla
   tocada, e o que você ouve é o decay e o release do patch (ou do ADSR): as notas não ficam penduradas, por mais longa

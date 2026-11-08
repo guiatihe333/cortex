@@ -655,6 +655,8 @@ static void song_attach(int user)               /* the piece's SONG to the engin
         en_pool(proj.pool);
         proj.par[P_TEMPO] = (int16_t)t;
         en_set(P_TEMPO, t);
+        proj.par[P_SG(FOLLOW)] = 100;            /* (every note of it: lower, the garden mixes in) */
+        en_set(P_SG(FOLLOW), 100);
         song_name(slot, nm);
         say("SONG", nm);
     } else if (user && slot > 0) {

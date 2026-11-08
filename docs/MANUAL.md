@@ -1,6 +1,6 @@
 # CORTEX
 
-CORTEX (1.5.7; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
+CORTEX (1.5.8; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
 plays itself from the moment it's switched on: three FM voices (each breathing chords, ringing loops or gliding a
 bass, as you choose), a short echo, a tape loop and a plate reverb, and a reel of tape
 that records it all and plays it back as grains. You don't perform it, you tend it: pick a piece and a scale, take
@@ -278,9 +278,10 @@ GLO on Setup opens **MIDI**, then **Song**, then back to Setup.
   voice. The top line counts what comes in on each port (U for USB, J for the jack, B for Bluetooth) and the last
   note's channel.
 - **Song:** a song from a MIDI file (see [MIDI](#s9)) plays through the garden: **Song** picks it (Off, or slot 1–4),
-  **Follow** how closely the voices follow its melody and bass (from 50 up, more and more), **Vary** leaves notes
-  out, a scale step off or a sixteenth late, now and then; **Start** the bar it starts from. Its chords lead the
-  garden's while it plays, moved to the garden's root.
+  **Follow** how closely the voices follow its melody and bass (at 100, every note; from 50 up, more and more; a song
+  chosen sets it to 100), **Vary** leaves notes out, a scale step off or a sixteenth late, now and then; **Start**
+  the bar it starts from. Its chords lead the garden's while it plays, moved to the garden's root, and the Chord
+  voices change with them at once. On Envelope Patch or ADSR its notes last as long as in the file.
 
 ### ENV, ARP or LFO again: a voice's own pages
 
@@ -309,7 +310,8 @@ was left on. The top of the screen says which voice and which page. Each piece k
 - **Envelope:** how the notes are shaped. **AMB:** AMB-1's own (a chord breathes, the loops let a held note go after
   a beat, the bass is one note held and faded in). **Patch** (the default): each note struck and let go after
   **Gate**, so the patch's own envelopes are heard, and editing them changes the sound. **ADSR:** the same, the
-  carriers' envelope from the four ADSR knobs (the modulators keep the patch's).
+  carriers' envelope from the four ADSR knobs (the modulators keep the patch's); Sustain is a level (70 % about
+  −3 dB, 50 % −6 dB).
 - **Gate:** how long a note is held down: of a chord's breath, of a bar for the loops, of a chord (or a step) for the
   bass. All the way down, **Natural** (1.5.7): each note is held a sixteenth, as a key played, and the patch's (or
   the ADSR's) decay and release are what you hear: notes don't hang on, however long the breath or the chord.
