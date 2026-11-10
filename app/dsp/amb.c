@@ -4069,6 +4069,9 @@ void en_usb(const int16_t *mono, uint32_t n)
     usb_n = mono ? n : 0u;
     usb_i = 0;
 }
+int (*en_job_run)(void (*fn)(uint32_t), uint32_t arg);
+int (*en_job_wait)(void);
+static void job_reel(uint32_t n) { reel_play(rl_l, rl_r, n); }   /* (on the second core: the reel's own state only) */
 static void render_chunk(int32_t *out, uint32_t n, float gain)
 {
     uint32_t j;
@@ -4080,9 +4083,13 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
     const float dry_t = fm_minf((float)(100 - par[P_RL(MIX)]) * 0.02f, 1.0f);   /* (the garden full to the middle) */
     for (j = 0; j < n; j++)
         mixl[j] = mixr[j] = rsend[j] = esend[j] = 0.0f;
-    fm_pull(n);
-    pad_bus(n);
-    reel_play(rl_l, rl_r, n);
+    {   /* (1.5.22) the reel's genes on the second core while this one makes the voices; given up: here */
+        const int two = en_job_run && en_job_run(job_reel, n);
+        fm_pull(n);
+        pad_bus(n);
+        if (!two || !en_job_wait || en_job_wait() < 0)
+            reel_play(rl_l, rl_r, n);
+    }
     /* the reel and the garden: MIX (dry/wet), and FX: the space before the reel (the garden through it, the reel as it
      * was recorded, dry) or after it (the garden and the reel both into it). SOURCE: the whole mix (its space too
      * before, without after; the reel's own sound left out), one voice alone or the pulse, as they are made */

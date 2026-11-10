@@ -346,7 +346,11 @@ void en_load(int pct);
 /* the keys played on a voice's page: note (MIDI) of voice v down (on 1) or up (on 0), apart from the garden */
 void en_key(int v, int note, int on);
 uint32_t en_alg_carriers(int alg);              /* algorithm alg (0..31)'s carriers: bit k operator 6 - k */
-void en_keys_off(void);                         /* every key's note let go (a new piece; STOP does it too) */
+void en_keys_off(void);
+/* the second core (1.5.22): the app's plat_cpu2_run / plat_cpu2_wait when it runs, else 0 (one core). The render
+ * hands it the reel's genes while this core makes the voices */
+extern int (*en_job_run)(void (*fn)(uint32_t), uint32_t arg);
+extern int (*en_job_wait)(void);                         /* every key's note let go (a new piece; STOP does it too) */
 extern volatile uint32_t en_sheds;
 extern volatile int8_t en_scope_v;
 extern volatile uint32_t en_scope_seq;

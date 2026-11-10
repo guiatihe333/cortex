@@ -19,6 +19,10 @@ void en_midi_out(uint32_t st, uint32_t d1, uint32_t d2)
 void app_init(void)
 {
     en_init();
+    if (plat_cpu2_set(1) == 0 && plat_cpu2_on()) {   /* (1.5.22: the second core, a part of the render; else one core) */
+        en_job_run = plat_cpu2_run;
+        en_job_wait = plat_cpu2_wait;
+    }
     project_load();                      /* defaults when nothing (or another format) is saved */
     project_reel_load();                 /* the reel, as it was saved */
     project_apply();
