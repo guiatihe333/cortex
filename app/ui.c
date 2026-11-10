@@ -2073,91 +2073,21 @@ static uint32_t grain(uint32_t i);
 /* Tom (1.5.16), a grey cat, for the one this was made with: now and then he walks across the header, sometimes jumps,
  * sometimes sits by the right edge and says something about the page you are on (a screen reader hears it); the first
  * time a page is opened he may come by. 24 x 14, drawn twice the size; his frames: two steps, a jump, sitting */
-static const char TOM_A[14][25] = {
-    "..................e...e.",
-    ".................kek.kek",
-    ".................kgdgdgk",
-    ".................kgyggyk",
-    "kk...............kgggwnk",
-    "kek..............kwgwwwk",
-    ".kdk............kgwwwwk.",
-    "..kgk..kkkkkkkkkgdwwwk..",
-    "...kdkkgdggdggdgggggk...",
-    "....kgggdggdggdgggwgk...",
-    "....kggggggggggggwwk....",
-    ".....kdk.kgk...kdk.kgk..",
-    ".....kgk..kdk.kgk...kdk.",
-    ".....kk....kk.kk.....kk.",
-};
-static const char TOM_B[14][25] = {
-    "..................e...e.",
-    ".................kek.kek",
-    ".................kgdgdgk",
-    ".................kgyggyk",
-    "kk...............kgggwnk",
-    "kek..............kwgwwwk",
-    ".kdk............kgwwwwk.",
-    "..kgk..kkkkkkkkkgdwwwk..",
-    "...kdkkgdggdggdgggggk...",
-    "....kgggdggdggdgggwgk...",
-    "....kggggggggggggwwk....",
-    "......kdkkgk....kdkkgk..",
-    "......kgkkdk....kgkkdk..",
-    "......kk..kk....kk..kk..",
-};
-static const char TOM_J[14][25] = {
-    "..................e...e.",
-    ".................kek.kek",
-    ".................kgdgdgk",
-    ".................kgyggyk",
-    "kk...............kgggwnk",
-    "kek..............kwgwwwk",
-    ".kdk............kgwwwwk.",
-    "..kgk..kkkkkkkkkgdwwwk..",
-    "...kdkkgdggdggdgggggk...",
-    "....kgggdggdggdgggwgk...",
-    "....kggggggggggggwwk....",
-    "...kdk.............kdk..",
-    "..kgk...............kgk.",
-    ".kk..................kk.",
-};
-static const char TOM_S[14][25] = {
-    "..........e...e.........",
-    ".........kek.kek........",
-    ".........kgdgdgk........",
-    ".........kgygygk........",
-    ".........kggnggk........",
-    ".........kwwwwwk........",
-    "........kgdwwwdgk.......",
-    ".......kgggwwwgggk......",
-    ".......kgdgggggdgk...kk.",
-    ".......kgggdgdgggk..kek.",
-    ".......kgdgggggdgk.kdk..",
-    ".......kggkgggkggkkgk...",
-    ".......kwdkgggkdwkdk....",
-    "........kk.kkk.kkkk.....",
-};
-static uint16_t tom_col(char c)                  /* (his colours, from his photos) */
+#include "tom_art.h"                            /* (tools/gen_tom.py: drawn, from his photos) */
+enum { TOM_JUMP = 6, TOM_SIT = 7, TOM_BLINK = 8 };
+/* frame f of his drawing (big: the start screen's 112 x 56, else the header's 56 x 28) with its top left at (x, y)
+ * (canvas coordinates), each pixel laid over what is there by its alpha; mirror: facing left */
+static void tom_draw(int32_t x, int32_t y, int big, int f, int mirror)
 {
-    switch (c) {
-    case 'k': return RGB(30, 26, 24);            /* his outline */
-    case 'g': return RGB(150, 136, 122);         /* warm grey-fawn */
-    case 'd': return RGB(78, 68, 60);            /* his tabby stripes, his tail's rings */
-    case 'e': return RGB(64, 56, 52);            /* his darker ears (the point) */
-    case 'w': return RGB(228, 220, 206);         /* muzzle, chin, chest */
-    case 'n': return RGB(238, 154, 128);         /* his peach nose */
-    case 'y': return RGB(160, 214, 238);         /* his pale blue eyes */
-    default: return 0;
-    }
-}
-static void tom_draw(int32_t x, int32_t y, int32_t s, const char (*f)[25], int mirror)   /* (canvas coordinates) */
-{
+    const int32_t w = big ? TOM_LW : TOM_SW, h = big ? TOM_LH : TOM_SH;
+    const uint16_t *a = big ? TOM_L[f] : TOM_S[f];
     int32_t r, c;
-    for (r = 0; r < 14; r++)
-        for (c = 0; c < 24; c++) {
-            const char ch = f[r][mirror ? 23 - c : c];
-            if (ch != '.')
-                cv_rect(x + c * s, y + r * s, s, s, tom_col(ch));
+    for (r = 0; r < h; r++)
+        for (c = 0; c < w; c++) {
+            const uint16_t v = a[r * w + (mirror ? w - 1 - c : c)];
+            if (v >> 12)
+                melt_px(x + c, y + r + cv_oy, v >> 12, (uint32_t)(v >> 8 & 15u) * 31u / 15u,
+                        (uint32_t)(v >> 4 & 15u) * 63u / 15u, (uint32_t)(v & 15u) * 31u / 15u);
         }
 }
 static const char *const TOM_TIP[][2] = {
@@ -2229,7 +2159,7 @@ static void tom_come(int tip)                   /* in from the right; to sit wit
     tom.x = 240;
     tom.t = plat_ms();
     tom.tip = (uint8_t)tip;
-    tom.stop = tip >= 0 ? 186 : (int16_t)(50 + (int)(grain(plat_ms()) % 110u));
+    tom.stop = tip >= 0 ? 184 : (int16_t)(50 + (int)(grain(plat_ms()) % 110u));
     if (tip < 0)
         tom.tip = 255;
 }
@@ -2254,7 +2184,7 @@ static void tom_step(void)                      /* each frame: where he is */
         break;
     case 1:                                      /* walking in, a step every 140 ms */
         tom.x = (int16_t)(240 - (int32_t)(e * 60u / 1000u));
-        tom.frame = (uint8_t)(e / 140u & 1u);
+        tom.frame = (uint8_t)(e / 110u % 6u);
         if (tom.x <= tom.stop) {
             tom.x = tom.stop;
             tom.t = now;
@@ -2281,7 +2211,7 @@ static void tom_step(void)                      /* each frame: where he is */
         break;
     default:                                     /* on his way out, to the left */
         tom.x = (int16_t)(tom.stop - (int32_t)(e * 70u / 1000u));
-        tom.frame = (uint8_t)(e / 130u & 1u);
+        tom.frame = (uint8_t)(e / 100u % 6u);
         if (tom.x < -50) {
             tom.st = 0;
             tom.next = now + 90000u + grain(now) % 150000u;   /* (again in 1.5 .. 4 minutes) */
@@ -2303,12 +2233,12 @@ static void tom_header(void)                     /* over the header, after it */
         cv_rect(0, 0, 240, HDR_H, K_BG);         /* (the header cleared for his words) */
         cv_text(4, 1, &FONT_XS, TOM_TIP[tom.tip][0], K_ACC);
         cv_text(4, 14, &FONT_XS, TOM_TIP[tom.tip][1], K_TEXT);
-        tom_draw(tom.x, 0, 2, TOM_S, 0);
+        tom_draw(tom.x, 0, 0, (plat_ms() - tom.t) % 2600u < 160u ? TOM_BLINK : TOM_SIT, 0);
     } else if (tom.st == 4) {                    /* a jump: an arc up and out of the top */
         const float u = (float)(plat_ms() - tom.t) / 600.0f, h = 4.0f * u * (1.0f - u);
-        tom_draw(tom.x - (int32_t)(u * 30.0f), -(int32_t)(16.0f * h), 2, TOM_J, 1);
+        tom_draw(tom.x - (int32_t)(u * 30.0f), -(int32_t)(10.0f * h), 0, TOM_JUMP, 1);
     } else {
-        tom_draw(tom.x, 0, 2, tom.frame ? TOM_B : TOM_A, 1);   /* (walking left: him mirrored) */
+        tom_draw(tom.x, 0, 0, tom.frame, 1);     /* (walking left: him mirrored) */
     }
 }
 
@@ -4380,16 +4310,15 @@ static void sp_band(int32_t by, int32_t bh, float t)   /* (1.5.16) the zone plat
         cv_text(120 - w / 2, 156, &FONT_L, nm, IVORY);
     }
     {                                            /* Tom: in from the left, a jump, sitting on the name */
-        const int32_t s = 3, sw = 24 * s, sh = 14 * s;
+        const int32_t sw = TOM_LW, sh = TOM_LH;
         if (t > 0.18f && t < 0.62f) {
             const float u = (t - 0.18f) / 0.44f;
-            tom_draw((int32_t)(-sw + u * (120.0f - (float)sw / 2.0f + (float)sw)), 150 - sh, s,
-                     (int)(t * 40.0f) & 1 ? TOM_B : TOM_A, 0);   /* (cv_oy: screen rows) */
+            tom_draw((int32_t)(-sw + u * (120.0f - (float)sw / 2.0f + (float)sw)), 152 - sh, 1, (int)(t * 60.0f) % 6, 0);
         } else if (t >= 0.62f && t < 0.74f) {
             const float u = (t - 0.62f) / 0.12f, hgt = 4.0f * u * (1.0f - u);
-            tom_draw(120 - sw / 2, (int32_t)(150.0f - (float)sh - 30.0f * hgt + 2.0f * u), s, TOM_J, 0);
+            tom_draw(120 - sw / 2, (int32_t)(152.0f - (float)sh - 30.0f * hgt), 1, TOM_JUMP, 0);
         } else if (t >= 0.74f) {
-            tom_draw(120 - sw / 2, 152 - sh, s, TOM_S, 0);   /* (on the name's plate) */
+            tom_draw(120 - sw / 2, 152 - sh, 1, t > 0.9f && t < 0.94f ? TOM_BLINK : TOM_SIT, 0);   /* (on the name) */
         }
     }
     if (t > 0.74f) {
