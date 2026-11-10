@@ -4071,7 +4071,34 @@ void en_usb(const int16_t *mono, uint32_t n)
 }
 int (*en_job_run)(void (*fn)(uint32_t), uint32_t arg);
 int (*en_job_wait)(void);
-static void job_reel(uint32_t n) { reel_play(rl_l, rl_r, n); }   /* (on the second core: the reel's own state only) */
+/* the space (1.5.22): the echoes and the plate run a chunk behind, on the second core while this one makes the next
+ * chunk's voices: the last chunk's sends in (sp_ein, sp_rin, its REVERB send sp_rs), their wet sound out into a ring
+ * that keeps SP_LAT samples ahead of the mix (BLK: a chunk is never longer). The wet path is SP_LAT samples late (5.8 ms,
+ * as a plate's pre-delay); the dry sound is not. One core: the same, in turn */
+#define SP_LAT BLK
+#define SP_RING 512u
+static float sp_ein[BLK], sp_rin[BLK], sp_rs;
+static uint32_t sp_n;
+static float sp_wl[SP_RING], sp_wr[SP_RING];
+static uint32_t sp_w = SP_LAT, sp_r;
+static void space_run(void)
+{
+    uint32_t j;
+    for (j = 0; j < sp_n; j++) {
+        float wl, wr, el, er, xl, xr;
+        echoes(sp_ein[j], &el, &er, &xl, &xr);
+        plate_step((sp_rin[j] + (el + er + xl + xr) * 0.35f * sp_rs) * 0.8f, &wl, &wr);
+        sp_wl[sp_w & (SP_RING - 1u)] = 0.75f * el + 0.3f * xl + 1.3f * wl;
+        sp_wr[sp_w & (SP_RING - 1u)] = 0.75f * er + 0.3f * xr + 1.3f * wr;
+        sp_w++;
+    }
+    sp_n = 0;
+}
+static void job_render(uint32_t n)               /* (on the second core: the reel's and the space's own state only) */
+{
+    reel_play(rl_l, rl_r, n);
+    space_run();
+}
 static void render_chunk(int32_t *out, uint32_t n, float gain)
 {
     uint32_t j;
@@ -4084,11 +4111,11 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
     for (j = 0; j < n; j++)
         mixl[j] = mixr[j] = rsend[j] = esend[j] = 0.0f;
     {   /* (1.5.22) the reel's genes on the second core while this one makes the voices; given up: here */
-        const int two = en_job_run && en_job_run(job_reel, n);
+        const int two = en_job_run && en_job_run(job_render, n);
         fm_pull(n);
         pad_bus(n);
         if (!two || !en_job_wait || en_job_wait() < 0)
-            reel_play(rl_l, rl_r, n);
+            job_render(n);
     }
     /* the reel and the garden: MIX (dry/wet), and FX: the space before the reel (the garden through it, the reel as it
      * was recorded, dry) or after it (the garden and the reel both into it). SOURCE: the whole mix (its space too
@@ -4107,11 +4134,13 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
         dryv[j] = dry_g;
     }
     for (j = 0; j < n; j++) {
-        float wl, wr, l, r, el, er, xl, xr;
-        echoes(esend[j] * eg, &el, &er, &xl, &xr);
-        plate_step((rsend[j] * rg + (el + er + xl + xr) * 0.35f * rev_send) * 0.8f, &wl, &wr);
-        l = (mixl[j] + 0.75f * el + 0.3f * xl + 1.3f * wl) * 0.36f;
-        r = (mixr[j] + 0.75f * er + 0.3f * xr + 1.3f * wr) * 0.36f;
+        const float wl = sp_wl[sp_r & (SP_RING - 1u)], wr = sp_wr[sp_r & (SP_RING - 1u)];
+        float l, r;
+        sp_r++;
+        sp_ein[j] = esend[j] * eg;               /* (into the space, for the next chunk's job) */
+        sp_rin[j] = rsend[j] * rg;
+        l = (mixl[j] + wl) * 0.36f;
+        r = (mixr[j] + wr) * 0.36f;
         if (src == 4)                            /* Play All: the three voices, layered */
             rl_in[j] = (vsrc[0][j] + vsrc[1][j] + vsrc[2][j]) * 0.24f;
         else if (src > 0)
@@ -4129,6 +4158,8 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
         out[2 * j + 1] = (int32_t)(fm_tanhf(r * gain) * 8300000.0f);
         mpk = fm_maxf(mpk, fm_maxf(fm_fabsf(l), fm_fabsf(r)));   /* (the mix, before the volume) */
     }
+    sp_n = n;
+    sp_rs = rev_send;
     en_master_level = fm_maxf(mpk, en_master_level * fm_expf(-(float)n * (1.0f / (0.25f * EN_SR))));
     reel_record(rl_in, n);
 }
