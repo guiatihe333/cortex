@@ -4128,3 +4128,5 @@ void en_render(int32_t *out, uint32_t n, uint32_t gain_q12)
         n -= k;
     }
 }
+
+uint32_t en_alg_carriers(int alg) { return fm6_carriers((uint32_t)alg & 31u); }   /* (Tom: who is heard) */

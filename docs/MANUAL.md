@@ -135,6 +135,15 @@ and then he runs across, or jumps off if he was sitting. When a song comes in ov
 once when the battery runs low. Leave CORTEX untouched for three minutes and he comes to sleep in the corner
 (little z's rising); touch anything and he wakes, stretches and walks off.
 
+Since 1.5.19 Tom is about nearly all the time, and he explains CORTEX as you use it. Open a page and, once it rests
+there, he says what the page is (the first time). Turn a knob and let it rest, and he runs in to say what it does,
+then, for a knob that picks a kind, what the value you picked means: a Role, an Envelope, a generator's Kind, a
+modulator's Shape, a Visual, a Wave, a Blend; on a voice's Algorithm, which operators are heard (the carriers) and
+how many shape them; on the Operator knob, whether that operator is heard or bends the others. Between times he
+comes by every 5 to 14 seconds: with the page's next knob not yet explained ("KNOB 2, ..."), with a tip, or just to
+sit a while. A long word is shown two lines at a time, a thin bar under it showing how far he has got. A button
+(not a knob) sends him off.
+
 ![The Partiture page: the piece Garden, D Dorian, tempo 72; the score with the chord Dm7, the level bars on the left](img/screen-garden.png "The Partiture page (HOME)")
 
 - **Top line:** the piece, its root and mode (and a terminal's cursor, blinking), as far as they fit. On the right, a

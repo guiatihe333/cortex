@@ -9,3 +9,12 @@ wait 19000
 wait 9000
 said Tom says
 shot tom.png
+# 1.5.19: a knob turned and let rest, Tom says what it does and what its value means (voice 1's Role to Loops)
+tap ENV
+wait 300
+spin K2 1
+wait 1500
+said Role: what this voice plays
+wait 4000
+said Loops: four tape loops
+shot tom_knob.png

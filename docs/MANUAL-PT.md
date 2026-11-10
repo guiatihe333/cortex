@@ -136,6 +136,15 @@ embora. Ao dar PLAY, às vezes ele atravessa correndo, ou pula fora se estava se
 USB ele avisa, e avisa uma vez quando a bateria fica baixa. Deixe o CORTEX sem mexer por três minutos e ele vem
 dormir no canto (com zzz subindo); toque em qualquer coisa e ele acorda, se espreguiça e sai.
 
+Desde a 1.5.19 o Tom está na tela quase o tempo todo e explica o CORTEX enquanto você usa. Abra uma página e, quando
+ela fica aberta, ele diz o que ela é (na primeira vez). Gire um knob e solte, e ele vem correndo dizer o que o knob
+faz e, nos knobs que escolhem um tipo, o que significa o valor escolhido: um Role, um Envelope, o Kind do gerador, o
+Shape de um modulador, um Visual, uma Wave, um Blend; no Algorithm de uma voz, quais operadores são ouvidos (os
+portadores) e quantos os moldam; no knob Operator, se aquele operador é ouvido ou modula os outros. Entre uma coisa e
+outra ele aparece a cada 5 a 14 segundos: com o próximo knob da página ainda não explicado ("KNOB 2, ..."), com uma
+dica, ou só para sentar um pouco. Uma fala longa aparece de duas em duas linhas, com uma barrinha embaixo mostrando
+quanto falta. Um botão (não um knob) faz ele ir embora. As falas do Tom são em inglês, como o resto da tela.
+
 ![A página Partiture: a peça Garden, D Dorian, andamento 72; a partitura com o acorde Dm7, as barras de nível à esquerda](img/screen-garden.png "A página Partiture (HOME)")
 
 - **Linha de cima:** a peça, sua tônica e seu modo (e um cursor de terminal piscando), até onde couberem. À direita,

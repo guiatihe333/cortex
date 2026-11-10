@@ -700,6 +700,7 @@ void ui_reel_in(int ok)                         /* a file's reel came in: SOURCE
         warn("TAPE IN", "NOT SAVED YET");
 }
 static uint8_t tom_song_in;                     /* (a song came in: Tom brings word of it) */
+static uint8_t tom_knob_turned;                 /* (a knob turned, + 1: Tom says what it does once it rests) */
 void ui_song_in(int slot)                       /* a song came in */
 {
     char nm[16];
@@ -1887,6 +1888,7 @@ static void input(void)
             ui.touched = (int8_t)i;
             ui.touch_until = plat_ms() + 1200u;
             ui.act_t = ui.turn_t = plat_ms();
+            tom_knob_turned = (uint8_t)(i + 1);
         }
     if ((btn >> B_REC & 1u) && tape_view(ui.view) && !ui.erase_done && plat_ms() - ui.down_t[B_REC] >= RESET_HOLD) {
         ui.erase_done = 1;                       /* REC held on the reel's pages: the reel erased */
@@ -2093,50 +2095,483 @@ static void tom_draw(int32_t x, int32_t y, int big, int f, int mirror)
                         (uint32_t)(v >> 4 & 15u) * 63u / 15u, (uint32_t)(v & 15u) * 31u / 15u);
         }
 }
-/* his words: two lines each; 0 .. 4 for any page, then the pages', then what he brings word of */
+/* his words: tips (0 .. 4 for any page, then the pages', then what he brings word of), a page's intro, each
+ * knob's meaning, a value's (1.5.19); wrapped to TOM_COLS, shown two lines at a time beside him */
 enum { TT_UNDO, TT_RECIPE, TT_TEMPO, TT_DICE, TT_INIT, TT_KEYS, TT_RESTING, TT_VPAGES, TT_NATURAL, TT_PATCHENV,
        TT_SILENT, TT_ALL, TT_HALL, TT_GLO, TT_LIGHTS, TT_PLAYIN, TT_NOSONG, TT_FOLLOW, TT_EDIT, TT_WET, TT_REVERSE,
        TT_VPAGESV, TT_OSC, TT_GRID, TT_SHAPE2, TT_FEED0, TT_LINES, TT_REACT, TT_SONGIN, TT_BATT, TT_N };
-static const char *const TOM_TIP[TT_N][2] = {
-    {"hold SEL a second:", "the last change undone"},
-    {"hold SAVE 1.5 s: the", "piece back to its recipe"},
-    {"HOME + SELECT:", "the tempo, from anywhere"},
-    {"SEL: the dice roll", "every knob of the page"},
-    {"SEL + SAVE: this voice", "(or its mods) back to 0"},
-    {"the keys here: notes", "in and out of the scale"},
-    {"it's resting: PLAY", "and the garden grows"},
-    {"its button again: its", "own pages, Patch to Mod"},
-    {"Gate all the way down:", "Natural, notes let go"},
-    {"Envelope Patch: you hear", "the patch's own shape"},
-    {"this voice is at Level", "0: you won't hear it"},
-    {"a Mod on All, Depth 100:", "everything moves at once"},
-    {"Size and Reverb up:", "a long, long hall"},
-    {"GLO again: MIDI, then", "the Song page"},
-    {"Lights Visual: the keys", "follow the picture"},
-    {"Notes in Play: a MIDI", "channel plays its voice"},
-    {"no song yet: send a .mid", "(the simulator, amb_mid)"},
-    {"Follow 100: every note", "of the song; lower, mixed"},
-    {"the tape is empty: EDIT", "records, REC overdubs"},
-    {"Dry/Wet at Wet: you", "hear the tape alone"},
-    {"Speed under 0: the", "tape runs backwards"},
-    {"HOME again: the video", "synth, page by page"},
-    {"Visual on Osc: a picture", "made from nothing"},
-    {"Freq 2 and Multiply:", "a grid; Field: Hydra"},
-    {"Shape 2: a second", "geometry at once"},
-    {"Feedback is at 0: turn", "it up on the Video page"},
-    {"Target Lines: the", "geometry itself turns"},
-    {"a slot: a sound moves", "a setting; All: every one"},
-    {"a song came in: GLO", "twice, Song to its slot"},
-    {"the battery is low:", "plug the USB cable in"},
+static const char *const TOM_TIP[TT_N] = {
+    "hold SEL a second: the last change undone",
+    "hold SAVE 1.5 s: the piece back to its recipe",
+    "HOME + SELECT: the tempo, from anywhere",
+    "SEL: the dice roll every knob of the page",
+    "SEL + SAVE: this voice (or its mods) back to 0",
+    "the keys here: notes in and out of the scale",
+    "it's resting: PLAY and the garden grows",
+    "its button again: its own pages, Patch to Mod",
+    "Gate all the way down: Natural, notes let go",
+    "Envelope Patch: you hear the patch's own shape",
+    "this voice is at Level 0: you won't hear it",
+    "a Mod on All, Depth 100: everything moves at once",
+    "Size and Reverb up: a long, long hall",
+    "GLO again: MIDI, then the Song page",
+    "Lights Visual: the keys follow the picture",
+    "Notes in Play: a MIDI channel plays its voice",
+    "no song yet: send a .mid (the simulator, amb_mid)",
+    "Follow 100: every note of the song; lower, mixed",
+    "the tape is empty: EDIT records, REC overdubs",
+    "Dry/Wet at Wet: you hear the tape alone",
+    "Speed under 0: the tape runs backwards",
+    "HOME again: the video synth, page by page",
+    "Visual on Osc: a picture made from nothing",
+    "Freq 2 and Multiply: a grid; Field: Hydra",
+    "Shape 2: a second geometry at once",
+    "Feedback is at 0: turn it up on the Video page",
+    "Target Lines: the geometry itself turns",
+    "a slot: a sound moves a setting; All: every one",
+    "a song came in: GLO twice, Song to its slot",
+    "the battery is low: plug the USB cable in",
 };
+static const char *const TOM_PAGE[V_MAIN + NSUB] = {
+    "The Partiture: the whole garden. Three voices grow from one scale and one chord, and a slow tide swings it from sparse to full every few minutes.",
+    "A voice: an FM patch playing one role. Press its button again for its own pages: Patch, then Operator, then Mod.",
+    0,
+    0,
+    "The space, after Eno's Discreet Music: a tape echo with two heads, each repeat darker, then a plate reverb.",
+    "Setup: the key's root, the tuning, MIDI out and the lights. Top right: the CPU, and after X the times the sound ran out of time.",
+    "The reel: 11.8 s of tape. EDIT records a new splice, REC overdubs the one picked, REC held 1.5 s erases the reel.",
+    "Genes, after the Morphagene: the splice is read in small windows, the genes, overlapped, slid, sped up or reversed.",
+    "The deck: where the echo and reverb sit, and how the tape colours the sound.",
+    "Five LFOs for the reel. KNOB 1 picks one; Target says what it moves, Depth how far, Rate how fast.",
+    "The modulator's shape: how it moves, locked to the tempo or not, and how smooth.",
+    "The tape's key: CORTEX listens to the splice and guesses its key, and one can follow the other.",
+    "A song from a MIDI file plays through the garden: its chords lead, its melody and bass go to the voices.",
+    "MIDI: each voice has its channel, out and in. The top line counts what comes in: U USB, J the jack, B Bluetooth.",
+    "The video synth starts here: a picture moved by the music. HOME again walks its chain, from source to screen.",
+    "Video: the frame fed back into itself, as a camera filming its own monitor. That loop makes tunnels and trails.",
+    "Shape: vector lines drawn over the picture, polygons, Lissajous figures, a Rutt-Etra, moved by the sound.",
+    "Mix: a second picture over the first, as a video mixer's two channels.",
+    "Life: the picture's genome, a few hidden numbers that wander, mutate and jump on the beat.",
+    "Mosh: the picture broken as compressed video breaks: smeared blocks, sorted pixels, glitches.",
+    "Chroma: the colours remapped, folded, posterized and keyed, as an analog colorizer does.",
+    "React: four patch cords. Each takes something heard and moves any video setting with it.",
+    "Screen: how the page sits over the picture, its brightness, and how fast the picture hears.",
+    "Osc: a picture from nothing, as on an LZX rack or in Hydra: a wave across the screen.",
+    "Osc 2: a second wave, square to the first, and how the two meet.",
+    "Transform: zoom, rotate and shift, on the frame fed back, on the lines, or both.",
+    "Shape 2: a second geometry at once, over the first.",
+    "The generator makes a new FM patch from nothing: pick a Kind, EDIT draws a fresh one, REC a variation of it.",
+    "FM, as the DX7: six operators, each a sine. A modulator bends a carrier's pitch so fast it turns into timbre. Carriers are what you hear.",
+    "Play: how this voice's notes are shaped and timed.",
+    "ADSR: the loudness's shape. Attack rises, Decay falls to Sustain, which holds; Release once let go.",
+    "The patch's LFO: one slow wave for vibrato (pitch) and tremolo (loudness), as on a DX7.",
+    "More of the LFO, and the patch's transposition.",
+    "The pitch envelope: four stages, each a rate and a level, bending all six operators' pitch.",
+    "An operator: a sine oscillator. KNOB 1 picks OP1 to OP6. Ratio sets its pitch, Level how loud or how bright.",
+    "An operator's envelope: four rates, four levels. It climbs through L1, L2 to L3, holds there, and falls to L4 when let go.",
+    "The operator's mode, detune and touch.",
+    "Level scaling: the operator louder or softer away from a Break note, as a real instrument.",
+    "The scaling's curves, and Rate scale.",
+    "Amp sens: how far the LFO's tremolo reaches this operator.",
+    "Five modulators move this voice's sound, each note its own way. KNOB 1 picks one; Target says what it moves.",
+    "The modulator's shape and timing.",
+    "How the modulator spreads across the notes and comes in.",
+};
+static const char *const TOM_KNOB[(V_MAIN + NSUB) * 4] = {
+    "Tempo: beats a minute, 30 to 120. HOME + SELECT sets it from any page; MIDI clock in takes over (EXT).",
+    "Evolve: how restless it is. At 0 the loops repeat exactly; up, notes change at the end of a pass and the voices take rests.",
+    "Motion: how far the slow tide swings, and how far pitch, pan and the echo's heads wander.",
+    "Drift: how long a chord lasts before the garden moves to another, 20 s to 5 min. EDIT moves on now.",
+    "Level: this voice's volume in the mix.",
+    "Role: what this voice plays, Chord, Loops or Bass. Any voice can take any role.",
+    "Octave: two down to two up. OCT- and OCT+ do it too.",
+    "Density: a chord's notes (1 to 4), the loops' notes a pass, or how often the bass leans on the fifth.",
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    "Echo: how much goes into the tape echo. Its repeats get darker and thinner, as old tape.",
+    "Echo time: the loop's length, a dotted 1/4 up to 4 bars, kept under 2.8 s. The second head repeats at 3/4 of it.",
+    "Reverb: how much goes to the plate, a sheet of metal that rings, after the echo.",
+    "Size: how long the plate rings, a room to a long hall, and how many times the echo comes back.",
+    "Root: the key's home note. The scale and every chord are built on it.",
+    "Tune: fine tuning, +-50 cents, to play along with a piano or a record.",
+    "MIDI out: the three voices on their channels, and clock, out over USB.",
+    "Lights: On, the keys light the scale and the buttons glow. Keys: no glow. Visual: the keys follow the picture.",
+    "Source: what the reel records: the mix, one voice, a file, USB audio, or what you play on the keys.",
+    "Dry/Wet: the garden against the reel. Dry: the garden alone; 50: both full; Wet: the reel alone.",
+    "SOS, sound on sound: how much of the old take stays when REC overdubs. At 0 it is replaced.",
+    "Speed: pitch and time together, as tape. Below 0 it runs backwards; 1x and -1x stick.",
+    "Gene: the size of each window read from the splice, the whole of it down to 1/256: grains.",
+    "Slide: how far past the tape head each gene starts reading.",
+    "Morph: gaps between the genes, then one after another, then 2 to 4 overlapping, spread, an octave off.",
+    "Organize: which splice plays, 1 to 8, and which one REC overdubs.",
+    "FX: Before, the reel records the echo and reverb; After, it records dry and plays through them.",
+    "Wow: the tape's slow pitch wobble, with flutter, the fast one. A worn deck.",
+    "Drive: how hard the sound hits the tape as it records: warmth, then saturation.",
+    "Tone: the reel's brightness, a low-pass from 1.5 kHz up to open. Down: old tape.",
+    "Mod: picks one of the reel's five modulators; the other knobs set it.",
+    "Target: what it moves: Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow... or another one's depth or rate.",
+    "Depth: how far it moves its target, half its range either way at 100. At 0, nothing.",
+    "Rate: a cycle from 60 s to 1/8 s; with Sync at Tempo, a note value.",
+    "Mod: picks one of the reel's five modulators; the other knobs set it.",
+    "Shape: how it moves: smooth, straight, jumping, random held, random gliding, or chaotic.",
+    "Sync: Free runs on its own clock; Tempo makes Rate a note value, on the beat.",
+    "Smooth: a glide on the shape, 2 to 500 ms; it rounds a square's corners.",
+    "Key sync: Off. Cortex: the garden moves to the tape's key. Tape: its speed snaps to the garden's key.",
+    "Key: the splice's key as CORTEX hears it. Turn it to set it by hand, shown with a *.",
+    "Shift: how far Speed transposes the reel as it plays, in semitones.",
+    0,
+    "Song: Off, or one of four slots, each a MIDI file sent from a computer.",
+    "Follow: how closely the voices play the song. 100: every note; lower, the garden's own mixed in.",
+    "Vary: now and then a note left out, a step off or a 16th late, so it never plays the same twice.",
+    "Start: the bar the song starts from.",
+    "V1 chan: voice 1's MIDI channel, its notes out and, with Notes in at Play, in.",
+    "V2 chan: voice 2's MIDI channel, its notes out and, with Notes in at Play, in.",
+    "V3 chan: voice 3's MIDI channel, its notes out and, with Notes in at Play, in.",
+    "Notes in: Scale, a note on V1's channel adds or takes its note from the scale. Play: notes play the voices.",
+    "Visual: the source picture, drawn from the sound; Osc builds one from waves; Score is the partiture.",
+    "Colour: the palette: the page's own (Theme), Ember, Ice, Acid or Mono.",
+    "Trails: how long each frame lingers as it fades, as phosphor.",
+    "React: how strongly the picture answers how loud it is.",
+    "Feedback: the last frame back in, zoomed and turned. Up: tunnels and spirals out of anything.",
+    "RGB: red, green and blue pulled apart, more on the highs, as a misaligned tube.",
+    "Hue: turns every colour round the colour wheel.",
+    "Sync: rows bent as a TV losing its sync; the bass tears them.",
+    "Geometry: the lines: Polygon, Lissajous, Grid, Mandala, Scope, Rutt, Star, Rings, Rose, Cube...",
+    "Sides: its corners, petals or lobes, as the geometry takes it.",
+    "Mirror: Mirror, Flip, Quad or Kaleido fold the picture onto itself.",
+    "Speed: how fast everything turns and moves, the shapes and the pictures.",
+    "Layer: a second picture, any source, or Off.",
+    "Blend: how the two meet: Add, Screen, Max, Diff, or Mask.",
+    "Mix: how much of the layer.",
+    "Pulse: the picture flashes and leaps on each beat.",
+    "Morph: now and then another picture takes over by itself, and the geometry with it.",
+    "Mutate: the genome wanders on, shape, colour and motion, slowly or wildly.",
+    "Flow: the fed-back picture flows as a liquid, pushed by the mids.",
+    "Chaos: on each beat the genome is thrown, as far as Chaos says.",
+    "Mosh: datamosh. 8x8 blocks keep their motion and drag the picture along; a beat throws new ones.",
+    "Sort: pixel sorting: runs of bright pixels laid out as ramps along the rows.",
+    "Corrupt: blocks copied where they don't belong, flattened, their bits crushed: a broken file.",
+    "Slice: bands of rows and interlaced lines shifted apart, on the beat.",
+    "Colorama: brightness folded into bands of colour that repeat and cycle.",
+    "Poster: fewer levels of brightness, flat bands, as a screen print.",
+    "Pixel: big blocks, bigger on the bass.",
+    "Key: the darks cut to black, a luma key.",
+    "Slot: one of the four cords from sound to picture.",
+    "Source: what is heard: level, bass, mids, highs, beat, a voice, notes, chord, an LFO, random.",
+    "Target: the video setting it moves, any of these pages', or All.",
+    "Depth: how far it pushes that setting.",
+    "Bars: the page's name and knobs over the picture: Show, Auto (hidden after Delay), Hide.",
+    "Delay: with Bars at Auto, the seconds before they hide.",
+    "Bright: the picture's brightness.",
+    "Ear: how smoothly the picture hears: at 0 it jumps at once; up, it glides.",
+    "Freq: how many stripes of the wave cross the screen.",
+    "Wave: its shape: Sine, Tri, Saw, Square, Noise; or shapes: Rings, Polygon, Spiral.",
+    "Angle: the stripes' direction, 0 to 180 degrees.",
+    "Scroll: how fast the wave moves across.",
+    "Freq 2: the second wave's stripes. At 0, none.",
+    "Combine: how the waves meet: Add, Multiply, Diff, Warp or Field.",
+    "Warp: how far one bends the other.",
+    "Sync: Free; Notes, the pitch sets the frequency; Beat, the waves start again on the beat.",
+    "Target: what moves: Feedback (the frame fed back), Lines (the geometry), or Both.",
+    "Zoom: in or out, every frame. On Feedback: a tunnel.",
+    "Rotate: a turn every frame, either way. On Feedback: spirals.",
+    "Shift: a drift along Osc's Angle, every frame.",
+    "Geometry 2: a second geometry from the same list, drawn with the first.",
+    "Sides 2: its own corners, petals or lobes.",
+    "Size 2: its size, 10 to 200 % of the first's.",
+    0,
+    "Kind: the family it draws from: Pad, Glass, Air, Strings, Bell, Keys, Pluck, Bass, Drone, Texture.",
+    "Bright: the modulators' level and how high their ratios go: dark to brilliant.",
+    "Motion: the carriers' chorus, an LFO on the modulators, slow sweeps of their envelopes.",
+    "Vary: how far a variation (REC) strays from the patch.",
+    "Patch: CORTEX's own 18, then the DX7 banks you sent. Any edit makes it the piece's own, with a *.",
+    "Algorithm: how the six operators are wired, 32 ways as on the DX7: which are heard, which shape them.",
+    "Feedback: one operator modulates itself. Up: a sine turns to a saw, then to noise.",
+    "Index: every modulator louder or softer at once, +-24 dB: the whole patch brighter or darker.",
+    "Envelope: who shapes the notes: AMB, the patch's own envelopes, or the ADSR page.",
+    "Gate: how long each note is held down. All the way down, Natural: let go at once, as a key tapped.",
+    "Pace: a chord's breath (4 to 16 s), the loops' step, or how often the bass is struck.",
+    "Glide: how slowly the bass slides to its next note, 20 ms to 1.2 s.",
+    "Attack: how long a note takes to rise to full.",
+    "Decay: how long it then falls to the Sustain level.",
+    "Sustain: the level it holds while the note is down. 70 % is about -3 dB.",
+    "Release: how long it fades once the note is let go.",
+    "Speed: how fast the LFO waves.",
+    "Delay: how long after a note starts the LFO comes in, as a singer's late vibrato.",
+    "Pitch mod: vibrato, the pitch wobbling.",
+    "Amp mod: tremolo, on the operators whose Amp sens is up.",
+    "Wave: the LFO's shape: triangle, saws, square, sine or sample and hold.",
+    "Pitch sens: how much Pitch mod reaches the pitch.",
+    "Key sync: on, each note starts the LFO from the top.",
+    "Transpose: the whole patch up or down, +-24 semitones.",
+    "Stage: picks one of its four stages.",
+    "Rate: how fast it goes to that stage's level.",
+    "Level: the pitch at that stage; 0 is the note itself. Stage 4 is where it rests and starts.",
+    "Osc sync: on, every note starts each operator's wave at 0: the same attack every time.",
+    "Operator: picks OP1 to OP6, on every page of this group.",
+    "Ratio: its pitch as a multiple of the note. 1, 2, 3: harmonic; 1.41, 3.5: clangy, a bell.",
+    "Fine: nudges the ratio between whole numbers.",
+    "Level: a carrier's loudness, or a modulator's depth: how bright.",
+    "Operator: picks OP1 to OP6, on every page of this group.",
+    "Stage: one of four: 1 the attack, 2 and 3 the decay to the hold, 4 the release.",
+    "Rate: how fast it goes to this stage's level; 99 is at once.",
+    "Level: where this stage goes. L3 holds while the key is down; L4 is where it ends.",
+    "Operator: picks OP1 to OP6, on every page of this group.",
+    "Mode: Ratio follows the keys; Fixed holds one pitch in Hz, as a drum or a formant.",
+    "Detune: a tiny offset, +-7. Two operators slightly apart beat: chorus.",
+    "Velocity: how much a harder note makes this operator louder, or brighter.",
+    "Operator: picks OP1 to OP6, on every page of this group.",
+    "Break: the note where the scaling turns.",
+    "L depth: how much the level changes going down the keys from Break.",
+    "R depth: how much it changes going up.",
+    "Operator: picks OP1 to OP6, on every page of this group.",
+    "L curve: below Break, louder or softer, in a line or a curve.",
+    "R curve: the same, above Break.",
+    "Rate scale: higher notes get faster envelopes, as a piano's short high strings.",
+    "Operator: picks OP1 to OP6, on every page of this group.",
+    "Amp sens: how much the tremolo moves this operator. On a modulator it is a wah.",
+    0,
+    0,
+    "Mod: picks one of this voice's five modulators.",
+    "Target: what it moves: Timbre, Ratio, Metal, Feedback, Decay, Pitch, Space, All, Level, an operator's, another mod's.",
+    "Depth: how far it goes; at 0, nothing. The garden's tide deepens it when full.",
+    "Rate: a cycle from 60 s to 1/8 s; with Sync at Tempo, a note value.",
+    "Mod: picks one of this voice's five modulators.",
+    "Shape: how it moves: smooth, straight, jumping, random held, random gliding, chaotic, or a fall.",
+    "Sync: Free; Note, each note starts it again; Tempo, Rate a note value.",
+    "Smooth: a glide on the shape, 2 ms to half a second.",
+    "Mod: picks one of this voice's five modulators.",
+    "Spread: 100, each note moves its own way; 0, the voice's notes move as one.",
+    "Fade: the modulation comes in after each note, at once (Off) to 8 s.",
+    0,
+};
+static const char *const TOM_V_ROLE[3] = {
+    "Chord: up to four notes, each breathing in and out on its own cycle, so chords form and dissolve.",
+    "Loops: four tape loops of 13, 17, 23 and 29 steps, sliding, so the melody never quite repeats.",
+    "Bass: the chord's root, low and gliding, now and then the fifth.",
+};
+static const char *const TOM_V_ENV[3] = {
+    "AMB: the garden's own breath: a chord swells, the loops let go after a beat, the bass held and faded.",
+    "Patch: each note struck and let go after Gate; you hear the patch's own envelopes (OP Env).",
+    "ADSR: the carriers follow the ADSR page; the modulators keep the patch's envelopes.",
+};
+static const char *const TOM_V_KIND[10] = {
+    "Pad: slow and soft, sustained, carriers in chorus.",
+    "Glass: clear, high ratios, a glassy ring.",
+    "Air: breathy and thin, with a vibrato.",
+    "Strings: a bowed swell, bright as a saw.",
+    "Bell: inharmonic ratios, struck, ringing away.",
+    "Keys: an electric piano: a bright strike that mellows.",
+    "Pluck: a quick strike and a short fall, as a plucked string.",
+    "Bass: low and round, with a little bite.",
+    "Drone: all six heard, as organ drawbars, slow and endless.",
+    "Texture: grainy and shifting, more colour than note.",
+};
+static const char *const TOM_V_SHAPE[9] = {
+    "Sine: smooth, up and down.",
+    "Triangle: straight lines up and down.",
+    "Saw up: rises, then drops at once.",
+    "Saw down: falls, then jumps back up.",
+    "Square: jumps between two places.",
+    "S&H, sample and hold: a random value each cycle, held.",
+    "Walk: glides from one random value to the next.",
+    "Chaos: the logistic map: jumps that never quite repeat.",
+    "Env: from each note's start, falling to nothing over a cycle.",
+};
+static const char *const TOM_V_SRC[10] = {
+    "Mix: the whole garden, the reel itself left out.",
+    "Voice 1 alone.",
+    "Voice 2 alone.",
+    "Voice 3 alone.",
+    "File: a reel sent from a computer (tools/FITA.html).",
+    "USB: what a computer or a phone plays into the FM-1.",
+    "Play 1: on the reel's pages the keys play voice 1, and the reel records you.",
+    "Play 2: on the reel's pages the keys play voice 2, and the reel records you.",
+    "Play 3: on the reel's pages the keys play voice 3, and the reel records you.",
+    "Play All: the keys play all three voices, and the reel records you.",
+};
+static const char *const TOM_V_VIS[10] = {
+    "Bloom: an orb a voice, as big as it is loud, wandering; rings.",
+    "Ridge: the sound's last moments stacked as ridges, the nearest in front.",
+    "Prism: twelve spokes, the notes sounding; the bands as rings.",
+    "Swarm: sparks rising; the bass pushes them out, the highs stir them.",
+    "Tunnel: squares out of the middle, as loud as the mix, turned by the chord.",
+    "Plasma: four waves crossing, their scales and speeds the bands'.",
+    "Spiral: the notes round a spiral, by their pitch.",
+    "XOR: the cells' coordinates XORed, scaled and scrolled.",
+    "Osc: a picture built from waves: HOME goes on to the Osc pages.",
+    "Score: the partiture itself as the picture.",
+};
+static const char *const TOM_V_WAVE[8] = {
+    "Sine: soft stripes.",
+    "Tri: stripes with sharp crests.",
+    "Saw: ramps, a hard edge each.",
+    "Square: hard bars, on and off.",
+    "Noise: 32 bumps, smoothed: clouds.",
+    "Rings: circles out from the middle.",
+    "Polygon: Hydra's shape(): Sides from the Shape page, turned by Angle.",
+    "Spiral: Sides from the Shape page is its arms.",
+};
+static const char *const TOM_V_COMB[5] = {
+    "Add: the two waves summed.",
+    "Multiply: a grid, a checkerboard.",
+    "Diff: their difference: bright where they disagree.",
+    "Warp: the second wave bends the first.",
+    "Field: the picture itself bends the wave; with Feedback, Hydra's modulate.",
+};
+static const char *const TOM_V_BLEND[5] = {
+    "Add: both summed, brighter.",
+    "Screen: lighter, as two slides projected together.",
+    "Max: whichever is brighter.",
+    "Diff: the difference; colours turn over where they cross.",
+    "Mask: the first shows only where the layer is bright.",
+};
+static const char *const TOM_V_MIRROR[5] = {
+    "Off: the picture as it is.",
+    "Mirror: one half reflected onto the other.",
+    "Flip: the same, top and bottom.",
+    "Quad: both: four quarters.",
+    "Kaleido: wedges folded round the middle, a kaleidoscope.",
+};
+static const char *const TOM_V_XTGT[3] = {
+    "Feedback: the frame fed back moves; at Feedback 0 nothing shows.",
+    "Lines: the geometry itself turns, travels and grows.",
+    "Both at once.",
+};
+_Static_assert(sizeof TOM_PAGE / sizeof *TOM_PAGE == 43, "a word a page");
+#define TOM_COLS 29                             /* (FONT_XS: 6 px a letter; he sits at 184) */
+#define TOM_PANEL_MS 3800u                      /* two lines this long */
+#define TOM_NK ((V_MAIN + NSUB) * 4)
 static struct {
-    uint8_t st, tip, frame;                     /* st: 0 away, 1 walking in, 2 sitting (a tip), 3 on his way out,
-                                                 * 4 a jump, 5 asleep, 6 a stretch (waking) */
-    int16_t x, stop;                            /* where he is, where he stops */
-    uint32_t t, next;                           /* this state's start; his next visit */
+    uint8_t st, frame, panel, npanel;           /* st: 0 away, 1 walking (to stop), 2 sitting (his word), 3 on his
+                                                 * way out, 4 a jump, 5 asleep, 6 a stretch, 7 sitting a while */
+    int16_t x, stop, from, spd;                 /* where he is, where he goes, from where, how fast (px a second) */
+    uint32_t t, next, panel_t, view_t;          /* this state's start; his next visit; these two lines'; the page's */
     uint32_t seen, said;                        /* the layer pages opened; the tips he has given (not again soon) */
-    uint8_t want, was_play, batt_told, nap;     /* want: a word to bring (TT_*, 255 none); nap: he comes to sleep */
-} tom = {.want = 255};
+    uint32_t ksaid[TOM_NK / 32 + 1], psaid[(V_MAIN + NSUB) / 32 + 1];   /* the knobs, the pages he has explained */
+    int8_t page;                                /* the page whose intro he is saying (-1 none) */
+    uint8_t want, was_play, batt_told, nap, view, view_new, sit;   /* want: a tip to bring (255 none); sit: 7's
+                                                 * length, 100 ms */
+    int16_t kidx, kval;                         /* the knob and value he spoke of last */
+    const char *txt;                            /* what he says (0: nothing) */
+    char dyn[256];                              /* (his words, put together) */
+} tom = {.want = 255, .view = 255, .kidx = -1, .page = -1};
+static int tom_bit(const uint32_t *m, int i) { return (int)(m[i >> 5] >> (i & 31) & 1u); }
+static void tom_set(uint32_t *m, int i) { m[i >> 5] |= 1u << (i & 31); }
+/* line n of s as he shows it (out: TOM_COLS + 1); returns how many lines s makes */
+static int tom_line(const char *s, int n, char *out)
+{
+    int c = 0;
+    out[0] = 0;
+    while (*s) {
+        const char *e;
+        int k = 0, brk = 0;
+        while (*s == ' ')
+            s++;
+        if (!*s)
+            break;
+        while (s[k] && k < TOM_COLS) {
+            if (s[k] == ' ')
+                brk = k;
+            k++;
+        }
+        if (s[k] && s[k] != ' ' && brk > 0)
+            k = brk;
+        e = s + k;
+        if (c == n) {
+            int m;
+            for (m = 0; m < k; m++)
+                out[m] = s[m];
+            out[k] = 0;
+        }
+        c++;
+        s = e;
+    }
+    return c;
+}
+static char *tom_cat(char *b, const char *s)    /* (into tom.dyn, as far as it goes) */
+{
+    while (*s && b < tom.dyn + sizeof tom.dyn - 1)
+        *b++ = *s++;
+    *b = 0;
+    return b;
+}
+static int tom_pidx(int v)                      /* a page's word (the three voices' pages one) */
+{
+    return v >= V_MAIN ? V_MAIN + view_sub(v) : v == V_BELLS || v == V_BASS ? V_PAD : v;
+}
+static int tom_kidx(int v, int i) { return tom_pidx(v) * 4 + i; }
+/* what knob k's value val means, for the knobs that pick a kind (b: room for one put together); 0 none */
+static const char *tom_value(int k, int val, char *b)
+{
+#define TV(A) ((unsigned)val < sizeof A / sizeof *A ? A[val] : 0)
+    const int p = k < P_NPARAMS ? k : -1;
+    if (p >= P_PLAY && p < P_TAPE && (p - P_PLAY) % PL_N == PL_ROLE)
+        return TV(TOM_V_ROLE);
+    if (p >= P_PLAY && p < P_TAPE && (p - P_PLAY) % PL_N == PL_ENV)
+        return TV(TOM_V_ENV);
+    if (p == P_RL(SRC))
+        return TV(TOM_V_SRC);
+    if (p == P_ST(VMODE))
+        return TV(TOM_V_VIS);
+    if (p == P_ST(VLAYER))
+        return val ? (val - 1 < 9 ? TOM_V_VIS[val - 1] : 0) : "Off: no second picture.";
+    if (p == P_ST(VOSHAPE))
+        return TV(TOM_V_WAVE);
+    if (p == P_ST(VOCOMB))
+        return TV(TOM_V_COMB);
+    if (p == P_ST(VBLEND))
+        return TV(TOM_V_BLEND);
+    if (p == P_ST(VMIRROR))
+        return TV(TOM_V_MIRROR);
+    if (p == P_ST(VXTGT))
+        return TV(TOM_V_XTGT);
+    if (k == KMS(SHAPE) || k == KTM + TM_SHAPE)
+        return TV(TOM_V_SHAPE);
+    if (k == K_GKIND)
+        return TV(TOM_V_KIND);
+#undef TV
+    if (k == KV(ALG) || k == K_OP) {             /* the algorithm: who is heard; an operator: its part in it */
+        const int alg = k == K_OP ? vpatch[kvox()][EP_ALG] & 31 : val & 31;
+        const uint32_t car = en_alg_carriers(alg);
+        char *o = b;
+        int n, nc = 0;
+        for (n = 0; n < 6; n++)
+            nc += (int)(car >> n & 1u);
+        if (k == K_OP) {
+            const int c = (int)(car >> (6 - val) & 1u);
+            o = cat_s(o, "OP");
+            o = cat_i(o, val, 0);
+            o = cat_s(o, c ? " is a carrier in algorithm " : " is a modulator in algorithm ");
+            o = cat_i(o, alg + 1, 0);
+            cat_s(o, c ? ": you hear it; its Level is loudness." : ": unheard, it bends the others; its Level is "
+                                                                   "brightness.");
+            return b;
+        }
+        o = cat_s(o, "Algorithm ");
+        o = cat_i(o, alg + 1, 0);
+        if (nc == 6)
+            return cat_s(o, ": all six heard, as organ drawbars; only the feedback is FM."), b;
+        o = cat_s(o, ": ");
+        for (n = 1; n <= 6; n++)
+            if (car >> (6 - n) & 1u) {
+                o = cat_s(o, "OP");
+                o = cat_i(o, n, 0);
+                *o++ = ' ';
+            }
+        o = cat_s(o, nc > 1 ? "heard, " : "heard, alone; ");
+        o = cat_i(o, 6 - nc, 0);
+        cat_s(o, " modulators shaping them.");
+        return b;
+    }
+    return 0;
+}
 static int tom_pick(const uint8_t *c, int n)    /* the first of these he has not said lately */
 {
     int i;
@@ -2212,14 +2647,91 @@ static int tom_page_tip(int view)               /* a word for the page you are o
     c[n++] = (uint8_t)(TT_UNDO + gen++ % 4u);    /* (and one for any page) */
     return tom_pick(c, n);
 }
-static void tom_come(int tip, int nap)           /* in from the right; to sit with a tip, to sleep, or to pass */
+static void tom_announce(void)                  /* (a screen reader hears his two lines) */
 {
+    char a[TOM_COLS + 1], c[TOM_COLS + 1], t[2 * TOM_COLS + 2];
+    char *o = t;
+    if (!ann_on() || !tom.txt)
+        return;
+    tom_line(tom.txt, tom.panel * 2, a);
+    tom_line(tom.txt, tom.panel * 2 + 1, c);
+    o = cat_s(o, a);
+    if (c[0]) {
+        *o++ = ' ';
+        cat_s(o, c);
+    }
+    if (!tom.panel)
+        ann_say("Tom says:", 0, ANN_NOW);
+    ann_say(t, 0, 0);
+}
+static void tom_go(int16_t stop, int16_t spd)   /* on his way to stop, from where he is (from the right if away) */
+{
+    if (!tom.st || tom.x > 240 || tom.x < -56)
+        tom.x = 240;
+    tom.from = tom.x;
+    tom.stop = stop;
+    tom.spd = spd;
     tom.st = 1;
-    tom.x = 240;
     tom.t = plat_ms();
+}
+static void tom_say(const char *s)              /* his word: to his place by the right edge, at a run, and said */
+{
+    char l[TOM_COLS + 1];
+    if (tom.page >= 0 && tom.txt == TOM_PAGE[tom.page] && tom.panel + 1 < tom.npanel)
+        tom.psaid[tom.page >> 5] &= ~(1u << (tom.page & 31));   /* (a page's intro cut short: told again later) */
+    tom.page = -1;
+    tom.txt = s;
+    tom.npanel = (uint8_t)((tom_line(s, -1, l) + 1) / 2);
+    tom.panel = 0;
+    tom.nap = 0;
+    if (tom.st == 2) {                           /* (sitting already: the new word at once) */
+        tom.t = tom.panel_t = plat_ms();
+        tom_announce();
+        return;
+    }
+    tom_go(184, 150);
+}
+static void tom_come(const char *s, int nap)    /* a visit: with a word, to sleep, to sit a while, or passing */
+{
+    const uint32_t g = grain(plat_ms());
+    tom.txt = s;
     tom.nap = (uint8_t)nap;
-    tom.tip = (uint8_t)(tip >= 0 ? tip : 255);
-    tom.stop = tip >= 0 || nap ? 184 : (int16_t)(50 + (int)(grain(plat_ms()) % 110u));
+    tom.sit = 0;
+    if (s) {
+        char l[TOM_COLS + 1];
+        tom.npanel = (uint8_t)((tom_line(s, -1, l) + 1) / 2);
+        tom.panel = 0;
+    }
+    tom.st = 0;
+    if (s || nap) {
+        tom_go(184, 60);
+    } else {
+        tom_go((int16_t)(50 + (int)(g % 120u)), 60);
+        if (g >> 8 & 1u)
+            tom.sit = (uint8_t)(30 + (g >> 9) % 40u);   /* (sitting there 3 .. 7 s) */
+    }
+}
+static const char *tom_word(int view)           /* a visit's word: the page, a knob of it not told yet, or a tip */
+{
+    const int pi = tom_pidx(view);
+    int i;
+    if (TOM_PAGE[pi] && !tom_bit(tom.psaid, pi)) {
+        tom_set(tom.psaid, pi);
+        return TOM_PAGE[pi];
+    }
+    for (i = 0; i < 4; i++) {
+        const int ki = tom_kidx(view, i);
+        if (TOM_KNOB[ki] && !tom_bit(tom.ksaid, ki)) {
+            char *o = tom.dyn;
+            tom_set(tom.ksaid, ki);
+            o = tom_cat(o, "KNOB ");
+            *o++ = (char)('1' + i);
+            o = tom_cat(o, ", ");
+            tom_cat(o, TOM_KNOB[ki]);
+            return tom.dyn;
+        }
+    }
+    return grain(plat_ms()) % 5u < 3u ? TOM_TIP[tom_page_tip(view)] : 0;
 }
 static void tom_step(void)                      /* each frame: what he does */
 {
@@ -2227,59 +2739,94 @@ static void tom_step(void)                      /* each frame: what he does */
     const int play_up = en_playing && !tom.was_play && now > 8000u;   /* (not the start playing by itself) */
     tom.was_play = en_playing;
     if (!tom.next)
-        tom.next = now + 25000u;                 /* (his first visit, a while after the start) */
-    if (!(tom.seen >> view_main(ui.view) & 1u) && view_main(ui.view) < 32) {   /* a page opened the first time */
-        tom.seen |= 1u << view_main(ui.view);
-        if (!tom.st && now > 6000u && grain(now) % 3u == 0u)
-            tom.next = now + 1500u;
+        tom.next = now + 2500u;                  /* (his first visit, soon after the start) */
+    if (tom.view != ui.view) {                   /* a page opened: its word, once it rests there */
+        tom.view = ui.view;
+        tom.view_t = now;
+        tom.view_new = 1;
     }
     if (tom_song_in && tom.want == 255)
         tom.want = TT_SONGIN, tom_song_in = 0;
     if (plat_battery() == 0 && !tom.batt_told && tom.want == 255)
         tom.want = TT_BATT, tom.batt_told = 1;   /* (word of a low battery, once) */
+    if (tom.want != 255) {                       /* word to bring: at once */
+        tom_say(TOM_TIP[tom.want]);
+        tom.want = 255;
+    } else if (tom_knob_turned && now - ui.turn_t > 700u) {   /* a knob turned and let rest: what it does */
+        const int i = tom_knob_turned - 1, k = view_knob(ui.view, i), ki = tom_kidx(ui.view, i), val = knob_get(k);
+        char vb[112];
+        const char *g = TOM_KNOB[ki], *vt = tom_value(k, val, vb);
+        tom_knob_turned = 0;
+        if ((g && !tom_bit(tom.ksaid, ki)) || (vt && (tom.kidx != ki || tom.kval != val))) {
+            char *o = tom.dyn;
+            if (g && !tom_bit(tom.ksaid, ki)) {
+                tom_set(tom.ksaid, ki);
+                o = tom_cat(o, g);
+                if (vt)
+                    o = tom_cat(o, " ");
+            }
+            if (vt)
+                tom_cat(o, vt);
+            tom.kidx = (int16_t)ki;
+            tom.kval = (int16_t)val;
+            tom_say(tom.dyn);
+        }
+    } else if (tom.view_new && now - tom.view_t > 900u) {   /* a page resting open: what it is, the first time */
+        const int pi = tom_pidx(ui.view);
+        tom.view_new = 0;
+        if (TOM_PAGE[pi] && !tom_bit(tom.psaid, pi) && tom.st != 5) {
+            tom_set(tom.psaid, pi);
+            tom_say(TOM_PAGE[pi]);
+            tom.page = (int8_t)pi;
+        }
+    }
     switch (tom.st) {
     case 0:
-        if (tom.want != 255) {                   /* word to bring: at once */
-            tom_come(tom.want, 0);
-            tom.want = 255;
-        } else if (now - ui.act_t > 180000u && now > 200000u) {   /* nothing touched for three minutes: a nap */
-            tom_come(-1, 1);
+        if (now - ui.act_t > 180000u && now > 200000u) {   /* nothing touched for three minutes: a nap */
+            tom_come(0, 1);
         } else if ((int32_t)(now - tom.next) >= 0) {
-            static uint8_t met;                  /* (his first visit always with a word: he says hello) */
-            tom_come(!met || grain(now) % 5u < 3u ? tom_page_tip(ui.view) : -1, 0);
-            met = 1;
-        } else if (play_up && grain(now) % 3u == 0u) {   /* PLAY: now and then he runs across with it */
-            tom_come(-1, 0);
+            tom_come(tom_word(ui.view), 0);
+        } else if (play_up && grain(now) % 2u == 0u) {   /* PLAY: now and then he runs across with it */
+            tom_come(0, 0);
             tom.stop = 120;
+            tom.sit = 0;
         }
         break;
-    case 1:                                      /* walking in, a step every 110 ms */
-        tom.x = (int16_t)(240 - (int32_t)(e * 60u / 1000u));
-        tom.frame = (uint8_t)(e / 110u % 6u);
-        if (tom.x <= tom.stop) {
+    case 1: {                                    /* on his way to stop */
+        const int32_t d = (int32_t)(e * (uint32_t)tom.spd / 1000u), right = tom.stop > tom.from;
+        tom.x = (int16_t)(right ? tom.from + d : tom.from - d);
+        tom.frame = (uint8_t)(e / (tom.spd > 100 ? 70u : 110u) % 6u);
+        if (right ? tom.x >= tom.stop : tom.x <= tom.stop) {
             tom.x = tom.stop;
             tom.t = now;
             if (tom.nap) {
                 tom.st = 5;
-            } else if (tom.tip != 255) {
+            } else if (tom.txt) {
                 tom.st = 2;
-                tom.said |= 1u << tom.tip;
-                if (ann_on()) {
-                    char t[64];
-                    msg_text(TOM_TIP[tom.tip][0], TOM_TIP[tom.tip][1], t);
-                    ann_say("Tom says:", 0, ANN_NOW);
-                    ann_say(t, 0, 0);
-                }
+                tom.panel_t = now;
+                tom_announce();
+            } else if (tom.sit) {
+                tom.st = 7;
             } else {
                 tom.st = grain(now) % 2u ? 4 : 3;   /* a jump, or on his way */
             }
         }
         break;
-    case 2:                                      /* sitting, his word beside him: 6 s, or until a button */
-        if (e > 6000u || (int32_t)(ui.act_t - tom.t) > 400)
-            tom.st = play_up ? 4 : 3, tom.t = now;
-        else if (play_up)
-            tom.st = 4, tom.t = now;
+    }
+    case 2:                                      /* sitting, his word beside him, two lines at a time */
+        if (now - tom.panel_t > TOM_PANEL_MS) {
+            if (tom.panel + 1 < tom.npanel) {
+                tom.panel++;
+                tom.panel_t = now;
+                tom_announce();
+            } else {
+                tom.st = 3, tom.t = now, tom.txt = 0;
+            }
+        } else if (play_up) {
+            tom.st = 4, tom.t = now, tom.txt = 0;
+        } else if ((int32_t)(ui.act_t - tom.t) > 400 && ui.act_t != ui.turn_t) {   /* a button (not a knob) */
+            tom.st = 3, tom.t = now, tom.txt = 0;
+        }
         break;
     case 4:                                      /* a jump: up and on, 0.6 s */
         if (e > 600u)
@@ -2293,48 +2840,63 @@ static void tom_step(void)                      /* each frame: what he does */
         if (e > 1100u)
             tom.st = 3, tom.t = now;
         break;
+    case 7:                                      /* sitting a while, looking about */
+        if (e > (uint32_t)tom.sit * 100u || play_up || (int32_t)(ui.act_t - tom.t) > 400)
+            tom.st = play_up ? 4 : 3, tom.t = now;
+        break;
     default:                                     /* on his way out, to the left */
         tom.x = (int16_t)(tom.stop - (int32_t)(e * 70u / 1000u));
         tom.frame = (uint8_t)(e / 100u % 6u);
         if (tom.x < -56) {
             tom.st = 0;
             tom.nap = 0;
-            tom.next = now + 90000u + grain(now) % 150000u;   /* (again in 1.5 .. 4 minutes) */
+            tom.next = now + 5000u + grain(now) % 9000u;   /* (again in 5 .. 14 s) */
         }
         break;
     }
 }
 static uint32_t tom_sig(void)                   /* (the header drawn again while he moves) */
 {
+    const uint32_t now = plat_ms();
     if (!tom.st)
         return 0u;
-    return (uint32_t)tom.st << 24 ^ (uint32_t)(uint16_t)tom.x << 8 ^ tom.frame ^
-           (tom.st == 4 ? (plat_ms() - tom.t) / 40u << 12 : 0u) ^ (tom.st == 5 ? plat_ms() / 350u << 14 : 0u) ^
-           (tom.st == 2 ? ((plat_ms() - tom.t) % 2600u < 160u) << 20 : 0u);
+    return (uint32_t)tom.st << 24 ^ (uint32_t)(uint16_t)tom.x << 8 ^ tom.frame ^ (uint32_t)tom.panel << 16 ^
+           (uint32_t)(uintptr_t)tom.txt ^ (tom.st == 4 ? (now - tom.t) / 40u << 12 : 0u) ^
+           (tom.st == 5 ? now / 350u << 14 : 0u) ^ (tom.st == 2 ? (now - tom.panel_t) / 300u << 18 : 0u) ^
+           ((tom.st == 2 || tom.st == 7) ? ((now - tom.t) % 2600u < 160u) << 20 : 0u);
 }
 static void tom_header(void)                     /* over the header, after it */
 {
-    const uint32_t e = plat_ms() - tom.t;
+    const uint32_t now = plat_ms(), e = now - tom.t;
     if (!tom.st)
         return;
-    if (tom.st == 2) {                           /* his word: the header cleared, two lines, him sitting */
+    if (tom.st == 2 && tom.txt) {                /* his word: the header cleared, two lines, him sitting */
+        char l[TOM_COLS + 1];
+        const uint32_t all = (uint32_t)tom.npanel * TOM_PANEL_MS,
+                       done = (uint32_t)tom.panel * TOM_PANEL_MS + (now - tom.panel_t);
         cv_rect(0, 0, 240, HDR_H, K_BG);
-        cv_text(4, 1, &FONT_XS, TOM_TIP[tom.tip][0], K_ACC);
-        cv_text(4, 14, &FONT_XS, TOM_TIP[tom.tip][1], K_TEXT);
+        tom_line(tom.txt, tom.panel * 2, l);
+        cv_text(4, 1, &FONT_XS, l, tom.panel ? K_TEXT : K_ACC);
+        tom_line(tom.txt, tom.panel * 2 + 1, l);
+        cv_text(4, 14, &FONT_XS, l, K_TEXT);
+        if (tom.npanel > 1)                      /* (how far through his word) */
+            cv_rect(4, HDR_H - 1, (int32_t)(174u * (done < all ? done : all) / all), 1, K_DIM);
+        tom_draw(tom.x, 0, 0, e % 2600u < 160u ? TOM_BLINK : TOM_SIT, 0);
+    } else if (tom.st == 7) {                    /* sitting a while */
         tom_draw(tom.x, 0, 0, e % 2600u < 160u ? TOM_BLINK : TOM_SIT, 0);
     } else if (tom.st == 4) {                    /* a jump: an arc up and out of the top */
         const float u = (float)e / 600.0f, h = 4.0f * u * (1.0f - u);
         tom_draw(tom.x - (int32_t)(u * 30.0f), -(int32_t)(10.0f * h), 0, TOM_JUMP, 1);
     } else if (tom.st == 5) {                    /* asleep, his z's rising */
-        const int32_t ph = (int32_t)(plat_ms() / 350u % 6u);
+        const int32_t ph = (int32_t)(now / 350u % 6u);
         tom_draw(tom.x, 0, 0, TOM_SLEEP, 1);
         cv_text(tom.x + 8 - ph, 10 - ph, &FONT_XS, "z", K_DIM);
         if (ph > 2)
             cv_text(tom.x + 2 - ph, 6 - ph, &FONT_XS, "z", K_TEXT);
     } else if (tom.st == 6) {
         tom_draw(tom.x, 0, 0, TOM_STRETCH, 1);
-    } else {
-        tom_draw(tom.x, 0, 0, tom.frame, 1);     /* (walking left: him mirrored) */
+    } else {                                     /* walking: facing the way he goes */
+        tom_draw(tom.x, 0, 0, tom.frame, !(tom.st == 1 && tom.stop > tom.from));
     }
 }
 
