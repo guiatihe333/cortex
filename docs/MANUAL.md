@@ -128,6 +128,13 @@ for. Now and then he walks across the top of the screen, sometimes jumps, someti
 something about the page you are on (a screen reader hears it: "Tom says"); the first time you open a page he may come
 by. He is on the start screen too, walking in through the rings and jumping onto the name.
 
+Since 1.5.18 his word fits what is going on: a stopped piece, a voice at Level 0, a patch envelope with long notes,
+reel Mix at 100, an empty reel, no song loaded, the Lights not following the video, and so on; he does not repeat
+a tip until he has said the others for that page. Press a button while he talks and he goes. Press PLAY and now
+and then he runs across, or jumps off if he was sitting. When a song comes in over USB he brings word of it, and
+once when the battery runs low. Leave CORTEX untouched for three minutes and he comes to sleep in the corner
+(little z's rising); touch anything and he wakes, stretches and walks off.
+
 ![The Partiture page: the piece Garden, D Dorian, tempo 72; the score with the chord Dm7, the level bars on the left](img/screen-garden.png "The Partiture page (HOME)")
 
 - **Top line:** the piece, its root and mode (and a terminal's cursor, blinking), as far as they fit. On the right, a

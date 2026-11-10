@@ -699,6 +699,7 @@ void ui_reel_in(int ok)                         /* a file's reel came in: SOURCE
     else
         warn("TAPE IN", "NOT SAVED YET");
 }
+static uint8_t tom_song_in;                     /* (a song came in: Tom brings word of it) */
 void ui_song_in(int slot)                       /* a song came in */
 {
     char nm[16];
@@ -706,6 +707,7 @@ void ui_song_in(int slot)                       /* a song came in */
     if (proj.par[P_SG(SONG)] == slot + 1)
         song_attach(0);
     say("SONG IN", nm);
+    tom_song_in = 1;                             /* (Tom brings word of it) */
 }
 
 static void knob_text(int k, char *b)
@@ -2075,13 +2077,13 @@ static uint32_t grain(uint32_t i);
  * sometimes sits by the right edge and says something about the page you are on (a screen reader hears it); the first
  * time a page is opened he may come by. 24 x 14, drawn twice the size; his frames: two steps, a jump, sitting */
 #include "tom_art.h"                            /* (tools/gen_tom.py: drawn, from his photos) */
-enum { TOM_JUMP = 6, TOM_SIT = 7, TOM_BLINK = 8 };
+enum { TOM_JUMP = 6, TOM_SIT = 7, TOM_BLINK = 8, TOM_SLEEP = 9, TOM_STRETCH = 10 };
 /* frame f of his drawing (big: the start screen's 112 x 56, else the header's 56 x 28) with its top left at (x, y)
  * (canvas coordinates), each pixel laid over what is there by its alpha; mirror: facing left */
 static void tom_draw(int32_t x, int32_t y, int big, int f, int mirror)
 {
     const int32_t w = big ? TOM_LW : TOM_SW, h = big ? TOM_LH : TOM_SH;
-    const uint16_t *a = big ? TOM_L[f] : TOM_S[f];
+    const uint16_t *a = big ? TOM_L[f < TOM_NL ? f : TOM_SIT] : TOM_S[f];
     int32_t r, c;
     for (r = 0; r < h; r++)
         for (c = 0; c < w; c++) {
@@ -2091,106 +2093,177 @@ static void tom_draw(int32_t x, int32_t y, int big, int f, int mirror)
                         (uint32_t)(v >> 4 & 15u) * 63u / 15u, (uint32_t)(v & 15u) * 31u / 15u);
         }
 }
-static const char *const TOM_TIP[][2] = {
-    /* 0 general */
+/* his words: two lines each; 0 .. 4 for any page, then the pages', then what he brings word of */
+enum { TT_UNDO, TT_RECIPE, TT_TEMPO, TT_DICE, TT_INIT, TT_KEYS, TT_RESTING, TT_VPAGES, TT_NATURAL, TT_PATCHENV,
+       TT_SILENT, TT_ALL, TT_HALL, TT_GLO, TT_LIGHTS, TT_PLAYIN, TT_NOSONG, TT_FOLLOW, TT_EDIT, TT_WET, TT_REVERSE,
+       TT_VPAGESV, TT_OSC, TT_GRID, TT_SHAPE2, TT_FEED0, TT_LINES, TT_REACT, TT_SONGIN, TT_BATT, TT_N };
+static const char *const TOM_TIP[TT_N][2] = {
     {"hold SEL a second:", "the last change undone"},
-    {"hold SAVE: the piece", "back to its recipe"},
-    {"HOME + SELECT:", "the tempo, anywhere"},
-    {"SEL: the dice on", "every knob of a page"},
-    /* 4 the garden */
+    {"hold SAVE 1.5 s: the", "piece back to its recipe"},
+    {"HOME + SELECT:", "the tempo, from anywhere"},
+    {"SEL: the dice roll", "every knob of the page"},
+    {"SEL + SAVE: this voice", "(or its mods) back to 0"},
     {"the keys here: notes", "in and out of the scale"},
-    /* 5 a voice */
-    {"its button again: its", "own pages, patch to MOD"},
+    {"it's resting: PLAY", "and the garden grows"},
+    {"its button again: its", "own pages, Patch to Mod"},
     {"Gate all the way down:", "Natural, notes let go"},
-    /* 7 Space */
-    {"Size up, Reverb up:", "a long hall"},
-    /* 8 Setup */
+    {"Envelope Patch: you hear", "the patch's own shape"},
+    {"this voice is at Level", "0: you won't hear it"},
+    {"a Mod on All, Depth 100:", "everything moves at once"},
+    {"Size and Reverb up:", "a long, long hall"},
     {"GLO again: MIDI, then", "the Song page"},
-    /* 9 MIDI */
+    {"Lights Visual: the keys", "follow the picture"},
     {"Notes in Play: a MIDI", "channel plays its voice"},
-    /* 10 Song */
-    {"load a .mid in the", "simulator or amb_mid.py"},
-    /* 11 the reel */
-    {"EDIT records a splice,", "REC overdubs it"},
-    {"Dry/Wet at Wet: you hear", "the tape alone"},
-    /* 13 the visual */
+    {"no song yet: send a .mid", "(the simulator, amb_mid)"},
+    {"Follow 100: every note", "of the song; lower, mixed"},
+    {"the tape is empty: EDIT", "records, REC overdubs"},
+    {"Dry/Wet at Wet: you", "hear the tape alone"},
+    {"Speed under 0: the", "tape runs backwards"},
     {"HOME again: the video", "synth, page by page"},
-    /* 14 Osc */
+    {"Visual on Osc: a picture", "made from nothing"},
     {"Freq 2 and Multiply:", "a grid; Field: Hydra"},
-    /* 15 Shape */
     {"Shape 2: a second", "geometry at once"},
-    /* 16 Transform */
-    {"Feedback up first:", "then Zoom and Rotate"},
-    /* 17 React */
+    {"Feedback is at 0: turn", "it up on the Video page"},
+    {"Target Lines: the", "geometry itself turns"},
     {"a slot: a sound moves", "a setting; All: every one"},
-    /* 18 Lights */
-    {"Setup's Lights Visual:", "the keys follow the light"},
+    {"a song came in: GLO", "twice, Song to its slot"},
+    {"the battery is low:", "plug the USB cable in"},
 };
 static struct {
-    uint8_t st, tip, frame;                     /* st: 0 away, 1 walking in, 2 sitting (a tip), 3 walking on, 4 jumping */
+    uint8_t st, tip, frame;                     /* st: 0 away, 1 walking in, 2 sitting (a tip), 3 on his way out,
+                                                 * 4 a jump, 5 asleep, 6 a stretch (waking) */
     int16_t x, stop;                            /* where he is, where he stops */
     uint32_t t, next;                           /* this state's start; his next visit */
-    uint32_t seen;                              /* the layer pages opened since the start */
-} tom;
-static int tom_page_tip(int v)                  /* the page's own tip, or a general one */
+    uint32_t seen, said;                        /* the layer pages opened; the tips he has given (not again soon) */
+    uint8_t want, was_play, batt_told, nap;     /* want: a word to bring (TT_*, 255 none); nap: he comes to sleep */
+} tom = {.want = 255};
+static int tom_pick(const uint8_t *c, int n)    /* the first of these he has not said lately */
 {
+    int i;
+    for (i = 0; i < n; i++)
+        if (!(tom.said >> c[i] & 1u))
+            return c[i];
+    tom.said = 0;                                /* (all said: from the top) */
+    return n ? c[0] : TT_UNDO;
+}
+static int tom_page_tip(int view)               /* a word for the page you are on, as things are now */
+{
+    uint8_t c[8];
+    int n = 0, v = view_main(view), x = view_vox(view);
     static uint8_t gen;
-    v = view_main(v);
     if (v >= V_MAIN)
         v = V_GARDEN;
     switch (v) {
-    case V_GARDEN: return 4;
-    case V_PAD: case V_BELLS: case V_BASS: return 5 + (int)(plat_ms() / 7u & 1u);
-    case V_SPACE: return 7;
-    case V_SETUP: return plat_ms() & 1u ? 8 : 18;
-    case V_MIDI: return 9;
-    case V_SONG: return 10;
-    case V_TAPE: case V_GENE: case V_DECK: case V_TMOD1: case V_TMOD2: case V_TKEY: return 11 + (int)(plat_ms() / 7u & 1u);
-    case V_VIS: return 13;
-    case V_OSC: case V_OSC2: return 14;
-    case V_SHAPE: case V_SHAPE2: return 15;
-    case V_XFORM: return 16;
-    case V_REACT: return 17;
-    default: return (int)(gen++ % 4u);
+    case V_GARDEN:
+        if (!en_playing)
+            c[n++] = TT_RESTING;
+        c[n++] = TT_KEYS;
+        break;
+    case V_PAD: case V_BELLS: case V_BASS:
+        if (x >= 0) {
+            if (!proj.par[P_PAD + x])
+                c[n++] = TT_SILENT;
+            if (proj.par[P_PL(x, PL_ENV)] == 0)
+                c[n++] = TT_PATCHENV;
+            else if (proj.par[P_PL(x, PL_GATE)] > 50)
+                c[n++] = TT_NATURAL;
+        }
+        c[n++] = TT_VPAGES;
+        c[n++] = TT_ALL;
+        c[n++] = TT_INIT;
+        break;
+    case V_SPACE: c[n++] = TT_HALL; break;
+    case V_SETUP:
+        if (proj.leds != 3)
+            c[n++] = TT_LIGHTS;
+        c[n++] = TT_GLO;
+        break;
+    case V_MIDI: c[n++] = TT_PLAYIN; break;
+    case V_SONG: {
+        int k, any = 0;
+        for (k = 0; k < EN_NSONG; k++)
+            any |= song_rec(k) != 0;
+        c[n++] = any ? TT_FOLLOW : TT_NOSONG;
+        break;
     }
+    case V_TAPE: case V_GENE: case V_DECK: case V_TMOD1: case V_TMOD2: case V_TKEY:
+        if (!en_reel_nspl)
+            c[n++] = TT_EDIT;
+        if (proj.par[P_RL(MIX)] >= 95)
+            c[n++] = TT_WET;
+        c[n++] = TT_REVERSE;
+        c[n++] = TT_EDIT;
+        break;
+    case V_VIS:
+        if (proj.par[P_ST(VMODE)] != VIS_OSC)
+            c[n++] = TT_OSC;
+        c[n++] = TT_VPAGESV;
+        break;
+    case V_OSC: case V_OSC2: c[n++] = TT_GRID; break;
+    case V_SHAPE: case V_SHAPE2: c[n++] = TT_SHAPE2; break;
+    case V_XFORM:
+        if (!proj.par[P_ST(VFEED)] && proj.par[P_ST(VXTGT)] != 1)
+            c[n++] = TT_FEED0;
+        c[n++] = TT_LINES;
+        break;
+    case V_REACT: c[n++] = TT_REACT; break;
+    default: break;
+    }
+    c[n++] = (uint8_t)(TT_UNDO + gen++ % 4u);    /* (and one for any page) */
+    return tom_pick(c, n);
 }
-static void tom_come(int tip)                   /* in from the right; to sit with a tip, or just to pass */
+static void tom_come(int tip, int nap)           /* in from the right; to sit with a tip, to sleep, or to pass */
 {
     tom.st = 1;
     tom.x = 240;
     tom.t = plat_ms();
-    tom.tip = (uint8_t)tip;
-    tom.stop = tip >= 0 ? 184 : (int16_t)(50 + (int)(grain(plat_ms()) % 110u));
-    if (tip < 0)
-        tom.tip = 255;
+    tom.nap = (uint8_t)nap;
+    tom.tip = (uint8_t)(tip >= 0 ? tip : 255);
+    tom.stop = tip >= 0 || nap ? 184 : (int16_t)(50 + (int)(grain(plat_ms()) % 110u));
 }
-static void tom_step(void)                      /* each frame: where he is */
+static void tom_step(void)                      /* each frame: what he does */
 {
     const uint32_t now = plat_ms(), e = now - tom.t;
+    const int play_up = en_playing && !tom.was_play && now > 8000u;   /* (not the start playing by itself) */
+    tom.was_play = en_playing;
     if (!tom.next)
         tom.next = now + 25000u;                 /* (his first visit, a while after the start) */
     if (!(tom.seen >> view_main(ui.view) & 1u) && view_main(ui.view) < 32) {   /* a page opened the first time */
         tom.seen |= 1u << view_main(ui.view);
         if (!tom.st && now > 6000u && grain(now) % 3u == 0u)
-            tom.next = now + 1500u, tom.tip = (uint8_t)tom_page_tip(ui.view);
+            tom.next = now + 1500u;
     }
+    if (tom_song_in && tom.want == 255)
+        tom.want = TT_SONGIN, tom_song_in = 0;
+    if (plat_battery() == 0 && !tom.batt_told && tom.want == 255)
+        tom.want = TT_BATT, tom.batt_told = 1;   /* (word of a low battery, once) */
     switch (tom.st) {
     case 0:
-        if ((int32_t)(now - tom.next) >= 0) {
-            const uint32_t g = grain(now);
+        if (tom.want != 255) {                   /* word to bring: at once */
+            tom_come(tom.want, 0);
+            tom.want = 255;
+        } else if (now - ui.act_t > 180000u && now > 200000u) {   /* nothing touched for three minutes: a nap */
+            tom_come(-1, 1);
+        } else if ((int32_t)(now - tom.next) >= 0) {
             static uint8_t met;                  /* (his first visit always with a word: he says hello) */
-            tom_come(!met || g % 5u < 3u ? tom_page_tip(ui.view) : -1);   /* (then three times in five, else a walk) */
+            tom_come(!met || grain(now) % 5u < 3u ? tom_page_tip(ui.view) : -1, 0);
             met = 1;
+        } else if (play_up && grain(now) % 3u == 0u) {   /* PLAY: now and then he runs across with it */
+            tom_come(-1, 0);
+            tom.stop = 120;
         }
         break;
-    case 1:                                      /* walking in, a step every 140 ms */
+    case 1:                                      /* walking in, a step every 110 ms */
         tom.x = (int16_t)(240 - (int32_t)(e * 60u / 1000u));
         tom.frame = (uint8_t)(e / 110u % 6u);
         if (tom.x <= tom.stop) {
             tom.x = tom.stop;
             tom.t = now;
-            if (tom.tip != 255) {
+            if (tom.nap) {
+                tom.st = 5;
+            } else if (tom.tip != 255) {
                 tom.st = 2;
+                tom.said |= 1u << tom.tip;
                 if (ann_on()) {
                     char t[64];
                     msg_text(TOM_TIP[tom.tip][0], TOM_TIP[tom.tip][1], t);
@@ -2202,19 +2275,30 @@ static void tom_step(void)                      /* each frame: where he is */
             }
         }
         break;
-    case 2:                                      /* sitting, the tip beside him: 5 s */
-        if (e > 5000u)
-            tom.st = 3, tom.t = now;
+    case 2:                                      /* sitting, his word beside him: 6 s, or until a button */
+        if (e > 6000u || (int32_t)(ui.act_t - tom.t) > 400)
+            tom.st = play_up ? 4 : 3, tom.t = now;
+        else if (play_up)
+            tom.st = 4, tom.t = now;
         break;
     case 4:                                      /* a jump: up and on, 0.6 s */
         if (e > 600u)
+            tom.st = 3, tom.t = now, tom.stop = tom.x;
+        break;
+    case 5:                                      /* asleep, until something is touched */
+        if ((int32_t)(ui.act_t - tom.t) > 0 || play_up)
+            tom.st = 6, tom.t = now;
+        break;
+    case 6:                                      /* a stretch, then off */
+        if (e > 1100u)
             tom.st = 3, tom.t = now;
         break;
     default:                                     /* on his way out, to the left */
         tom.x = (int16_t)(tom.stop - (int32_t)(e * 70u / 1000u));
         tom.frame = (uint8_t)(e / 100u % 6u);
-        if (tom.x < -50) {
+        if (tom.x < -56) {
             tom.st = 0;
+            tom.nap = 0;
             tom.next = now + 90000u + grain(now) % 150000u;   /* (again in 1.5 .. 4 minutes) */
         }
         break;
@@ -2222,22 +2306,33 @@ static void tom_step(void)                      /* each frame: where he is */
 }
 static uint32_t tom_sig(void)                   /* (the header drawn again while he moves) */
 {
-    return tom.st ? (uint32_t)tom.st << 24 ^ (uint32_t)(uint16_t)tom.x << 8 ^ tom.frame ^
-                    (tom.st == 4 ? (plat_ms() - tom.t) / 40u << 12 : 0u)
-                  : 0u;
+    if (!tom.st)
+        return 0u;
+    return (uint32_t)tom.st << 24 ^ (uint32_t)(uint16_t)tom.x << 8 ^ tom.frame ^
+           (tom.st == 4 ? (plat_ms() - tom.t) / 40u << 12 : 0u) ^ (tom.st == 5 ? plat_ms() / 350u << 14 : 0u) ^
+           (tom.st == 2 ? ((plat_ms() - tom.t) % 2600u < 160u) << 20 : 0u);
 }
 static void tom_header(void)                     /* over the header, after it */
 {
+    const uint32_t e = plat_ms() - tom.t;
     if (!tom.st)
         return;
-    if (tom.st == 2) {                           /* the tip: a dark plate, his words in two lines */
-        cv_rect(0, 0, 240, HDR_H, K_BG);         /* (the header cleared for his words) */
+    if (tom.st == 2) {                           /* his word: the header cleared, two lines, him sitting */
+        cv_rect(0, 0, 240, HDR_H, K_BG);
         cv_text(4, 1, &FONT_XS, TOM_TIP[tom.tip][0], K_ACC);
         cv_text(4, 14, &FONT_XS, TOM_TIP[tom.tip][1], K_TEXT);
-        tom_draw(tom.x, 0, 0, (plat_ms() - tom.t) % 2600u < 160u ? TOM_BLINK : TOM_SIT, 0);
+        tom_draw(tom.x, 0, 0, e % 2600u < 160u ? TOM_BLINK : TOM_SIT, 0);
     } else if (tom.st == 4) {                    /* a jump: an arc up and out of the top */
-        const float u = (float)(plat_ms() - tom.t) / 600.0f, h = 4.0f * u * (1.0f - u);
+        const float u = (float)e / 600.0f, h = 4.0f * u * (1.0f - u);
         tom_draw(tom.x - (int32_t)(u * 30.0f), -(int32_t)(10.0f * h), 0, TOM_JUMP, 1);
+    } else if (tom.st == 5) {                    /* asleep, his z's rising */
+        const int32_t ph = (int32_t)(plat_ms() / 350u % 6u);
+        tom_draw(tom.x, 0, 0, TOM_SLEEP, 1);
+        cv_text(tom.x + 8 - ph, 10 - ph, &FONT_XS, "z", K_DIM);
+        if (ph > 2)
+            cv_text(tom.x + 2 - ph, 6 - ph, &FONT_XS, "z", K_TEXT);
+    } else if (tom.st == 6) {
+        tom_draw(tom.x, 0, 0, TOM_STRETCH, 1);
     } else {
         tom_draw(tom.x, 0, 0, tom.frame, 1);     /* (walking left: him mirrored) */
     }
@@ -2397,8 +2492,8 @@ static void draw_header(void)
             }
         }
     }
-    if (!msg)
-        tom_header();                            /* (Tom over it) */
+    if (!msg || tom.st != 2)
+        tom_header();                            /* (Tom over it; his word gives way to a message) */
     if (!vis_over)
         cv_blit(0, 0);
 }

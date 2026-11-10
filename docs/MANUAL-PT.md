@@ -129,6 +129,13 @@ o CORTEX foi feito. De vez em quando ele atravessa o alto da tela, às vezes pul
 e diz algo sobre a página em que você está (o leitor de tela ouve: "Tom says"); na primeira vez que você abre uma
 página ele pode aparecer. Ele está na tela de abertura também, entrando pelos anéis e pulando em cima do nome.
 
+Desde a 1.5.18 a fala dele acompanha o que está acontecendo: peça parada, uma voz com Level 0, envelope de patch com
+notas longas, Mix da fita em 100, fita vazia, nenhuma música carregada, as Lights sem seguir o vídeo, e assim por
+diante; ele não repete uma dica antes de dar as outras daquela página. Aperte um botão enquanto ele fala e ele vai
+embora. Ao dar PLAY, às vezes ele atravessa correndo, ou pula fora se estava sentado. Quando chega uma música pela
+USB ele avisa, e avisa uma vez quando a bateria fica baixa. Deixe o CORTEX sem mexer por três minutos e ele vem
+dormir no canto (com zzz subindo); toque em qualquer coisa e ele acorda, se espreguiça e sai.
+
 ![A página Partiture: a peça Garden, D Dorian, andamento 72; a partitura com o acorde Dm7, as barras de nível à esquerda](img/screen-garden.png "A página Partiture (HOME)")
 
 - **Linha de cima:** a peça, sua tônica e seu modo (e um cursor de terminal piscando), até onde couberem. À direita,
