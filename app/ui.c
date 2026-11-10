@@ -917,6 +917,7 @@ static void set_mode(int m)
 
 static void set_piece(int i)                    /* the piece playing kept as it is; piece i as it was left */
 {
+    en_keys_off();                               /* (1.5.17: a key's note does not ring on into the next piece) */
     project_piece(i);
     project_apply();
     en_seed(plat_ms());

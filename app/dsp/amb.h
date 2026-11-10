@@ -339,6 +339,7 @@ void en_overload(void);
 void en_load(int pct);
 /* the keys played on a voice's page: note (MIDI) of voice v down (on 1) or up (on 0), apart from the garden */
 void en_key(int v, int note, int on);
+void en_keys_off(void);                         /* every key's note let go (a new piece; STOP does it too) */
 extern volatile uint32_t en_sheds;
 extern volatile int8_t en_scope_v;
 extern volatile uint32_t en_scope_seq;

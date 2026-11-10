@@ -1,0 +1,24 @@
+# 1.5.17: a key's note does not hang: held on voice 1 (its key never let go), a new piece lets it go and it fades;
+# echo and reverb off (again in the new piece), the garden stopped, so only that note could sound
+wait 300
+tap FX
+spin K1 -100
+spin K3 -100
+tap PLAY
+wait 6000
+tap ENV
+wait 100
+key 7 down
+wait 1000
+peakreset
+wait 300
+expect peak_db_min -50
+turn PRESET 1
+wait 300
+tap FX
+spin K1 -100
+spin K3 -100
+wait 8000
+peakreset
+wait 1000
+expect peak_db_max -50

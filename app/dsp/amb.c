@@ -700,6 +700,7 @@ void en_reel_take(const void *meta)
     post(C_REEL, EN_REEL_TAKE, 0);
 }
 void en_key(int v, int note, int on) { post(C_KEY, v, (note & 0x7F) | (on ? 0x100 : 0)); }
+void en_keys_off(void) { post(C_KEY, 7, 0); }   /* (every key's note let go: a new piece) */
 void en_detune(int dcents) { post(C_DETUNE, dcents, 0); }
 static float kcents;                            /* Key sync Garden: the tape's cents, as a semitone's fraction */
 static void kb_key(int v, int note, int on);    /* (the keyboard's notes: by fm_block) */
@@ -3314,6 +3315,7 @@ static void play_stop(void)
 {
     int v, i;
     en_playing = 0;
+    kb_key(7, 0, 0);                             /* (every key's note let go) */
     for (v = 0; v < EN_NVOX; v++)
         vc[v].mon = 0;                           /* (all notes off goes out below) */
     pad_gate = 0.0f;
@@ -3709,11 +3711,23 @@ static struct {
     fm6_lfo_t lfo;
     uint8_t vp[FP_SIZE + 1];
     uint8_t on, voice, note, key;               /* key: the key's note as pressed (released by it) */
+    uint16_t rel;                               /* blocks since it was let go (1.5.17: at most 6 s, then gone) */
 } kb[KB_N] EN_POOL;
+#define KB_REL_FREE (3 * EN_SR / FM6_N)        /* its own release, 3 s; then a fade of 3 s more */
 static void kb_reset(void) { __builtin_memset(kb, 0, sizeof kb); }
 static void kb_key(int v, int note, int on)
 {
     int i, k = -1;
+    if (v == 7) {                                /* (en_keys_off: every key let go, its MIDI note too) */
+        for (i = 0; i < KB_N; i++)
+            if (kb[i].on == 1) {
+                fm6_note_key(&kb[i].fm, kb[i].vp, 0);
+                kb[i].on = 2;
+                kb[i].rel = 0;
+                midi(0x80u | (uint32_t)kb[i].voice, kb[i].note, 0);
+            }
+        return;
+    }
     if ((unsigned)v >= EN_NVOX)
         return;
     if (!on) {                                   /* let go: the note of this key, this voice */
@@ -3721,6 +3735,7 @@ static void kb_key(int v, int note, int on)
             if (kb[i].on == 1 && kb[i].voice == v && kb[i].key == note) {
                 fm6_note_key(&kb[i].fm, kb[i].vp, 0);
                 kb[i].on = 2;
+                kb[i].rel = 0;
                 midi(0x80u | (uint32_t)v, kb[i].note, 0);
             }
         return;
@@ -3769,7 +3784,9 @@ static void kb_block(void)                       /* (1.5.11: each key moved by i
         ld = fm6_lfo_delay(&kb[i].lfo);
         mod_of(VOX_GEN0[v], p, &m, dtb, olb);
         if (fm_voice(&kb[i].fm, p, (float)kb[i].note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb, olb, x)) {
-            const float g = vc[v].vol * vc[v].gain * 0.45f * m.lvl,
+            const float rf = kb[i].on == 2 && kb[i].rel > KB_REL_FREE   /* (let go 3 s ago: fading, 3 s) */
+                                 ? 1.0f - (float)(kb[i].rel - KB_REL_FREE) / (float)KB_REL_FREE : 1.0f,
+                        g = vc[v].vol * vc[v].gain * 0.45f * m.lvl * fm_maxf(rf, 0.0f),
                         a = (fm_clampf(m.pan, -1.0f, 1.0f) + 1.0f) * (FM_PI / 4.0f), gl = fm_cosf(a), gr = fm_sinf(a);
             for (j = 0; j < FM6_N; j++) {
                 const float sm = x[j] * g;
@@ -3779,8 +3796,8 @@ static void kb_block(void)                       /* (1.5.11: each key moved by i
                 fm_vtap[v][j] += sm;
             }
         }
-        if (kb[i].on == 2 && fm6_note_done(&kb[i].fm, p, p[FP_ALG] & 31u))
-            kb[i].on = 0;
+        if (kb[i].on == 2 && (fm6_note_done(&kb[i].fm, p, p[FP_ALG] & 31u) || ++kb[i].rel >= 2 * KB_REL_FREE))
+            kb[i].on = 0;                        /* (done, or 6 s let go: gone, whatever its envelope holds) */
     }
 }
 
