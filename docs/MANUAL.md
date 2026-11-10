@@ -20,7 +20,7 @@ MIDI files, a video synth on the first page whose colours run through every page
 2. Getting started
 3. Controls
 4. The screen
-5. The garden
+5. CORTEX
 6. The pieces
 7. The pages
 8. The reel
@@ -67,7 +67,7 @@ built-in ones come back when CORTEX is installed again). M-VAVE's M-UPGRADE work
 
 CORTEX starts playing as soon as it's on. A few minutes with it:
 
-1. **Listen.** The first piece, Garden, is playing: D Dorian, a chord breathing (Voice 1), bells on loops
+1. **Listen.** The first piece, Hypnagogia, is playing: D Lydian, a chord breathing (Voice 1), bells on loops
    (Voice 2) and a bass (Voice 3). Turn MASTER for the volume.
 2. **Try another piece.** Turn PRESETS. Each of the eight pieces has its own key, tempo, sounds and movement.
 3. **Change the scale.** Press a key whose note is lit: it leaves the scale. Press it again to bring it back.
@@ -80,7 +80,7 @@ CORTEX starts playing as soon as it's on. A few minutes with it:
 7. **Roll the dice.** Press SEL: the page shown gets new values, in ranges that keep it music. Hold SEL a second to
    undo. SEL + SAVE puts the page's part back to its defaults (undone the same way).
 8. **Record.** SEQ opens the Tape page; EDIT records, REC stops, and the reel plays it back.
-9. **Rest.** Press PLAY: the garden stops growing and its sounds fade out slowly. PLAY again and it grows back.
+9. **Rest.** Press PLAY: CORTEX stops growing and its sounds fade out slowly. PLAY again and it grows back.
 
 What you change is kept with the piece. It saves by itself while resting, or press SAVE.
 
@@ -96,7 +96,7 @@ Not sure what a button does? Hold it for a second: a card says. Let go and nothi
 | PLAY | Grow / rest. At rest, the sounds fade out slowly and the reverb rings away. Lit green while growing. |
 | REC | **Freeze**: the chord holds and the reverb rings on. Again: thaw. On the reel's pages: record (see [The reel](#s8)). |
 | EDIT | The next chord, at the start of the next bar. On the reel's pages: a new splice. |
-| HOME | The Partiture page (the score). |
+| HOME | The Cortex page (the score). |
 | ENV · ARP · LFO | Voices 1, 2 and 3. Again: the voice's PATCH, OPERATOR and MOD pages, then back. |
 | SEQ | The reel: Tape. Again: Gene, Deck, Tape Mod, Tape Mod 2, Tape Key, and round. |
 | FX · GLO | The Space and Setup pages. |
@@ -144,20 +144,20 @@ comes by every 5 to 14 seconds: with the page's next knob not yet explained ("KN
 sit a while. A long word is shown two lines at a time, a thin bar under it showing how far he has got. A button
 (not a knob) sends him off.
 
-![The Partiture page: the piece Hypnagogia, D Lydian, tempo 58, the video synth behind the chord Dm7; TEMPO 58, EVOLVE 40, MOTION 60, DRIFT 1:17](img/screen-garden.png "The Partiture page (HOME)")
+![The Cortex page: the piece Hypnagogia, D Lydian, tempo 58, the video synth behind the chord Dm7; TEMPO 58, EVOLVE 40, MOTION 60, DRIFT 1:17](img/screen-garden.png "The Cortex page (HOME)")
 
 - **Top line:** the piece, its root and mode (and a terminal's cursor, blinking), as far as they fit. On the right, a
   slow beat light, the tempo (EXT when it follows MIDI clock) and a dot when there are unsaved changes. Messages
   ("ADDED F#", "VOICE 2 / PATCH") show here for a moment.
 - **Top right:** a thin bar fills up on the way to the next chord; while frozen it says "held".
-- **The score** (Partiture, Space and Setup): a grand staff, G and F clefs, scrolling right to left, about seven
+- **The score** (Cortex, Space and Setup): a grand staff, G and F clefs, scrolling right to left, about seven
   seconds of it. Each note any voice plays stands at its pitch (a small cross for a sharp, ledger lines past the
   staves), in its voice's colour; while it sounds it is lit on the reading line, on the right, with a trail back to
   where it began. The chord's name is above the line.
 - **The voices' pages:** each voice's own sound on an oscilloscope (see [the voices](#env-arp-lfo-voices-1-2-3)).
 - **Left:** the levels as they sound, in dB: each voice's own (**1**, **2**, **3**) and the mix (**M**), before the
   volume.
-- **The look:** each page in the colours of a record of Aphex Twin's, drawn anew (no names, no marks): the Partiture
+- **The look:** each page in the colours of a record of Aphex Twin's, drawn anew (no names, no marks): the Cortex
   black and white with a few gold details, Voice 1 rust and gold, Voice 2 warm orange on black, Voice 3 green, Space a
   blue sky, Setup steel grey and a warning yellow (and a live hex dump of the settings), the reel's pages beige paper
   and the circles of Volume II's back. Registration marks at the corners. Since 1.5.2 the chord that sounds colours every page: its first three
@@ -174,7 +174,7 @@ On the reel's pages the score gives way to the reel (see [The reel](#s8)).
 
 ---
 
-## 5. The garden
+## 5. How CORTEX grows
 
 CORTEX grows its voices from one scale and one chord. Each of the three voices plays its own FM patch (six
 operators, as a DX7) in one of three **roles**, and any voice can take any role:
@@ -204,36 +204,36 @@ Over it all:
 
 ## 6. The pieces
 
-PRESETS chooses one of eight pieces, each a recipe for the whole garden: the voices and their sounds, tempo, key and
+PRESETS chooses one of eight pieces, each a recipe for the whole of CORTEX: the voices and their sounds, tempo, key and
 mode, how busy and how changeable, and a modulation of its own (each voice's second modulator, the reel's first).
 Each remembers how you left it. Hold SAVE 1.5 s to put the piece back to its
 recipe. Tune, MIDI out and Lights are the same for all.
 
 | Piece | What it is |
 |---|---|
-| **Garden** | D Dorian, 72: everything, gently. Rhodes. |
-| **Departures** | C# Ionian, 60: soft bells an octave down over a quiet Rhodes, as "1/1". |
-| **Voices** | F Aeolian, 56: only sung voices and a low bass, as "2/1". |
-| **Afternoon** | G Lydian, 84: a bright Rhodes, busier bells. |
-| **Night Bus** | A Aeolian, 96: metallic bells, short echoes, chaotic modulation. |
-| **Shoreline** | E pentatonic major, 64: dark, round bells lost in long echoes, as "2/2". |
-| **Glass** | Eb pentatonic minor, 76: clangy bells an octave up, dense. |
-| **Tides** | Bb Mixolydian, 70: sung voices, the most changeable. |
+| **Hypnagogia** | D Lydian, 58: falling asleep. A halo, slow. |
+| **Theta** | A Dorian, 66: the dreaming brain's waves. |
+| **REM** | E Aeolian, 88: the eyes moving. Glass, quicker. |
+| **Morpheus** | G Mixolydian, 56: who takes human form. Sung voices. |
+| **Phobetor** | C# Phrygian, 80: the nightmare. Low, restless. |
+| **Phantasos** | F# pentatonic major, 76: the shapes of things. Bells. |
+| **Lethe** | Eb Ionian, 52: the river of forgetting. Strings, long. |
+| **Nyx** | B pentatonic minor, 60: the night itself. Deep, sparse. |
 
 ---
 
 ## 7. The pages
 
 A page on each button, four values on KNOB 1–4; SELECT steps through them, and HOME, GLO and SEQ
-again go round theirs, in one order: Partiture, Voice 1, 2, 3, Space, Setup, MIDI, Song, Tape, Gene, Deck, Tape Mod,
+again go round theirs, in one order: Cortex, Voice 1, 2, 3, Space, Setup, MIDI, Song, Tape, Gene, Deck, Tape Mod,
 Tape Mod 2, Tape Key, then the video synth from its source out: Visual, Osc and Osc 2 (while Osc is in use), Shape, Shape 2, Mix,
 Video, Transform, Life, Mosh, Chroma, React, Screen. The dots at the right of the knobs' rule are in that order. Each voice has
 more pages of its own (ENV, ARP or LFO again).
 
-### HOME: Partiture
+### HOME: Cortex
 
 - **Tempo:** 30 to 240 (also HOME + SELECT, from any page; up to 1.5.20, 120).
-- **Evolve:** how restless the garden is. At 0 the loops repeat exactly; turned up, notes change or move at the end
+- **Evolve:** how restless CORTEX is. At 0 the loops repeat exactly; turned up, notes change or move at the end
   of a pass, the pulse patterns turn, and the voices take rests.
 - **Motion:** how far the arc swings, and how much pitch, pan and the echo wander.
 - **Drift:** how long a chord lasts before it moves on, 20 seconds to 5 minutes. EDIT moves on now.
@@ -251,7 +251,7 @@ quarter later (X-Y, a Lissajous), **Voice 3** wound round a circle (polar).
 The three alike:
 
 - **Level.**
-- **Role:** Chord, Loops or Bass (see [The garden](#s5)). Changing it fades the voice out and in.
+- **Role:** Chord, Loops or Bass (see [How CORTEX grows](#s5)). Changing it fades the voice out and in.
 - **Octave:** two down to two up (OCT− and OCT+ too).
 - **Density:** a chord's notes (1 to 4); the loops' notes (none to five a loop); how often the bass leans on the
   fifth.
@@ -280,7 +280,7 @@ times since it started the sound ran out of time (an overload: see [Troubleshoot
 
 ### HOME again: the video synth
 
-HOME on the Partiture opens the **video synth**'s pages; HOME again steps through them, from Screen back to the Partiture. The picture moves
+HOME on the Cortex opens the **video synth**'s pages; HOME again steps through them, from Screen back to the Cortex. The picture moves
 with the music (its levels, its beats, the voices, the notes). The keys play it on these pages.
 
 | Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
@@ -331,14 +331,14 @@ GLO on Setup opens **MIDI**, then **Song**, then back to Setup.
   note on Voice 1's channel adds or removes its note from the scale; *Play*, a note on a voice's channel plays that
   voice. The top line counts what comes in on each port (U for USB, J for the jack, B for Bluetooth) and the last
   note's channel.
-- **Song:** a song from a MIDI file (see [MIDI](#s9)) plays through the garden: **Song** picks it (Off, or slot 1–4),
+- **Song:** a song from a MIDI file (see [MIDI](#s9)) plays through CORTEX: **Song** picks it (Off, or slot 1–4),
   **Follow** how closely the voices follow its melody and bass (at 100, every note; from 50 up, more and more; a song
   chosen sets it to 100), **Vary** leaves notes out, a scale step off or a sixteenth late, now and then; **Start**
-  the bar it starts from. Its chords lead the garden's while it plays, moved to the garden's root, and the Chord
+  the bar it starts from. Its chords lead CORTEX's while it plays, moved to CORTEX's root, and the Chord
   voices change with them at once. On Envelope Patch or ADSR its notes last as long as in the file. Its melody goes
   to the first Loops voice (else the highest Bass voice), its bass to the lowest Bass voice (else another Loops
   voice), at their own pitches moved by the voice's Octave; a voice's Glide is shortened for them, to a quarter of
-  each note at most; a voice with no part of it plays the garden's own.
+  each note at most; a voice with no part of it plays CORTEX's own.
 
 ### ENV, ARP or LFO again: a voice's own pages
 
@@ -414,7 +414,7 @@ on the notes sounding.
 | Mod 3 | Spread | Fade | |
 
 Each of a voice's four notes has a generator of its own in each modulator, each at its own pace around Rate; the five
-are summed (the keys played on a voice's pages too, as its first note: 1.5.11); the arc deepens them when the garden is full and calms them when sparse (by Motion; a Depth at 100
+are summed (the keys played on a voice's pages too, as its first note: 1.5.11); the arc deepens them when CORTEX is full and calms them when sparse (by Motion; a Depth at 100
 stays full).
 
 - **Depth:** how far it goes. 0: nothing.
@@ -478,12 +478,12 @@ darkens it (1.5 kHz to open).
 
 ![The Gene page: GENE 100, SLIDE 0, MORPH 45, ORGANIZE 2](img/screen-gene.png "The Gene page")
 
-**Dry/Wet:** the garden against the reel: Dry, the garden alone; 50, both full; Wet, the reel alone (the garden is
+**Dry/Wet:** CORTEX against the reel: Dry, CORTEX alone; 50, both full; Wet, the reel alone (CORTEX is
 still recorded, unheard, as a send).
 
-**FX** sets where the space (echo and reverb) is: **Before** the reel, the garden goes through it and the reel
-records it with its space and plays dry beside it; **After** the reel, it records the garden dry and plays through
-the space, as the garden does.
+**FX** sets where the space (echo and reverb) is: **Before** the reel, CORTEX goes through it and the reel
+records it with its space and plays dry beside it; **After** the reel, it records CORTEX dry and plays through
+the space, as CORTEX does.
 
 ![The Deck page: FX Before, WOW 25, DRIVE 20, TONE 85](img/screen-deck.png "The Deck page")
 
@@ -505,7 +505,7 @@ MIDI comes in over USB and the TRS jack, and goes out over USB.
 
 - **In, notes:** on Voice 1's channel a note adds or removes its note from the scale, like a key; with Notes in at
   Play, a voice's channel plays the voice (the MIDI page, GLO twice).
-- **In, clock:** the beat follows MIDI clock, and start / stop start and stop the garden. The screen shows EXT for
+- **In, clock:** the beat follows MIDI clock, and start / stop start and stop CORTEX. The screen shows EXT for
   the tempo. What hangs on the tempo follows it too, measured a beat at a time: the echo, the modulators at Sync
   Tempo, the loops' Gate, the swing.
 - **Out** (on by default): Voices 1, 2 and 3 on their channels (1, 2 and 3 unless the MIDI page says otherwise), and clock with start / stop when it runs on
@@ -625,22 +625,22 @@ shows up at all, Felucca's [FM-1-transporter](https://github.com/kurogedelic/FM-
 
 ## 12. Parameters
 
-The defaults are Garden's; each piece has its own.
+The values shown are Hypnagogia's, the first piece; each piece has its own.
 
-| Page | Value | Range | Garden |
+| Page | Value | Range | Hypnagogia |
 |---|---|---|---|
-| Garden | Tempo | 30–240 | 72 |
-| Garden | Evolve | 0–100 | 35 |
-| Garden | Motion | 0–100 | 50 |
-| Garden | Drift | 20 s – 5:00 | 25 (about 40 s) |
-| Voice 1, 2, 3 | Level | 0–100 | 60, 65, 45 |
+| Cortex | Tempo | 30–240 | 58 |
+| Cortex | Evolve | 0–100 | 40 |
+| Cortex | Motion | 0–100 | 60 |
+| Cortex | Drift | 20 s – 5:00 | 50 (1:17) |
+| Voice 1, 2, 3 | Level | 0–100 | 60, 50, 35 |
 | Voice 1, 2, 3 | Role | Chord, Loops, Bass | Chord, Loops, Bass |
 | Voice 1, 2, 3 | Octave | −2 – +2 | 0 |
-| Voice 1, 2, 3 | Density | 0–100 | 100, 40, 35 |
-| Space | Echo | 0–100 | 45 |
-| Space | Echo time | 1/4., 1/2, 1/2., 1 bar, 2 bars, 4 bars | 1 bar |
-| Space | Reverb | 0–100 | 65 |
-| Space | Size | 0–100 | 80 |
+| Voice 1, 2, 3 | Density | 0–100 | 100, 30, 30 |
+| Space | Echo | 0–100 | 50 |
+| Space | Echo time | 1/4., 1/2, 1/2., 1 bar, 2 bars, 4 bars | 2 bars |
+| Space | Reverb | 0–100 | 80 |
+| Space | Size | 0–100 | 95 |
 | Setup | Root | C – B | D |
 | Setup | Tune | −50 – +50 cents | 0 |
 | Setup | MIDI out | Off, On | On |
@@ -653,16 +653,16 @@ The defaults are Garden's; each piece has its own.
 | Gene | Organize | 1–8 | 1 |
 | Deck | FX | Before, After | Before |
 | Deck | Wow, Drive, Tone | 0–100 | 25, 20, 85 |
-| Tape Mod (×5) | Target | Off, Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize, M1–M5 depth, M1–M5 rate | the first the piece's (Slide in Garden), the rest Off |
-| Tape Mod (×5) | Depth, Rate, Shape | 0–100, 60 s – 0.12 s (Tempo: 8 bars – 1/16), the MOD's shapes | 30 (the first, Garden), 0 |
+| Tape Mod (×5) | Target | Off, Speed, Gene, Slide, Morph, Dry/Wet, Tone, Wow, Drive, SOS, Organize, M1–M5 depth, M1–M5 rate | the first the piece's (Slide in Hypnagogia), the rest Off |
+| Tape Mod (×5) | Depth, Rate, Shape | 0–100, 60 s – 0.12 s (Tempo: 8 bars – 1/16), the MOD's shapes | 30 (the first, Hypnagogia), 0 |
 | Tape Mod (×5) | Sync, Smooth | Free, Tempo; 2–500 ms | Free, 2 ms |
 | A voice's PATCH | Patch | the eighteen, then the banks' voices | Rhodes, Bell, Sine |
 | A voice's PATCH | Algorithm, Feedback, LFO, Pitch EG, Transpose | as a DX7 | as the patch |
 | A voice's PATCH | Index | −24 – +24 dB | 0 dB |
 | A voice's Play | Envelope | AMB, Patch, ADSR | Patch |
 | A voice's Play | Gate | 5–100 % | 70 %, 25 %, 80 % |
-| A voice's Play | Pace | 0–100 | 60, 60 (1/4), 0 (each chord) |
-| A voice's Play | Glide | 20 ms – 1.2 s | 260 ms |
+| A voice's Play | Pace | 0–100 | 70, 60 (1/4), 0 (each chord) |
+| A voice's Play | Glide | 20 ms – 1.2 s | 500 ms |
 | A voice's ADSR | Attack, Decay, Sustain, Release | 0–100 (1 ms – 8.7 s; 3 ms – 13 s; %; 3 ms – 13 s) | 5 (1 ms), 40 (91 ms), 70, 55 (0.3 s) |
 | A voice's Filter | Filter, Cutoff, Resonance, Env | Off/On, 30 Hz – 18 kHz, 0–100, 0–100 | Off, 60 (1.4 kHz), 25, 30 |
 | A voice's OPERATOR | Ratio, Fine, Level, Envelope, Mode, Detune, Velocity, Break, Depths, Curves, Rate scale, Amp sens | as a DX7 | as the patch |
@@ -671,7 +671,7 @@ The defaults are Garden's; each piece has its own.
 | A voice's MOD (×5) | Shape | Sine, Triangle, Saw up, Saw down, Square, S&H, Walk, Chaos, Env | Sine |
 | A voice's MOD (×5) | Target | Off, the voice's ten, each operator's seven, M1–M5 depth and rate | the first two the piece's, the rest Off |
 | A voice's MOD (×5) | Spread, Fade, Sync, Smooth | 0–100, Off – 8 s, Free/Note/Tempo, 2–500 ms | 100, Off, Free, 2 ms |
-| ALGORITHM | Mode | 8 modes, or Custom | Dorian |
+| ALGORITHM | Mode | 8 modes, or Custom | Lydian |
 
 ---
 
@@ -680,7 +680,7 @@ The defaults are Garden's; each piece has its own.
 CORTEX is free software under the Mozilla Public License 2.0: if you share it changed, share the changed files'
 source too. Its source comes with it (`codigo-fonte/`), with `LICENSING.md`.
 
-- **AMB-1**, the garden, its pieces and its screen: Charles Vestal. CORTEX is an unofficial fork of AMB-1, not connected
+- **AMB-1**, CORTEX, its pieces and its screen: Charles Vestal. CORTEX is an unofficial fork of AMB-1, not connected
   with him.
 - The idea comes from Brian Eno's generative music: *Music for Airports*' tape loops of unequal length, and the echo
   and tape-delay chain of *Discreet Music*.
