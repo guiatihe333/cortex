@@ -1,6 +1,6 @@
 # CORTEX
 
-CORTEX (1.5.17; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
+CORTEX (1.5.21; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
 plays itself from the moment it's switched on: three FM voices (each breathing chords, ringing loops or gliding a
 bass, as you choose), a short echo, a tape loop and a plate reverb, and a reel of tape
 that records it all and plays it back as grains. You don't perform it, you tend it: pick a piece and a scale, take
@@ -34,13 +34,13 @@ MIDI files, a video synth on the first page whose colours run through every page
 
 ## 1. Install
 
-This is **AMB-1 FM6**, its own package (identity `FM-1_76…`), not the one on AMB-1's site. It installs over
-M-VAVE's firmware **V15** (or over an earlier AMB-1 FM6).
+This is **CORTEX**, its own package (identity `FM-1_76…`), not the one on AMB-1's site. It installs over
+M-VAVE's firmware **V15** (or over an earlier CORTEX).
 
 **Install, one click:** connect the FM-1 with a USB data cable straight to the computer, open
 **[amb1-fm6.netlify.app](https://amb1-fm6.netlify.app)** (or `INSTALAR.html` from the package's folder) in Chrome or
 Edge, press **Install** and allow MIDI when the browser asks. Don't unplug it while it's writing; the FM-1 restarts
-into AMB-1 FM6 by itself. An FM-1 on M-VAVE's Open firmware gets V15 first, on the same click. A V16 has to go back
+into CORTEX by itself. An FM-1 on M-VAVE's Open firmware gets V15 first, on the same click. A V16 has to go back
 to V15 first with M-VAVE's updater, M-UPGRADE, and the V15 file (linked at the top of the page, and
 `firmware-original-M-VAVE/FM-1_V15.fwsc` in the package's folder).
 
@@ -55,8 +55,8 @@ It checks the identity the FM-1 reports at the end (`FM-1_76010407`). `python fm
 FM-1 runs.
 
 **Go back:** the installer's page has "Back to the stock firmware" at the bottom, M-VAVE's V15 inside it: one click.
-It **erases everything AMB-1 FM6 kept** on the FM-1: the pieces, the recorded reel and the DX7 banks you sent (the
-built-in ones come back when AMB-1 FM6 is installed again). M-VAVE's M-UPGRADE works too.
+It **erases everything CORTEX kept** on the FM-1: the pieces, the recorded reel and the DX7 banks you sent (the
+built-in ones come back when CORTEX is installed again). M-VAVE's M-UPGRADE works too.
 
 > Installing other firmware is at your own risk. If the FM-1 ever won't start, see
 > [Recovering an FM-1 that won't start](#recovering-an-fm-1-that-won-t-start).
@@ -65,7 +65,7 @@ built-in ones come back when AMB-1 FM6 is installed again). M-VAVE's M-UPGRADE w
 
 ## 2. Getting started
 
-AMB-1 FM6 starts playing as soon as it's on. A few minutes with it:
+CORTEX starts playing as soon as it's on. A few minutes with it:
 
 1. **Listen.** The first piece, Garden, is playing: D Dorian, a chord breathing (Voice 1), bells on loops
    (Voice 2) and a bass (Voice 3). Turn MASTER for the volume.
@@ -144,7 +144,7 @@ comes by every 5 to 14 seconds: with the page's next knob not yet explained ("KN
 sit a while. A long word is shown two lines at a time, a thin bar under it showing how far he has got. A button
 (not a knob) sends him off.
 
-![The Partiture page: the piece Garden, D Dorian, tempo 72; the score with the chord Dm7, the level bars on the left](img/screen-garden.png "The Partiture page (HOME)")
+![The Partiture page: the piece Hypnagogia, D Lydian, tempo 58, the video synth behind the chord Dm7; TEMPO 58, EVOLVE 40, MOTION 60, DRIFT 1:17](img/screen-garden.png "The Partiture page (HOME)")
 
 - **Top line:** the piece, its root and mode (and a terminal's cursor, blinking), as far as they fit. On the right, a
   slow beat light, the tempo (EXT when it follows MIDI clock) and a dot when there are unsaved changes. Messages
@@ -170,13 +170,13 @@ sit a while. A long word is shown two lines at a time, a thin bar under it showi
 
 On the reel's pages the score gives way to the reel (see [The reel](#s8)).
 
-![The Space page with ECHO TIME lit as it turns](img/screen-turning.png "Turning Echo time on the Space page")
+![The Space page with ECHO TIME lit as it turns; Tom says what the page is](img/screen-turning.png "Turning Echo time on the Space page")
 
 ---
 
 ## 5. The garden
 
-AMB-1 FM6 grows its voices from one scale and one chord. Each of the three voices plays its own FM patch (six
+CORTEX grows its voices from one scale and one chord. Each of the three voices plays its own FM patch (six
 operators, as a DX7) in one of three **roles**, and any voice can take any role:
 
 - **Chord:** up to four breathing notes. Each swells in, hangs and fades on its own cycle (unequal lengths, as in
@@ -240,7 +240,7 @@ more pages of its own (ENV, ARP or LFO again).
 
 ### ENV · ARP · LFO: Voices 1, 2, 3
 
-![Voice 2's page: its sound on the scope as a Lissajous; LEVEL 65, ROLE Loops, OCTAVE 0, DENSITY 40](img/screen-voice.png "A voice's page")
+![Voice 2's page: its sound on the scope as a Lissajous; LEVEL 50, ROLE Loops, OCTAVE 0, DENSITY 30](img/screen-voice.png "A voice's page")
 
 Each voice's pages show its own sound on an oscilloscope, caught as it rises through zero and scaled to its peak, on a
 graticule, the last trace fading as on a phosphor screen: **Voice 1** in time (Y-T), **Voice 2** against itself a
@@ -321,6 +321,8 @@ feedback, the transform, the colours, the glitches), so it is a place to start f
 and React's four slots stay as you set them. Tom says what each look is. Hold SEL a second to go back to before it.
 Saved with the piece, as any setting.
 
+![The Kaleido look on the Visual page, Tom saying what it is](img/screen-look.png "A look: Kaleido")
+
 ### GLO again: MIDI and Song
 
 GLO on Setup opens **MIDI**, then **Song**, then back to Setup.
@@ -357,9 +359,9 @@ was left on. The top of the screen says which voice and which page. Each piece k
 | LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24 semitones, as a DX7 plays it) |
 | Pitch EG | Stage (1–4) | Rate | Level (±50) | Osc sync |
 
-![A voice's Play page: ENVELOPE Patch, GATE 70%, PACE 11s, GLIDE 260ms](img/screen-play.png "The Play page")
+![A voice's Play page: ENVELOPE Patch, GATE 70%, PACE 12s, GLIDE 500ms](img/screen-play.png "The Play page")
 
-- **Patch:** AMB-1 FM6's own eighteen first (pads: Rhodes, Voices, Glass, Strings, Warm, Halo; bells: Bell, shaped
+- **Patch:** CORTEX's own eighteen first (pads: Rhodes, Voices, Glass, Strings, Warm, Halo; bells: Bell, shaped
   by the piece's tone, Vibes, Marimba, Tubular, Kalimba, Celesta; basses: Sine, Round, Pick, Sub, Reed, Fretless),
   any voice any of them, then the voices of the DX7 banks you sent (see [MIDI](#s9)), by name. Turning it loads the
   patch as it is; any edit makes it the piece's own, shown with a `*` ("E.PIANO 1*").
@@ -385,7 +387,9 @@ was left on. The top of the screen says which voice and which page. Each piece k
   patch's), up to six octaves, closing as it fades. It costs CPU while on (see the Setup page's CPU): with the three
   voices filtered and the FM-1 busy, it plays fewer notes, as it does under any load.
 
-![A voice's ADSR page: ATTACK 5, DECAY 40, SUSTAIN 70, RELEASE 40](img/screen-adsr.png "The ADSR page")
+![Voice 1's Filter page: FILTER On, CUTOFF 1.4 kHz, RESONANCE 25, ENV 30](img/screen-filter.png "The Filter page")
+
+![A voice's ADSR page: ATTACK 1 ms, DECAY 91 ms, SUSTAIN 70, RELEASE 292 ms](img/screen-adsr.png "The ADSR page")
 
 **OPERATOR** (KNOB 1 picks the operator, OP1–OP6, on every page of the group)
 
@@ -436,7 +440,7 @@ stays full).
 A track of tape, 11.8 seconds, mono, after a TASCAM portastudio's tape and Make Noise's Morphagene's genes (the idea,
 not their code). SEQ opens **Tape**; again **Gene**, **Deck**, **Tape Mod**, **Tape Mod 2**, and round.
 
-![The Tape page: a cassette with its spools, the reel as a strip with two splices and the cursor; 7.7 / 11.8 s, FX BEFORE, 2 SPLICES; SOURCE Mix, DRY/WET 50, SOS 70, SPEED +1.00x](img/screen-tape.png "The Tape page")
+![The Tape page: a cassette with its spools, the reel as a strip with two splices and the cursor; 5.7 / 11.8 s, FX BEFORE, 2 SPLICES; SOURCE Mix, DRY/WET 50, SOS 70, SPEED +1.00x](img/screen-tape.png "The Tape page")
 
 On these pages the screen shows the reel: a cassette whose spools wind and turn at Speed, the reel as a strip (its
 splices, the one playing bright, the cursor, each gene where it reads, the record head), the seconds recorded and
@@ -562,7 +566,7 @@ W to hear the whole screen again.
 
 ## 10. Saving
 
-AMB-1 FM6 keeps all eight pieces in the FM-1's memory, each as you left it: the knobs, the scale, the tempo, each
+CORTEX keeps all eight pieces in the FM-1's memory, each as you left it: the knobs, the scale, the tempo, each
 voice's patch and settings, plus Tune, MIDI out and Lights.
 
 - **By itself:** a few seconds after a change, but only while resting (writing to the memory interrupts the sound
@@ -578,7 +582,7 @@ voice's patch and settings, plus Tune, MIDI out and Lights.
 **Clicks with everything going:** the sound takes most of the FM-1's time with three voices busy, the modulators on
 and the reel playing many genes (CPU on the Setup page, top right). Fewer overlapping genes (Morph lower), fewer
 modulators or a lower Density help. (1.4.0 made room: no pulse, the plate and the genes at 22 kHz.) When the sound
-runs out of time for a moment (an overload, counted after **X** on the Setup page), AMB-1 FM6 lets go of what is
+runs out of time for a moment (an overload, counted after **X** on the Setup page), CORTEX lets go of what is
 heard least, a gene of the reel, else the softest bell ringing, rather than the sound sticking on its last moment.
 
 **The sound stuck, repeating, the lights blinking:** don't switch it off; wait ten seconds (it restarts by itself
@@ -611,7 +615,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/hugelton/felucca-bsp/mai
 3. When it says it's waiting, plug the FM-1 in and switch it on. The script catches it, checks the chip, saves a
    backup of the FM-1's memory in the `fm1-rescue` folder in your home folder, and asks before it writes anything.
 4. Type **yes** and press Return. Don't unplug anything until it says it's restarting the FM-1. It then starts into
-   its original firmware, and you can install AMB-1 FM6 again.
+   its original firmware, and you can install CORTEX again.
 
 The script downloads M-VAVE's FM-1 V15 firmware and JieLi's flash loader and checks both against known
 fingerprints. It writes only the firmware area, never the bootloader or the FM-1's own settings. If the FM-1 never
@@ -673,10 +677,10 @@ The defaults are Garden's; each piece has its own.
 
 ## 13. Credits
 
-AMB-1 FM6 is free software under the Mozilla Public License 2.0: if you share it changed, share the changed files'
+CORTEX is free software under the Mozilla Public License 2.0: if you share it changed, share the changed files'
 source too. Its source comes with it (`codigo-fonte/`), with `LICENSING.md`.
 
-- **AMB-1**, the garden, its pieces and its screen: Charles Vestal. AMB-1 FM6 is an unofficial fork, not connected
+- **AMB-1**, the garden, its pieces and its screen: Charles Vestal. CORTEX is an unofficial fork of AMB-1, not connected
   with him.
 - The idea comes from Brian Eno's generative music: *Music for Airports*' tape loops of unequal length, and the echo
   and tape-delay chain of *Discreet Music*.
@@ -692,5 +696,5 @@ source too. Its source comes with it (`codigo-fonte/`), with `LICENSING.md`.
 - The built-in DX7 banks come from Dave Benson's DX7 archive; the DX7's voices are Yamaha's (see `LICENSING.md`).
 - The pages' looks are after the records of Aphex Twin (their colours and feel, drawn anew; no names or marks).
 
-M-VAVE, FM-1, Yamaha, DX7, Make Noise, Morphagene and TASCAM are trademarks of their owners. AMB-1 FM6 is not
+M-VAVE, FM-1, Yamaha, DX7, Make Noise, Morphagene and TASCAM are trademarks of their owners. CORTEX is not
 connected with any of them, with Brian Eno or with Hügelton Instruments.

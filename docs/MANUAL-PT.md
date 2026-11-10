@@ -1,6 +1,6 @@
 # CORTEX
 
-O CORTEX (1.5.17; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
+O CORTEX (1.5.21; até a 1.4.7 chamado AMB-1 FM6) transforma o M-VAVE FM-1 numa máquina de música ambiente generativa, inspirada em *Music for Airports*,
 de Brian Eno. Ele toca sozinho desde o momento em que é ligado: três vozes FM (cada uma respirando acordes, tocando
 loops ou deslizando um baixo, como você escolher), um eco curto, um loop de fita e um reverb de placa, e uma fita que grava tudo isso e toca de volta em grãos. Você não toca o AMB-1, você cuida dele:
 escolhe uma peça e uma escala, tira notas, põe de volta, e deixa crescer.
@@ -34,13 +34,13 @@ o que você toca.
 
 ## 1. Instalar
 
-Este é o **AMB-1 FM6**, com pacote próprio (identidade `FM-1_76…`), diferente do que está no site do AMB-1. Ele se
-instala sobre o firmware **V15** da M-VAVE (ou sobre um AMB-1 FM6 anterior).
+Este é o **CORTEX**, com pacote próprio (identidade `FM-1_76…`), diferente do que está no site do AMB-1. Ele se
+instala sobre o firmware **V15** da M-VAVE (ou sobre um CORTEX anterior).
 
 **Instalar com um clique:** ligue o FM-1 com um cabo USB de dados direto no computador, abra
 **[amb1-fm6.netlify.app](https://amb1-fm6.netlify.app)** (ou o `INSTALAR.html` da pasta do pacote) no Chrome ou no
 Edge, clique em **Instalar** e permita o MIDI quando o navegador pedir. Não desconecte enquanto grava; o FM-1 reinicia
-sozinho no AMB-1 FM6. Um FM-1 no firmware Open da M-VAVE recebe a V15 antes, no mesmo clique. Na V16, volte antes para
+sozinho no CORTEX. Um FM-1 no firmware Open da M-VAVE recebe a V15 antes, no mesmo clique. Na V16, volte antes para
 a V15 com o atualizador da M-VAVE, o M-UPGRADE, usando o arquivo V15 (o link está no alto da página, e na pasta do
 pacote em `firmware-original-M-VAVE/FM-1_V15.fwsc`).
 
@@ -55,8 +55,8 @@ No fim ele confere a identidade que o FM-1 informa (`FM-1_76010407`). `python fm
 FM-1 está rodando.
 
 **Voltar ao original:** a página do instalador tem "Voltar ao firmware original" no fim, com a V15 da M-VAVE dentro:
-um clique. Isso **apaga tudo o que o AMB-1 FM6 guardou** no FM-1: as peças, a fita gravada e os bancos DX7 que você
-mandou (os de fábrica voltam quando o AMB-1 FM6 for instalado de novo). O M-UPGRADE da M-VAVE também funciona.
+um clique. Isso **apaga tudo o que o CORTEX guardou** no FM-1: as peças, a fita gravada e os bancos DX7 que você
+mandou (os de fábrica voltam quando o CORTEX for instalado de novo). O M-UPGRADE da M-VAVE também funciona.
 
 > Instalar outro firmware é por sua conta e risco. Se o FM-1 não ligar, veja
 > [Recuperar um FM-1 que não liga](#recuperar-um-fm-1-que-n-o-liga).
@@ -65,7 +65,7 @@ mandou (os de fábrica voltam quando o AMB-1 FM6 for instalado de novo). O M-UPG
 
 ## 2. Primeiros passos
 
-O AMB-1 FM6 começa a tocar assim que é ligado. Alguns minutos com ele:
+O CORTEX começa a tocar assim que é ligado. Alguns minutos com ele:
 
 1. **Ouça.** A primeira peça, Garden, está tocando: Ré dórico, um acorde respirando (Voice 1), sinos em loops
    (Voice 2) e um baixo (Voice 3). MASTER é o volume.
@@ -118,7 +118,7 @@ desfeita.
 **Ajuda:** segure qualquer botão menos o PLAY por um segundo e um cartão diz o que ele faz. Uma tecla, um knob ou
 outro botão tira o cartão; soltar depois dele não faz mais nada.
 
-![O cartão do SAVE: SAVES ALL EIGHT PIECES. KEEP HOLDING: THE PIECE BACK TO ITS RECIPE](img/screen-help.png "O cartão do SAVE")
+![O cartão do SAVE: SAVES ALL EIGHT PIECES. KEEP HOLDING: THE PIECE BACK TO ITS RECIPE. SEL + SAVE: INIT](img/screen-help.png "O cartão do SAVE")
 
 ---
 
@@ -145,7 +145,7 @@ outra ele aparece a cada 5 a 14 segundos: com o próximo knob da página ainda n
 dica, ou só para sentar um pouco. Uma fala longa aparece de duas em duas linhas, com uma barrinha embaixo mostrando
 quanto falta. Um botão (não um knob) faz ele ir embora. As falas do Tom são em inglês, como o resto da tela.
 
-![A página Partiture: a peça Garden, D Dorian, andamento 72; a partitura com o acorde Dm7, as barras de nível à esquerda](img/screen-garden.png "A página Partiture (HOME)")
+![A página Partiture: a peça Hypnagogia, D Lydian, andamento 58, o video synth atrás do acorde Dm7; TEMPO 58, EVOLVE 40, MOTION 60, DRIFT 1:17](img/screen-garden.png "A página Partiture (HOME)")
 
 - **Linha de cima:** a peça, sua tônica e seu modo (e um cursor de terminal piscando), até onde couberem. À direita,
   uma luz lenta do tempo, o andamento (EXT quando segue o clock MIDI) e um ponto quando há mudanças não salvas. As
@@ -172,13 +172,13 @@ quanto falta. Um botão (não um knob) faz ele ir embora. As falas do Tom são e
 
 Nas páginas da fita, a partitura dá lugar à fita (veja [A fita](#s8)).
 
-![A página Space com ECHO TIME aceso enquanto gira](img/screen-turning.png "Girando Echo time na página Space")
+![A página Space com ECHO TIME aceso enquanto gira; o Tom diz o que é a página](img/screen-turning.png "Girando Echo time na página Space")
 
 ---
 
 ## 5. O jardim
 
-O AMB-1 FM6 faz crescer suas vozes a partir de uma escala e um acorde. Cada uma das três vozes toca seu próprio patch
+O CORTEX faz crescer suas vozes a partir de uma escala e um acorde. Cada uma das três vozes toca seu próprio patch
 FM (seis operadores, como um DX7) num de três **papéis** (Role), e qualquer voz pode fazer qualquer papel:
 
 - **Chord:** até quatro notas que respiram. Cada uma entra, fica e some no seu próprio ciclo (de tamanhos diferentes,
@@ -244,7 +244,7 @@ voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
 
 ### ENV · ARP · LFO: Voices 1, 2, 3
 
-![A página da Voice 2: seu som no osciloscópio, um Lissajous; LEVEL 65, ROLE Loops, OCTAVE 0, DENSITY 40](img/screen-voice.png "A página de uma voz")
+![A página da Voice 2: seu som no osciloscópio, um Lissajous; LEVEL 50, ROLE Loops, OCTAVE 0, DENSITY 30](img/screen-voice.png "A página de uma voz")
 
 As páginas de cada voz mostram o próprio som dela num osciloscópio, pego quando sobe passando pelo zero e ajustado ao
 seu pico, sobre uma grade, o traço anterior se apagando como num tubo de fósforo: a **Voice 1** no tempo (Y-T), a
@@ -328,6 +328,8 @@ feedback, o transform, as cores, os glitches), um ponto de partida para depois g
 slots do React ficam como você deixou. O Tom diz o que é cada look. Segure SEL um segundo para voltar ao que era antes.
 Fica salvo com a peça, como qualquer ajuste.
 
+![O look Kaleido na página Visual, o Tom dizendo o que é](img/screen-look.png "Um look: Kaleido")
+
 ### GLO de novo: MIDI e Song
 
 GLO na Setup abre a **MIDI**, depois a **Song**, e volta à Setup.
@@ -364,9 +366,9 @@ em que foi deixado. O alto da tela diz qual voz e qual página. Cada peça guard
 | LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24 semitons, como no DX7) |
 | Pitch EG | Stage (1–4) | Rate | Level (±50) | Osc sync |
 
-![A página Play de uma voz: ENVELOPE Patch, GATE 70%, PACE 11s, GLIDE 260ms](img/screen-play.png "A página Play")
+![A página Play de uma voz: ENVELOPE Patch, GATE 70%, PACE 12s, GLIDE 500ms](img/screen-play.png "A página Play")
 
-- **Patch:** primeiro os dezoito próprios do AMB-1 FM6 (pads: Rhodes, Voices, Glass, Strings, Warm, Halo; sinos:
+- **Patch:** primeiro os dezoito próprios do CORTEX (pads: Rhodes, Voices, Glass, Strings, Warm, Halo; sinos:
   Bell, moldado pelo tom da peça, Vibes, Marimba, Tubular, Kalimba, Celesta; baixos: Sine, Round, Pick, Sub, Reed,
   Fretless), qualquer voz qualquer um deles, depois as vozes dos bancos DX7 que você mandou (veja [MIDI](#s9)), pelo
   nome. Girar carrega o patch como ele é; qualquer edição o torna da peça, marcado com `*` ("E.PIANO 1*").
@@ -394,7 +396,9 @@ em que foi deixado. O alto da tela diz qual voz e qual página. Cada peça guard
   o do ADSR ou o do patch), até seis oitavas, fechando enquanto ela some. Ligado, ele gasta CPU (veja o CPU da página
   Setup): com as três vozes filtradas e o FM-1 ocupado, ele toca menos notas, como faz com qualquer carga.
 
-![A página ADSR de uma voz: ATTACK 5, DECAY 40, SUSTAIN 70, RELEASE 40](img/screen-adsr.png "A página ADSR")
+![A página Filter da Voice 1: FILTER On, CUTOFF 1.4 kHz, RESONANCE 25, ENV 30](img/screen-filter.png "A página Filter")
+
+![A página ADSR de uma voz: ATTACK 1 ms, DECAY 91 ms, SUSTAIN 70, RELEASE 292 ms](img/screen-adsr.png "A página ADSR")
 
 **OPERATOR** (o KNOB 1 escolhe o operador, OP1–OP6, em todas as páginas do grupo)
 
@@ -447,7 +451,7 @@ Uma faixa de fita, 11,8 segundos, mono, inspirada na fita de um portastudio TASC
 Noise (a ideia, não o código deles). SEQ abre a **Tape**; de novo **Gene**, **Deck**, **Tape Mod**, **Tape Mod 2**, e
 dá a volta.
 
-![A página Tape: um cassete com seus carretéis, a fita como uma tira com dois splices e o cursor; 7.7 / 11.8 s, FX BEFORE, 2 SPLICES; SOURCE Mix, DRY/WET 50, SOS 70, SPEED +1.00x](img/screen-tape.png "A página Tape")
+![A página Tape: um cassete com seus carretéis, a fita como uma tira com dois splices e o cursor; 5.7 / 11.8 s, FX BEFORE, 2 SPLICES; SOURCE Mix, DRY/WET 50, SOS 70, SPEED +1.00x](img/screen-tape.png "A página Tape")
 
 Nessas páginas a tela mostra a fita: um cassete cujos carretéis enchem, esvaziam e giram no Speed, a fita como uma
 tira (os splices, o que está tocando em destaque, o cursor, onde cada gene lê, a cabeça de gravação), os segundos
@@ -572,7 +576,7 @@ acorde. Aperte W para ouvir a tela inteira de novo.
 
 ## 10. Salvar
 
-O AMB-1 FM6 guarda as oito peças na memória do FM-1, cada uma como você a deixou: os knobs, a escala, o andamento, o
+O CORTEX guarda as oito peças na memória do FM-1, cada uma como você a deixou: os knobs, a escala, o andamento, o
 patch e os ajustes de cada voz, além de Tune, MIDI out e Lights.
 
 - **Sozinho:** alguns segundos depois de uma mudança, mas só enquanto descansa (gravar na memória interrompe o som
@@ -589,7 +593,7 @@ patch e os ajustes de cada voz, além de Tune, MIDI out e Lights.
 ligados e a fita tocando muitos genes (CPU na página Setup, canto de cima à direita). Menos genes sobrepostos (Morph
 mais baixo), menos moduladores ou uma Density menor ajudam. (A 1.4.0 abriu espaço: sem o pulso, a placa e os genes
 a 22 kHz.) Quando o som não cabe no tempo por um instante (uma sobrecarga, contada depois do **X** na página Setup), o
-AMB-1 FM6 solta o que menos se ouve, um gene da fita, ou então o sino mais baixo que está tocando, em vez de o som
+CORTEX solta o que menos se ouve, um gene da fita, ou então o sino mais baixo que está tocando, em vez de o som
 ficar preso no último instante.
 
 **O som travou repetindo, as luzes piscando:** não desligue; espere dez segundos (ele reinicia sozinho e guarda um
@@ -624,7 +628,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/hugelton/felucca-bsp/mai
 3. Quando disser que está esperando, ligue o FM-1 no USB e acenda-o. O script o pega, confere o chip, salva um backup
    da memória do FM-1 na pasta `fm1-rescue` da sua pasta pessoal, e pergunta antes de gravar qualquer coisa.
 4. Digite **yes** e aperte Return. Não desconecte nada até ele dizer que está reiniciando o FM-1. Ele então inicia no
-   firmware original, e você pode instalar o AMB-1 FM6 de novo.
+   firmware original, e você pode instalar o CORTEX de novo.
 
 O script baixa o firmware V15 da M-VAVE e o carregador de flash da JieLi e confere os dois contra assinaturas
 conhecidas. Ele grava só a área do firmware, nunca o bootloader nem os ajustes do próprio FM-1. Se o FM-1 nunca
@@ -686,10 +690,10 @@ Os padrões são os da Garden; cada peça tem os seus.
 
 ## 13. Créditos
 
-O AMB-1 FM6 é software livre sob a Mozilla Public License 2.0: se você compartilhar uma versão modificada,
+O CORTEX é software livre sob a Mozilla Public License 2.0: se você compartilhar uma versão modificada,
 compartilhe também o código dos arquivos modificados. O código vem junto (`codigo-fonte/`), com o `LICENSING.md`.
 
-- **AMB-1**, o jardim, suas peças e sua tela: Charles Vestal. O AMB-1 FM6 é um fork não oficial, sem ligação com ele.
+- **AMB-1**, o jardim, suas peças e sua tela: Charles Vestal. O CORTEX é um fork não oficial do AMB-1, sem ligação com ele.
 - A ideia vem da música generativa de Brian Eno: os loops de fita de tamanhos diferentes de *Music for Airports* e a
   cadeia de eco e delay de fita de *Discreet Music*.
 - As vozes FM: o **msfa**, o núcleo DX7 do Dexed (Google Inc., Pascal Gauthier), Apache-2.0, como portado para C
@@ -704,5 +708,5 @@ compartilhe também o código dos arquivos modificados. O código vem junto (`co
 - Os bancos DX7 de fábrica vêm do arquivo de DX7 de Dave Benson; as vozes do DX7 são da Yamaha (veja `LICENSING.md`).
 - O visual das páginas segue os discos do Aphex Twin (as cores e o clima, desenhados de novo; sem nomes nem marcas).
 
-M-VAVE, FM-1, Yamaha, DX7, Make Noise, Morphagene e TASCAM são marcas de seus donos. O AMB-1 FM6 não tem ligação com
+M-VAVE, FM-1, Yamaha, DX7, Make Noise, Morphagene e TASCAM são marcas de seus donos. O CORTEX não tem ligação com
 nenhum deles, com Brian Eno nem com a Hügelton Instruments.
