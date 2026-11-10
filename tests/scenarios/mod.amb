@@ -25,14 +25,14 @@ expect par30 1
 # OPERATOR: OP3's level, 80 -> 70 (OP3's bytes from 63: its level at 79)
 tap ENV
 wait 100
-expect view 34
+expect view 35
 shot pad_op.png
 turn K1 2 10
 spin K4 -10
 expect pat0_79 52
 # OP Env: its stage 2's rate, 30 -> 35 (at 64)
 turn SELECT 1 100
-expect view 35
+expect view 36
 turn K2 1 10
 spin K3 5
 expect pat0_64 44
@@ -41,7 +41,7 @@ shot pad_openv.png
 # (Garden's recipe: Pitch, 5, to 14)
 tap ENV
 wait 100
-expect view 40
+expect view 41
 shot mod.png
 turn K3 3 10
 expect par32 33
@@ -51,7 +51,7 @@ turn K1 1 10
 turn K2 9 100
 expect par43 15
 turn SELECT 1 100
-expect view 41
+expect view 42
 # back to the pad's page
 tap ENV
 wait 100
@@ -63,7 +63,7 @@ tap ARP
 wait 100
 tap ARP
 wait 100
-expect view 44
+expect view 45
 turn K1 1 10
 expect par28 7
 tap LFO
@@ -72,7 +72,7 @@ tap LFO
 wait 100
 tap LFO
 wait 100
-expect view 60
+expect view 62
 turn K4 2 10
 expect par115 2
 # another voice's button from a voice's page: that voice's own first page
@@ -137,7 +137,7 @@ tap ARP
 wait 100
 tap ARP
 wait 100
-expect view 44
+expect view 45
 turn K1 11 10
 expect par28 530
 expect pat1_145 87
@@ -166,7 +166,7 @@ midi B0 06 32
 wait 50
 expect pat0_121 50
 # MIDI CC out: a knob turned (the bells' INDEX, CC 20 on channel 2)
-expect view 44
+expect view 45
 out
 turn K4 24 100
 expect par73 24

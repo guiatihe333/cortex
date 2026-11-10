@@ -1,0 +1,37 @@
+# 1.5.20: a voice's filter (its Filter page, after ADSR: par299..302 voice 1's ON, CUTOFF, RESONANCE, ENV). Voice 1's
+# key held, echo and reverb off, the garden stopped: open (Off) it peaks over -40 dBFS; On at Cutoff 0 (30 Hz) it is
+# all but gone; the page shows the cutoff in Hz
+wait 300
+tap FX
+spin K1 -100
+spin K3 -100
+tap PLAY
+wait 5000
+tap ENV
+wait 100
+tap ENV
+wait 100
+tap ENV
+wait 100
+turn SELECT 3 100
+expect view 31
+expect par299 0
+key 7 down
+wait 600
+peakreset
+wait 400
+expect peak_db_max >-40
+turn K1 1 150
+expect par299 1
+spin K2 -100
+expect par300 0
+wait 600
+peakreset
+wait 400
+expect peak_db_max <-60
+listen
+spin K2 100
+expect par300 100
+wait 300
+said kHz
+key 7 up

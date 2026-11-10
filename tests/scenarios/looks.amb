@@ -1,0 +1,21 @@
+# 1.5.20: the video synth's looks: PRESET on its pages picks one (the piece stays): Tunnel (Visual 4, Feedback 85),
+# then LZX Grid (Visual 8, Osc: Square, Multiply); Tom says what it is; SEL held a second undoes it
+wait 3000
+tap HOME
+wait 300
+expect view 14
+listen
+turn PRESET 1
+expect par240 4
+expect par244 85
+expect piece 0
+wait 1500
+said Tunnel: the frame fed back
+turn PRESET 1
+expect par240 8
+expect par269 3
+expect par273 1
+press SEL
+wait 1200
+release SEL
+expect par240 4

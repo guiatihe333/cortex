@@ -49,7 +49,7 @@ static const en_param_t PARAMS[P_NPARAMS] = {
 #define PL_PARAMS(w, role, dens, pace, gate)                                                                       \
     {w " env", 0, EN_NENV - 1, ENV_PATCH}, {w " gate", 4, 100, gate}, {w " role", 0, EN_NROLE - 1, role},          \
     {w " octave", -2, 2, 0}, {w " density", 0, 100, dens}, {w " pace", 0, 100, pace}, {w " glide", 0, 100, 20},    \
-    {w " attack", 0, 100, 5}, {w " decay", 0, 100, 40}, {w " sustain", 0, 100, 70}, {w " release", 0, 100, 40}
+    {w " attack", 0, 100, 5}, {w " decay", 0, 100, 40}, {w " sustain", 0, 100, 70}, {w " release", 0, 100, 55}
     PL_PARAMS("V1", ROLE_CHORD, 100, 60, 70), PL_PARAMS("V2", ROLE_LOOPS, 40, 60, 25),
     PL_PARAMS("V3", ROLE_BASS, 35, 0, 80),
 #undef PL_PARAMS
@@ -82,11 +82,15 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     {"Source 2", 0, EN_AR_NSRC - 1, 4}, {"Target 2", 0, EN_AR_NTGT, 6}, {"Depth 2", -100, 100, 35},
     {"Source 3", 0, EN_AR_NSRC - 1, 5}, {"Target 3", 0, EN_AR_NTGT, 24}, {"Depth 3", -100, 100, 40},
     {"Source 4", 0, EN_AR_NSRC - 1, 0}, {"Target 4", 0, EN_AR_NTGT, 0}, {"Depth 4", -100, 100, 30},
+#define VF_PARAMS(w) {w " filter", 0, 1, 0}, {w " cutoff", 0, 100, 60}, {w " resonance", 0, 100, 25}, {w " f.env", 0, 100, 30}
+    VF_PARAMS("V1"), VF_PARAMS("V2"), VF_PARAMS("V3"),
+#undef VF_PARAMS
 #undef VOX_PARAMS
 #undef MS_PARAMS
 };
 _Static_assert(EN_NSLOT == 5, "VOX_PARAMS: five modulators");
 _Static_assert(PL_N == 11, "PL_PARAMS: eleven a voice");
+_Static_assert(sizeof PARAMS / sizeof *PARAMS == P_NPARAMS, "a name a parameter");
 const uint8_t EN_VOX_PATCH[EN_NVOX] = {P_PADTONE, P_BELLPATCH, P_BASSPATCH};
 static const char *const DEST_NAME[MOD_OP] = {"Timbre", "Ratio", "Metal", "Feedback", "Decay", "Pitch", "Space",
                                               "All", "Level", "LFO PM"};
@@ -283,6 +287,40 @@ static char *tenths(int ds, char *b)            /* tenths as "2.7", ten and over
     return b;
 }
 
+/* the ADSR's knobs as times (1.5.20), ms: the attack's rise from silence (its rate 99 - A * 0.85), a decay's or a
+ * release's fall of 60 dB (99 - x * 3 / 4); fm6_core's envelope at the knob's rate, timed by tools' model and the
+ * simulator (a key at middle C: a patch's rate scaling makes high notes quicker) */
+static const uint16_t ADSR_ATK_MS[101] = {
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2,
+    3, 3, 3, 3, 4, 5, 5, 6, 6, 7, 7, 8, 8, 10, 11, 11,
+    11, 13, 17, 17, 19, 19, 22, 22, 27, 27, 34, 39, 39, 39, 45, 54,
+    54, 68, 77, 77, 77, 91, 109, 109, 136, 136, 136, 155, 181, 181, 218, 272,
+    272, 272, 311, 363, 363, 436, 545, 545, 545, 623, 623, 727, 872, 872, 872, 1090,
+    1247, 1247, 1454, 1746, 1746, 1746, 2182, 2182, 2494, 2909, 2909, 2909, 3491, 4364, 4364, 4987,
+    5818, 5818, 5818, 6982, 8728};
+static const uint16_t ADSR_FALL_MS[101] = {
+    3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 9, 11,
+    13, 13, 13, 15, 18, 18, 18, 23, 26, 26, 26, 30, 37, 37, 37, 46,
+    46, 46, 52, 61, 61, 61, 73, 91, 91, 91, 104, 122, 122, 122, 146, 146,
+    183, 183, 209, 209, 244, 244, 292, 292, 366, 366, 418, 418, 487, 487, 585, 585,
+    731, 731, 731, 836, 975, 975, 975, 1170, 1462, 1462, 1462, 1671, 1950, 1950, 1950, 2340,
+    2925, 2925, 2925, 3343, 3343, 3343, 3900, 4680, 4680, 4680, 5850, 6686, 6686, 6686, 7800, 9360,
+    9360, 9360, 11700, 11700, 13371};
+static void ms_text(int t, char *b)              /* "4 ms", "120 ms", "1.2 s", "13 s" */
+{
+    if (t < 1000) {
+        b = itoa_s(t, b);
+        *b++ = ' ';
+        *b++ = 'm';
+    } else {
+        b = tenths((t + 50) / 100, b);
+        *b++ = ' ';
+    }
+    *b++ = 's';
+    *b = 0;
+}
+static float vcf_hz(int cut) { return 30.0f * fm_exp2f((float)cut * 0.0924f); }   /* CUTOFF: 30 Hz .. 18 kHz */
+
 void en_param_text(int i, int v, char *b)
 {
     static const char *const ONOFF[2] = {"Off", "On"};
@@ -421,6 +459,31 @@ void en_param_text(int i, int v, char *b)
         s = EN_NOTE_NAME[(unsigned)v < 12u ? v : 0];
     if (s) {
         copy9(s, b);
+        return;
+    }
+    if (i >= P_PLAY && i < P_TAPE && ((i - P_PLAY) % PL_N == PL_A || (i - P_PLAY) % PL_N == PL_D ||
+                                      (i - P_PLAY) % PL_N == PL_R)) {   /* the ADSR's times */
+        const int x = v < 0 ? 0 : v > 100 ? 100 : v;
+        ms_text((i - P_PLAY) % PL_N == PL_A ? ADSR_ATK_MS[x] : ADSR_FALL_MS[x], b);
+        return;
+    }
+    if (i >= P_VCF && i < P_NPARAMS && (i - P_VCF) % VF_N == VF_ON) {
+        copy9(ONOFF[v ? 1 : 0], b);
+        return;
+    }
+    if (i >= P_VCF && i < P_NPARAMS && (i - P_VCF) % VF_N == VF_CUT) {   /* "440 Hz", "2.4 kHz" */
+        const int hz = (int)(vcf_hz(v) + 0.5f);
+        if (hz < 1000) {
+            b = itoa_s(hz, b);
+            *b++ = ' ';
+        } else {
+            b = tenths((hz + 50) / 100, b);
+            *b++ = ' ';
+            *b++ = 'k';
+        }
+        *b++ = 'H';
+        *b++ = 'z';
+        *b = 0;
         return;
     }
     if (i == P_DRIFT) {
@@ -883,6 +946,48 @@ static int fm_voice(fm6_note_t *n, const uint8_t *p, float note, int32_t lfo_v, 
     return 1;
 }
 
+/* the filter (1.5.20), after the Moog ladder: four one-pole low-passes in a row, the last fed back (RESONANCE: to
+ * self-oscillation near 100) through a soft clip, as the transistors' tanh; each note its own (s: its four stages),
+ * so each keeps its own colour as it fades. The cutoff: CUTOFF's, half following the note's pitch, opened by ENV with
+ * the note's loudness now (its loudest carrier's envelope, linear). Off: nothing done, its stages cleared */
+static float vcf_amp(const fm6_note_t *n, const uint8_t *p)   /* the note's carriers' loudness now, 0..1 */
+{
+    const uint32_t car = fm6_carriers(p[FP_ALG] & 31u);
+    int32_t best = -(20 << 24);
+    uint32_t k;
+    for (k = 0; k < 6u; k++)
+        if (car >> k & 1u) {
+            const int32_t d = n->env[k].level - ((4032 + n->env[k].outlevel - 4256) << 16);
+            best = d > best ? d : best;
+        }
+    return fm_exp2f(fm_clampf((float)best * (1.0f / 16777216.0f), -20.0f, 0.0f));
+}
+static void vcf(int v, float *s, float note, const fm6_note_t *n, const uint8_t *p, float *x)
+{
+    float g, k, oct;
+    uint32_t i;
+    if (!par[P_VF(v, VF_ON)]) {
+        s[0] = s[1] = s[2] = s[3] = 0.0f;
+        return;
+    }
+    oct = (float)par[P_VF(v, VF_CUT)] * 0.0924f + (note - 60.0f) * (0.5f / 12.0f) +
+          (float)par[P_VF(v, VF_ENV)] * 0.06f * vcf_amp(n, p);
+    g = 1.0f - fm_expf(-2.0f * FM_PI * fm_minf(30.0f * fm_exp2f(fm_minf(oct, 9.3f)), 0.42f * EN_SR) * (1.0f / EN_SR));
+    k = (float)par[P_VF(v, VF_RES)] * 0.041f;   /* (4: the ladder sings) */
+    for (i = 0; i < FM6_N; i++) {
+        float u = x[i] * 0.5f - k * s[3];
+        u = u > 1.5f ? 1.0f : u < -1.5f ? -1.0f : u - 0.148148f * u * u * u;   /* (a tanh's shape, no divide) */
+        s[0] += g * (u - s[0]);
+        s[1] += g * (s[0] - s[1]);
+        s[2] += g * (s[1] - s[2]);
+        s[3] += g * (s[2] - s[3]);
+        x[i] = s[3] * (2.0f + 0.5f * k);         /* (the drive's half back; the bass the resonance takes, half) */
+    }
+    for (i = 0; i < 4u; i++)                     /* (a stage gone quiet to nothing: 0, not a denormal crawling) */
+        if (fm_fabsf(s[i]) < 1e-12f)
+            s[i] = 0.0f;
+}
+
 /* a note-on of patch p (fm6_note_init) at MIDI note `note` transposed as the patch says: its key scaling and rate
  * scaling as a DX7 has them, its pitch then from fm_voice (which transposes it the same) */
 static void fm_note_on(fm6_note_t *n, const uint8_t *p, int32_t note, int32_t vel, int fresh)
@@ -932,6 +1037,7 @@ typedef struct {
     uint8_t midi_note, hand, gen, up;           /* hand: 1 fading out of the old key, 2 into the new; gen: the patch it
                                                  * sings (its voice's gen as it started); up: its key let go */
     uint8_t on, rung, loop, fade;               /* the loops: sounding, started, its loop; shed: blocks to silence */
+    float vf[4];                                /* its filter's four stages (vcf) */
 } vnote_t;
 typedef struct {
     vnote_t n[NPOLY];
@@ -1009,7 +1115,7 @@ static void adsr_patch(int v, uint8_t *p)
         uint8_t *o = p + j * FP_OP;
         if (!(car >> j & 1u))
             continue;
-        o[FP_R1] = (uint8_t)(99 - a * 3 / 4);
+        o[FP_R1] = (uint8_t)(99 - (a * 85 + 50) / 100);   /* (1.5.20: to rate 14, ~8 s) */
         o[FP_R1 + 1] = (uint8_t)(99 - d * 3 / 4);
         o[FP_R1 + 2] = 99;
         o[FP_R1 + 3] = (uint8_t)(99 - r * 3 / 4);
@@ -3510,6 +3616,7 @@ static void chord_block(int v)                  /* a Chord voice's block: its br
         gr = fm_sinf((pn + 1.0f) * (FM_PI / 4.0f)) * g;
         if (fm_voice(&n->fm, n->vp, n->note + 0.08f * motion * mod[i].v + m.pitch + lfo_pm(lv, m.lfopm), lv, ld,
                      n->bloom + m.bloom, m.fb, dtb, olb, x)) {
+            vcf(v, n->vf, n->note, &n->fm, n->vp, x);
             const float dl = (gl - n->gl) * (1.0f / FM6_N), dr = (gr - n->gr) * (1.0f / FM6_N);
             float pl = n->gl, pr = n->gr;         /* the place ramped across the block (no zipper as it moves) */
             for (j = 0; j < FM6_N; j++) {        /* a slow drift of pitch above, as tape */
@@ -3589,6 +3696,7 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
             m.lvl = n->lv * (float)(n->fade - 1) / (float)n->fade;
         if (fm_voice(&n->fm, p, (float)n->midi_note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb, olb,
                      x)) {
+            vcf(v, n->vf, (float)n->midi_note, &n->fm, p, x);
             const float g = c->vol * 0.53f * n->vel * n->out * c->fo;   /* (AMB-1's bells' level, measured) */
             float gl = n->gl, gr = n->gr;
             if (m.pan != 0.0f) {                 /* SPACE: the note wanders from its loop's place */
@@ -3676,6 +3784,7 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
         gl = (1.0f - fm_maxf(m.pan, 0.0f) * 0.5f) * m.lvl;   /* SPACE: the bass leans a little, never far */
         gr = (1.0f + fm_minf(m.pan, 0.0f) * 0.5f) * m.lvl;
         if (fm_voice(&n->fm, n->vp, n->note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb, olb, x)) {
+            vcf(v, n->vf, n->note, &n->fm, n->vp, x);
             const float dl = (gl - n->gl) * (1.0f / FM6_N), dr = (gr - n->gr) * (1.0f / FM6_N);
             float pl = n->gl, pr = n->gr;
             for (j = 0; j < FM6_N; j++) {
@@ -3712,6 +3821,7 @@ static struct {
     uint8_t vp[FP_SIZE + 1];
     uint8_t on, voice, note, key;               /* key: the key's note as pressed (released by it) */
     uint16_t rel;                               /* blocks since it was let go (1.5.17: at most 6 s, then gone) */
+    float vf[4];                                /* its filter's (vcf) */
 } kb[KB_N] EN_POOL;
 #define KB_REL_FREE (3 * EN_SR / FM6_N)        /* its own release, 3 s; then a fade of 3 s more */
 static void kb_reset(void) { __builtin_memset(kb, 0, sizeof kb); }
@@ -3784,6 +3894,7 @@ static void kb_block(void)                       /* (1.5.11: each key moved by i
         ld = fm6_lfo_delay(&kb[i].lfo);
         mod_of(VOX_GEN0[v], p, &m, dtb, olb);
         if (fm_voice(&kb[i].fm, p, (float)kb[i].note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb, olb, x)) {
+            vcf(v, kb[i].vf, (float)kb[i].note, &kb[i].fm, p, x);
             const float rf = kb[i].on == 2 && kb[i].rel > KB_REL_FREE   /* (let go 3 s ago: fading, 3 s) */
                                  ? 1.0f - (float)(kb[i].rel - KB_REL_FREE) / (float)KB_REL_FREE : 1.0f,
                         g = vc[v].vol * vc[v].gain * 0.45f * m.lvl * fm_maxf(rf, 0.0f),

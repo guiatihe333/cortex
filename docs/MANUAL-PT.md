@@ -321,6 +321,13 @@ com Feedback 0 nada); **Lines**, a própria geometria, girada, deslocada e ampli
 **Both**, os dois. **Zoom** para dentro ou para fora, **Rotate** para um lado ou outro, **Shift** na direção do Angle
 do Osc (0: na horizontal).
 
+**Looks** (1.5.20): nas páginas do video synth, o **PRESETS** escolhe um look em vez de uma peça (a peça e a música
+continuam): Default, Tunnel, LZX Grid, Hydra, Kaleido, Datamosh, Rutt-Etra, Calm, Vectors, Prism, Starfield, Broken
+TV. Um look é um template: ele volta todos os ajustes de vídeo ao início e aplica os seus (o Visual, o Osc, o
+feedback, o transform, as cores, os glitches), um ponto de partida para depois girar os knobs. Bars, Delay e os quatro
+slots do React ficam como você deixou. O Tom diz o que é cada look. Segure SEL um segundo para voltar ao que era antes.
+Fica salvo com a peça, como qualquer ajuste.
+
 ### GLO de novo: MIDI e Song
 
 GLO na Setup abre a **MIDI**, depois a **Song**, e volta à Setup.
@@ -351,7 +358,8 @@ em que foi deixado. O alto da tela diz qual voz e qual página. Cada peça guard
 | --- | --- | --- | --- | --- |
 | Patch | Patch | Algorithm (1–32) | Feedback (0–7) | Index (±24 dB nos moduladores) |
 | Play | Envelope (AMB, Patch, ADSR) | Gate (5–100 %) | Pace | Glide |
-| ADSR | Attack | Decay | Sustain | Release |
+| ADSR | Attack (1 ms – 8,7 s) | Decay | Sustain | Release (3 ms – 13 s) |
+| Filter | Filter (Off, On) | Cutoff (30 Hz – 18 kHz) | Resonance | Env |
 | LFO | Speed | Delay | Pitch mod | Amp mod |
 | LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24 semitons, como no DX7) |
 | Pitch EG | Stage (1–4) | Rate | Level (±50) | Osc sync |
@@ -374,6 +382,17 @@ em que foi deixado. O alto da tela diz qual voz e qual página. Cada peça guard
 - **Pace:** a respiração de um acorde (4 a 16 s); o passo dos loops (1/16, 1/8, 1/4, 1/2); o baixo tocado a cada
   acorde, ou a cada compasso, 1/2, 1/4, 1/8 (com Patch ou ADSR).
 - **Glide:** o quanto o baixo desliza até a próxima nota, de 20 ms a 1,2 s.
+- **ADSR** (1.5.20): Attack, Decay e Release mostram seus tempos. O Attack é a subida a partir do silêncio (1 ms a
+  8,7 s); Decay e Release, uma queda de 60 dB (3 ms a 13 s; o Decay para no Sustain, então leva só uma parte disso).
+  Os tempos valem para uma nota perto do dó central: o rate scaling do patch deixa as notas agudas mais rápidas. O
+  Release começa agora em 0,3 s (era 0,09 s, curto o bastante para deixar uma voz Bass em silêncio entre os acordes).
+- **Filter** (1.5.20): um passa-baixa inspirado no ladder da Moog, em cada nota da voz (cada nota com o seu, então
+  cada uma mantém a cor enquanto some): quatro polos, 24 dB por oitava, uma saturação suave na realimentação como a
+  dos transistores. **Filter** Off (o padrão: a voz como antes, sem gastar nada) ou On; **Cutoff**, de 30 Hz a
+  18 kHz, seguindo metade da altura da nota (uma oitava acima, meia oitava mais brilhante); **Resonance**, um pico
+  no corte, que assobia sozinho perto de 100; **Env**, o corte aberto pelo volume da nota (o envelope dos carriers:
+  o do ADSR ou o do patch), até seis oitavas, fechando enquanto ela some. Ligado, ele gasta CPU (veja o CPU da página
+  Setup): com as três vozes filtradas e o FM-1 ocupado, ele toca menos notas, como faz com qualquer carga.
 
 ![A página ADSR de uma voz: ATTACK 5, DECAY 40, SUSTAIN 70, RELEASE 40](img/screen-adsr.png "A página ADSR")
 
@@ -652,7 +671,8 @@ Os padrões são os da Garden; cada peça tem os seus.
 | Play de uma voz | Gate | 5–100 % | 70 %, 25 %, 80 % |
 | Play de uma voz | Pace | 0–100 | 60, 60 (1/4), 0 (cada acorde) |
 | Play de uma voz | Glide | 20 ms – 1,2 s | 260 ms |
-| ADSR de uma voz | Attack, Decay, Sustain, Release | 0–100 | 5, 40, 70, 40 |
+| ADSR de uma voz | Attack, Decay, Sustain, Release | 0–100 (1 ms – 8,7 s; 3 ms – 13 s; %; 3 ms – 13 s) | 5 (1 ms), 40 (91 ms), 70, 55 (0,3 s) |
+| Filter de uma voz | Filter, Cutoff, Resonance, Env | Off/On, 30 Hz – 18 kHz, 0–100, 0–100 | Off, 60 (1,4 kHz), 25, 30 |
 | OPERATOR de uma voz | Ratio, Fine, Level, Envelope, Mode, Detune, Velocity, Break, Depths, Curves, Rate scale, Amp sens | como no DX7 | os do patch |
 | MOD de uma voz (×5) | Depth | 0–100 | 20 (o primeiro), 0 |
 | MOD de uma voz (×5) | Rate | 0–100 (60 s – 0,12 s; Tempo: 8 compassos – 1/16) | 27 (11 s) |

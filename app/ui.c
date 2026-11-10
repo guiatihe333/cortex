@@ -88,7 +88,7 @@ static void ui_blit(uint32_t x, uint32_t y);
 enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_SPACE, V_SETUP, V_TAPE, V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_TKEY, V_SONG,
        V_MIDI, V_VIS, V_VID, V_SHAPE, V_VMIX, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN, V_OSC, V_OSC2, V_XFORM, V_SHAPE2, V_MAIN };
 #define VIS_OSC 8                               /* (VISUAL's Osc: drawn, not one MORPH turns into) */
-enum { S_GEN, S_VOICE, S_PLAY, S_ADSR, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
+enum { S_GEN, S_VOICE, S_PLAY, S_ADSR, S_FILT, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
 #define NVIEWS (V_MAIN + EN_NVOX * NSUB)
 #define NGROUP 4
 static const uint8_t GROUP0[NGROUP + 1] = {S_GEN, S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
@@ -104,7 +104,7 @@ static const char *const MAIN_NAME[V_MAIN] = {"Cortex", "Voice 1", "Voice 2", "V
                                               "Gene", "Deck", "Tape Mod", "Tape Mod 2", "Tape Key", "Song", "MIDI", "Visual", "Video", "Shape", "Mix", "Life", "Mosh",
                                               "Chroma", "React", "Screen", "Osc", "Osc 2",
                                               "Transform", "Shape 2"};
-static const char *const SUB_NAME[NSUB] = {"Gen", "Patch", "Play", "ADSR", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
+static const char *const SUB_NAME[NSUB] = {"Gen", "Patch", "Play", "ADSR", "Filter", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
                                            "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
 static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_FX, B_GLO, B_SEQ, B_SEQ, B_SEQ, B_SEQ, B_SEQ,
                                          B_SEQ, B_GLO, B_GLO, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME,
@@ -145,7 +145,7 @@ static void view_name(int v, char *b)          /* "Garden", "Bells OP Env" */
  * operator picked (KP_O + its field), the stage picked's rate or level, the modulator picked's setting (KM + MS_*) */
 enum { K_LEDS = 1000, K_CPU, K_NONE, K_SRC, K_OP, K_STAGE, K_PSTAGE, K_SLOT, K_TSLOT, K_GKIND, K_GBRIGHT, K_GMOTION,
        K_GVARY, K_TKEY, K_TSHIFT, K_RSLOT, KP_OR, KP_OL, KP_PR, KP_PL,
-       KP_V = 1100, KP_O = 1300, KM = 1400, KPL = 1500, KTM = 1600, KAR = 1700 };   /* KPL + PL_*: how the page's voice plays
+       KP_V = 1100, KP_O = 1300, KM = 1400, KPL = 1500, KTM = 1600, KAR = 1700, KVF = 1800 };   /* KPL + PL_*: how the page's voice plays
                                                                           * (P_PL); KTM + TM_*: the reel's modulator
                                                                           * picked (P_TM) */
 #define KPL_(k) (KPL + PL_##k)
@@ -186,6 +186,7 @@ static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_SRC, KV(ALG), KV(FB), K_NONE},          /* (INDEX: P_VX, put in below) */
     {KPL_(ENV), KPL_(GATE), KPL_(PACE), KPL_(GLIDE)},   /* (the voice's P_PL, put in below) */
     {KPL_(A), KPL_(D), KPL_(S), KPL_(R)},
+    {KVF, KVF + 1, KVF + 2, KVF + 3},         /* the filter (P_VF: the page's voice's, below) */
     {KV(LFS), KV(LFD), KV(LPMD), KV(LAMD)},
     {KV(LFW), KV(LPMS), KV(LKS), KV(TRNSP)},
     {K_PSTAGE, KP_PR, KP_PL, KV(OKS)},
@@ -233,6 +234,7 @@ static const char *const SUB_LABEL[NSUB][4] = {
     {"Patch", "Algorithm", "Feedback", "Index"},
     {"Envelope", "Gate", "Pace", "Glide"},
     {"Attack", "Decay", "Sustain", "Release"},
+    {"Filter", "Cutoff", "Resonance", "Env"},
     {"Speed", "Delay", "Pitch mod", "Amp mod"},
     {"Wave", "Pitch sens", "Key sync", "Transpose"},
     {"Stage", "Rate", "Level", "Osc sync"},
@@ -251,6 +253,8 @@ static int view_knob(int v, int i)             /* page v's knob i */
     int k = v < V_MAIN ? MAIN_KNOB[v][i] : SUB_KNOB[view_sub(v)][i];
     if (k >= KPL && k < KPL + PL_N)
         return P_PL(view_vox(v), k - KPL);
+    if (k >= KVF && k < KVF + VF_N)
+        return P_VF(view_vox(v), k - KVF);
     if (v < V_MAIN)
         return k;
     if (view_sub(v) == S_VOICE && i == 3)
@@ -700,6 +704,7 @@ void ui_reel_in(int ok)                         /* a file's reel came in: SOURCE
         warn("TAPE IN", "NOT SAVED YET");
 }
 static uint8_t tom_song_in;                     /* (a song came in: Tom brings word of it) */
+static uint8_t tom_look;                        /* (a look picked, + 1: Tom says what it is) */
 static uint8_t tom_knob_turned;                 /* (a knob turned, + 1: Tom says what it does once it rests) */
 void ui_song_in(int slot)                       /* a song came in */
 {
@@ -1012,6 +1017,47 @@ static void dice_env(int v, int n)              /* operator n's envelope: an att
     dice_byte(v, o + EP_L1 + 2, 0, 90);
     dice_byte(v, o + EP_L1 + 3, 0, 12);         /* (the end: silence, or near it) */
 }
+/* the video synth's looks (1.5.20): PRESET on its pages; each sets every video setting (but Bars and Delay, the screen's,
+ * and React's slots, the player's) to its start and then its own, as a template. SEL held undoes it (a roll's undo) */
+static const struct {
+    const char *name, *word;                    /* its name; Tom's word on it */
+    uint8_t n, k[15];                            /* its settings (ST_*) */
+    int16_t v[15];
+} LOOKS[] = {
+    {"Default", "Default: every video setting back to where it starts.", 0, {0}, {0}},
+    {"Tunnel", "Tunnel: the frame fed back, zoomed and turned each time: an endless corridor.", 12, {ST_VMODE, ST_VFEED, ST_VTRAIL, ST_VXTGT, ST_VXZOOM, ST_VXROT, ST_VPAL, ST_VHUE, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {4, 85, 80, 0, 45, 25, 2, 20, 0, 0, 0, 0}},
+    {"LZX Grid", "LZX Grid: two square waves multiplied into a grid and folded into bands of colour.", 13, {ST_VMODE, ST_VOFREQ, ST_VOSHAPE, ST_VOFREQ2, ST_VOCOMB, ST_VOSPEED, ST_VFEED, ST_VFOLD, ST_VPAL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {8, 45, 3, 45, 1, 25, 15, 55, 3, 0, 0, 0, 0}},
+    {"Hydra", "Hydra: a sine bent by the picture itself and fed back: Hydra's modulate.", 13, {ST_VMODE, ST_VOFREQ, ST_VOSHAPE, ST_VOCOMB, ST_VOWARP, ST_VFEED, ST_VXROT, ST_VXZOOM, ST_VFOLD, ST_VHUE, ST_VMOSH, ST_VSORT, ST_VCORRUPT}, {8, 30, 0, 4, 65, 75, 12, 15, 35, 40, 0, 0, 10}},
+    {"Kaleido", "Kaleido: plasma and a mandala folded into a kaleidoscope.", 9, {ST_VMODE, ST_VMIRROR, ST_VSIDES, ST_VGEO, ST_VFEED, ST_VPAL, ST_VFOLD, ST_VMOSH, ST_VSORT}, {5, 4, 6, 4, 45, 0, 20, 0, 0}},
+    {"Datamosh", "Datamosh: blocks dragged along, pixels sorted, a broken file on every beat.", 7, {ST_VMODE, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE, ST_VFEED, ST_VPULSE}, {3, 85, 55, 55, 45, 35, 70}},
+    {"Rutt-Etra", "Rutt-Etra: the sound's ridges as scan lines lifted by their brightness, in mono.", 10, {ST_VMODE, ST_VGEO, ST_VFEED, ST_VPAL, ST_VTRAIL, ST_VRGB, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {1, 6, 10, 4, 45, 10, 0, 0, 0, 0}},
+    {"Calm", "Calm: slow plasma, long trails, no glitches: for a quiet room.", 15, {ST_VMODE, ST_VFEED, ST_VTRAIL, ST_VSPEED, ST_VMUTATE, ST_VCHAOS, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE, ST_VRGB, ST_VSYNC, ST_VPAL, ST_VEAR, ST_VPULSE}, {5, 10, 88, 15, 10, 0, 0, 0, 0, 0, 5, 0, 2, 75, 10}},
+    {"Vectors", "Vectors: two geometries turning on the feedback, as an oscilloscope's art.", 13, {ST_VMODE, ST_VGEO, ST_VGEO2, ST_VSIDES, ST_VSIDES2, ST_VFEED, ST_VXTGT, ST_VXROT, ST_VTRAIL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {6, 2, 9, 5, 7, 60, 2, 10, 70, 0, 0, 0, 0}},
+    {"Prism", "Prism: the notes' spokes in four mirrored quarters, over a spiral.", 6, {ST_VMODE, ST_VMIRROR, ST_VLAYER, ST_VBLEND, ST_VMIX, ST_VPAL}, {2, 3, 7, 1, 50, 1}},
+    {"Starfield", "Starfield: stars rushing out of the middle, the frame falling back behind them.", 11, {ST_VMODE, ST_VGEO, ST_VFEED, ST_VXZOOM, ST_VXTGT, ST_VPAL, ST_VTRAIL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {7, 13, 30, -30, 0, 4, 70, 0, 0, 0, 0}},
+    {"Broken TV", "Broken TV: torn sync, the colours apart, rows slipping, posterized.", 7, {ST_VMODE, ST_VSYNC, ST_VRGB, ST_VSLICE, ST_VCORRUPT, ST_VPOSTER, ST_VPULSE}, {0, 80, 70, 60, 30, 40, 60}},
+};
+#define NLOOK ((int)(sizeof LOOKS / sizeof *LOOKS))
+static uint8_t look_i;                          /* the look picked last */
+static void look_set(int p, int v)
+{
+    proj.par[p] = (int16_t)v;
+    en_set(p, v);
+    par_out(p);
+}
+static void look_apply(int i)
+{
+    int p, j;
+    dice_keep();
+    for (p = P_ST(VMODE); p <= P_ST(VEAR); p++)
+        if (p != P_ST(VBARS) && p != P_ST(VDELAY))
+            look_set(p, en_param_info(p)->def);
+    for (j = 0; j < LOOKS[i].n; j++)
+        look_set(P_SETP + LOOKS[i].k[j], LOOKS[i].v[j]);
+    mark_dirty();
+    say("LOOK", LOOKS[i].name);
+    tom_look = (uint8_t)(i + 1);
+}
 static void dice_adsr(int v)                    /* an attack, a decay, a sustain, a release */
 {
     dice_par(P_PL(v, PL_A), 0, 60);
@@ -1261,6 +1307,12 @@ static void dice_page(int vw)                   /* the page shown */
         break;
     case S_ADSR:
         dice_adsr(v);
+        break;
+    case S_FILT:                                 /* the filter: on or off, its colour */
+        dice_par(P_VF(v, VF_ON), 0, 1);
+        dice_par(P_VF(v, VF_CUT), 25, 90);
+        dice_par(P_VF(v, VF_RES), 0, 75);
+        dice_par(P_VF(v, VF_ENV), 0, 80);
         break;
     case S_LFO: case S_LFO2:
         dice_byte(v, EP_LFS, 10, 70);
@@ -1868,7 +1920,12 @@ static void input(void)
         ui.turn_t = plat_ms();
     }
     if ((e = plat_enc(EN_PRESET)) != 0) {
-        set_piece(proj.piece + (e > 0 ? 1 : -1));
+        if (ui.view >= V_VIS && ui.view <= V_SHAPE2) {   /* (1.5.20: on the video synth's pages, its looks) */
+            look_i = (uint8_t)((look_i + NLOOK + (e > 0 ? 1 : -1)) % NLOOK);
+            look_apply(look_i);
+        } else {
+            set_piece(proj.piece + (e > 0 ? 1 : -1));
+        }
         ui.turn_t = plat_ms();
     }
     if ((btn >> B_SAVE & 1u) && !ui.reset_done && plat_ms() - ui.down_t[B_SAVE] > RESET_HOLD) {
@@ -2164,6 +2221,7 @@ static const char *const TOM_PAGE[V_MAIN + NSUB] = {
     "FM, as the DX7: six operators, each a sine. A modulator bends a carrier's pitch so fast it turns into timbre. Carriers are what you hear.",
     "Play: how this voice's notes are shaped and timed.",
     "ADSR: the loudness's shape. Attack rises, Decay falls to Sustain, which holds; Release once let go.",
+    "Filter: a low-pass after the Moog ladder on each note of this voice: four poles, 24 dB an octave, a resonance.",
     "The patch's LFO: one slow wave for vibrato (pitch) and tremolo (loudness), as on a DX7.",
     "More of the LFO, and the patch's transposition.",
     "The pitch envelope: four stages, each a rate and a level, bending all six operators' pitch.",
@@ -2298,10 +2356,14 @@ static const char *const TOM_KNOB[(V_MAIN + NSUB) * 4] = {
     "Gate: how long each note is held down. All the way down, Natural: let go at once, as a key tapped.",
     "Pace: a chord's breath (4 to 16 s), the loops' step, or how often the bass is struck.",
     "Glide: how slowly the bass slides to its next note, 20 ms to 1.2 s.",
-    "Attack: how long a note takes to rise to full.",
-    "Decay: how long it then falls to the Sustain level.",
+    "Attack: how long a note takes to rise to full, 1 ms to about 8 s; the knob shows the time.",
+    "Decay: how fast it then falls to the Sustain level; the time shown is for a fall of 60 dB.",
     "Sustain: the level it holds while the note is down. 70 % is about -3 dB.",
-    "Release: how long it fades once the note is let go.",
+    "Release: how long it fades once the note is let go; the time shown is for 60 dB, to silence.",
+    "Filter: Off, or On: each note through a low-pass of its own. Off costs nothing.",
+    "Cutoff: where it starts to take the highs away, 30 Hz to 18 kHz; it follows the note's pitch half way.",
+    "Resonance: a peak at the cutoff, fed back as the ladder does; near 100 it whistles on its own.",
+    "Env: the cutoff opens with each note's loudness and closes as it fades: the wah of a struck note.",
     "Speed: how fast the LFO waves.",
     "Delay: how long after a note starts the LFO comes in, as a singer's late vibrato.",
     "Pitch mod: vibrato, the pitch wobbling.",
@@ -2444,7 +2506,8 @@ static const char *const TOM_V_XTGT[3] = {
     "Lines: the geometry itself turns, travels and grows.",
     "Both at once.",
 };
-_Static_assert(sizeof TOM_PAGE / sizeof *TOM_PAGE == 43, "a word a page");
+_Static_assert(sizeof TOM_PAGE / sizeof *TOM_PAGE == V_MAIN + NSUB, "a word a page");
+_Static_assert(sizeof TOM_KNOB / sizeof *TOM_KNOB == (V_MAIN + NSUB) * 4, "a word a knob");
 #define TOM_COLS 29                             /* (FONT_XS: 6 px a letter; he sits at 184) */
 #define TOM_PANEL_MS 3800u                      /* two lines this long */
 #define TOM_NK ((V_MAIN + NSUB) * 4)
@@ -2518,6 +2581,9 @@ static const char *tom_value(int k, int val, char *b)
         return TV(TOM_V_ENV);
     if (p == P_RL(SRC))
         return TV(TOM_V_SRC);
+    if (p >= P_VCF && (p - P_VCF) % VF_N == VF_ON)
+        return val ? "On: the highs taken away above Cutoff, as an analog synth's: round, dark, singing at the "
+                     "Resonance." : "Off: the voice as the FM makes it, bright.";
     if (p == P_ST(VMODE))
         return TV(TOM_V_VIS);
     if (p == P_ST(VLAYER))
@@ -2749,7 +2815,11 @@ static void tom_step(void)                      /* each frame: what he does */
         tom.want = TT_SONGIN, tom_song_in = 0;
     if (plat_battery() == 0 && !tom.batt_told && tom.want == 255)
         tom.want = TT_BATT, tom.batt_told = 1;   /* (word of a low battery, once) */
-    if (tom.want != 255) {                       /* word to bring: at once */
+    if (tom_look) {                              /* a look picked: what it is */
+        tom_say(LOOKS[tom_look - 1].word);
+        tom_look = 0;
+        tom.view_new = 0;                        /* (the page's own word another time) */
+    } else if (tom.want != 255) {                /* word to bring: at once */
         tom_say(TOM_TIP[tom.want]);
         tom.want = 255;
     } else if (tom_knob_turned && now - ui.turn_t > 700u) {   /* a knob turned and let rest: what it does */

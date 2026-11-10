@@ -61,7 +61,8 @@ enum {
     P_TMOD = P_TAPE + 12,                             /* then the reel's five modulators (TM_*, P_TM) */
     P_SONGP = P_TMOD + 5 * 6,                         /* then the song's (SG_*) */
     P_SETP = P_SONGP + 4,                             /* then MIDI's and Key sync (ST_*) */
-    P_NPARAMS = P_SETP + 64
+    P_VCF = P_SETP + 64,                              /* then each voice's filter: EN_NVOX of VF_N (P_VF, 1.5.20) */
+    P_NPARAMS = P_VCF + 3 * 4
 };
 /* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
  * index and five generative modulators */
@@ -101,6 +102,10 @@ enum { VX_OWN, VX_INDEX, VX_SLOT, VX_N = VX_SLOT + EN_NSLOT * MS_N };
  * PACE (a breath's length, the loops' step, the bass struck again each bar .. eighth), GLIDE, and the ADSR */
 enum { PL_ENV, PL_GATE, PL_ROLE, PL_OCT, PL_DENS, PL_PACE, PL_GLIDE, PL_A, PL_D, PL_S, PL_R, PL_N };
 enum { ENV_AMB, ENV_PATCH, ENV_ADSR, EN_NENV };
+/* a voice's filter (1.5.20): a low-pass after the Moog ladder on each of its notes: ON, CUTOFF (30 Hz .. 18 kHz, half
+ * following the note), RESONANCE (to self-oscillation), ENV (the cutoff opened by the note's loudness, up to 6 octaves) */
+enum { VF_ON, VF_CUT, VF_RES, VF_ENV, VF_N };
+#define P_VF(v, k) (P_VCF + (v) * VF_N + (k))
 enum { ROLE_CHORD, ROLE_LOOPS, ROLE_BASS, EN_NROLE };
 /* the settings of before each voice had its own (Swell, Density, Bell oct, Bass oct, Glide, Fifth: still in the table,
  * unshown) into each voice's (a piece's recipe, a project of an older format) */
@@ -171,7 +176,8 @@ enum { ST_CH1, ST_CH2, ST_CH3, ST_NOTES, ST_KSYNC, ST_VMODE, ST_VPAL, ST_VTRAIL,
 #define EN_AR_NTGT25 (ST_VOSYNC - ST_VMODE + 2)   /* (format 25's All) */
 #define EN_AR_NTGT24 (ST_VKEY - ST_VMODE + 2)     /* (format 24's All) */
 #define P_ST(k) (P_SETP + ST_##k)
-_Static_assert(P_SONGP == P_TMOD + EN_NTMOD * TM_N && P_SETP == P_SONGP + SG_N && P_NPARAMS == P_SETP + ST_N,
+_Static_assert(P_SONGP == P_TMOD + EN_NTMOD * TM_N && P_SETP == P_SONGP + SG_N && P_VCF == P_SETP + ST_N &&
+                   P_NPARAMS == P_VCF + EN_NVOX * VF_N,
                "the reel's modulators, the song's, MIDI's");
 /* the splices' keys (reel.c): each studied once recorded (en_reel_study, from the UI, a frame of it a call: the splice
  * studied, -1 none to study), its 12 pitch classes' weights (en_reel_keyvec: 0 not known yet, or silent); or set by

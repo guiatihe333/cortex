@@ -22,3 +22,5 @@ tags = ["synth", "fm", "generative", "ambient", "sequencer"]
 install = "https://guiatihe333.github.io/cortex/install/"
 site = "https://guiatihe333.github.io/cortex/"
 screenshot = "docs/img/cortex-card.png"
+
+ram_layout = "packed"           # one SRAM budget (1.5.20): the RAM code area mostly empty, its room the pool's

@@ -17,7 +17,7 @@ tap ENV
 tap ENV
 tap ENV
 wait 100
-expect view 40
+expect view 41
 press SEL
 tap SAVE
 release SEL

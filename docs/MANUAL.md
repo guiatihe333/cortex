@@ -314,6 +314,13 @@ rotate and scroll on the output fed back: with Feedback up, tunnels, spirals and
 Feedback 0 nothing); **Lines**, the geometry itself, turned, carried and grown (with Feedback, its echoes left behind
 it); **Both**. **Zoom** in or out, **Rotate** either way, **Shift** along Osc's Angle (0: across).
 
+**Looks** (1.5.20): on the video synth's pages, **PRESETS** picks a look instead of a piece (the piece and its music
+stay): Default, Tunnel, LZX Grid, Hydra, Kaleido, Datamosh, Rutt-Etra, Calm, Vectors, Prism, Starfield, Broken TV.
+A look is a template: it puts every video setting back to its start and then sets its own (the Visual, the Osc, the
+feedback, the transform, the colours, the glitches), so it is a place to start from and turn the knobs. Bars, Delay
+and React's four slots stay as you set them. Tom says what each look is. Hold SEL a second to go back to before it.
+Saved with the piece, as any setting.
+
 ### GLO again: MIDI and Song
 
 GLO on Setup opens **MIDI**, then **Song**, then back to Setup.
@@ -344,7 +351,8 @@ was left on. The top of the screen says which voice and which page. Each piece k
 | --- | --- | --- | --- | --- |
 | Patch | Patch | Algorithm (1–32) | Feedback (0–7) | Index (±24 dB on the modulators) |
 | Play | Envelope (AMB, Patch, ADSR) | Gate (5–100 %) | Pace | Glide |
-| ADSR | Attack | Decay | Sustain | Release |
+| ADSR | Attack (1 ms – 8.7 s) | Decay | Sustain | Release (3 ms – 13 s) |
+| Filter | Filter (Off, On) | Cutoff (30 Hz – 18 kHz) | Resonance | Env |
 | LFO | Speed | Delay | Pitch mod | Amp mod |
 | LFO 2 | Wave | Pitch sens | Key sync | Transpose (±24 semitones, as a DX7 plays it) |
 | Pitch EG | Stage (1–4) | Rate | Level (±50) | Osc sync |
@@ -359,13 +367,23 @@ was left on. The top of the screen says which voice and which page. Each piece k
   a beat, the bass is one note held and faded in). **Patch** (the default): each note struck and let go after
   **Gate**, so the patch's own envelopes are heard, and editing them changes the sound. **ADSR:** the same, the
   carriers' envelope from the four ADSR knobs (the modulators keep the patch's); Sustain is a level (70 % about
-  −3 dB, 50 % −6 dB).
+  −3 dB, 50 % −6 dB). Since 1.5.20 Attack, Decay and Release show their times: Attack the rise from silence (1 ms
+  to 8.7 s), Decay and Release a fall of 60 dB (3 ms to 13 s; Decay stops at Sustain, so it takes a part of that).
+  The times are for a note near middle C: a patch's rate scaling makes higher notes quicker. Release's start is
+  0.3 s now (it was 0.09 s, short enough to leave a Bass voice silent between its chords).
 - **Gate:** how long a note is held down: of a chord's breath, of a bar for the loops, of a chord (or a step) for the
   bass. All the way down, **Natural** (1.5.7): each note is held a sixteenth, as a key played, and the patch's (or
   the ADSR's) decay and release are what you hear: notes don't hang on, however long the breath or the chord.
 - **Pace:** a chord's breath (4 to 16 s); the loops' step (1/16, 1/8, 1/4, 1/2); the bass struck each chord, or
   each bar, 1/2, 1/4, 1/8 (with Patch or ADSR).
 - **Glide:** how slowly the bass slides to its next note, 20 ms to 1.2 s.
+- **Filter** (1.5.20): a low-pass after the Moog ladder, on each note of the voice (each note its own, so each keeps
+  its colour as it fades): four poles, 24 dB an octave, a soft clip in its feedback as the transistors have.
+  **Filter** Off (the default: the voice as before, and nothing spent) or On; **Cutoff**, 30 Hz to 18 kHz, half
+  following the note's pitch (an octave up, half an octave brighter); **Resonance**, a peak at the cutoff, whistling
+  on its own near 100; **Env**, the cutoff opened by the note's loudness (its carriers' envelope: the ADSR's or the
+  patch's), up to six octaves, closing as it fades. It costs CPU while on (see the Setup page's CPU): with the three
+  voices filtered and the FM-1 busy, it plays fewer notes, as it does under any load.
 
 ![A voice's ADSR page: ATTACK 5, DECAY 40, SUSTAIN 70, RELEASE 40](img/screen-adsr.png "The ADSR page")
 
@@ -640,7 +658,8 @@ The defaults are Garden's; each piece has its own.
 | A voice's Play | Gate | 5–100 % | 70 %, 25 %, 80 % |
 | A voice's Play | Pace | 0–100 | 60, 60 (1/4), 0 (each chord) |
 | A voice's Play | Glide | 20 ms – 1.2 s | 260 ms |
-| A voice's ADSR | Attack, Decay, Sustain, Release | 0–100 | 5, 40, 70, 40 |
+| A voice's ADSR | Attack, Decay, Sustain, Release | 0–100 (1 ms – 8.7 s; 3 ms – 13 s; %; 3 ms – 13 s) | 5 (1 ms), 40 (91 ms), 70, 55 (0.3 s) |
+| A voice's Filter | Filter, Cutoff, Resonance, Env | Off/On, 30 Hz – 18 kHz, 0–100, 0–100 | Off, 60 (1.4 kHz), 25, 30 |
 | A voice's OPERATOR | Ratio, Fine, Level, Envelope, Mode, Detune, Velocity, Break, Depths, Curves, Rate scale, Amp sens | as a DX7 | as the patch |
 | A voice's MOD (×5) | Depth | 0–100 | 20 (the first), 0 |
 | A voice's MOD (×5) | Rate | 0–100 (60 s – 0.12 s; Tempo: 8 bars – 1/16) | 27 (11 s) |

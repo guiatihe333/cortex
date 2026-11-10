@@ -285,7 +285,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
     slot_t r;
     memset(&tst, 0, sizeof tst);
     if (plat_store_load(OBJ_TAPE, &tst, sizeof tst) < 8 || tst.magic != PROJ_MAGIC ||
-        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 27u))) {
+        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 28u))) {
         for (i = 0; i < NPIECES; i++) {
             recipe(i, &r);
             for (p = P_SPLIT; p < P_NPARAMS; p++)
@@ -301,7 +301,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
                                                   * SHAPE 2's; 26, 27: SHAPE 2's (26: SHIFT Y's place TARGET, Feedback);
                                                   * a react slot on All to the new All */
         const int from = tst.format == 24u ? P_ST(VOFREQ) : tst.format == 25u ? P_ST(VXZOOM) : P_ST(VGEO2),
-                  gap = P_ST(VBARS) - from, nold = P_NPARAMS - gap - P_SPLIT,
+                  gap = P_ST(VBARS) - from, nold = P_VCF - gap - P_SPLIT,
                   all = tst.format == 24u ? EN_AR_NTGT24 : tst.format == 25u ? EN_AR_NTGT25 : EN_AR_NTGT27;
         const int16_t *o = (const int16_t *)(const void *)((const uint8_t *)&tst + 8);
         for (i = 0; i <= NPIECES; i++) {
@@ -310,7 +310,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
             recipe(i < NPIECES ? i : proj.piece, &r);
             for (p = P_SPLIT; p < P_NPARAMS; p++)
                 par[p] = p < from ? o[i * nold + p - P_SPLIT]
-                         : p < P_ST(VBARS) ? r.par[p] : o[i * nold + p - gap - P_SPLIT];
+                         : p < P_ST(VBARS) || p >= P_VCF ? r.par[p] : o[i * nold + p - gap - P_SPLIT];
             if (tst.format == 24u && par[P_ST(VMODE)] == 8)
                 par[P_ST(VMODE)] = 9;
             for (s = 0; s < 4; s++)
@@ -320,7 +320,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
     } else if (tst.format != PROJ_FORMAT) {      /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to
                                                   * the visual's): the
                                                   * rest from the recipes */
-        const int upto = tst.format == 23u ? P_ST(VOFREQ) : tst.format == 22u ? P_ST(VFOLD) : tst.format == 21u ? P_ST(VMOSH) : tst.format == 20u ? P_ST(VMORPH) : tst.format == 19u ? P_ST(VLAYER) : tst.format == 18u ? P_ST(VGEO) : tst.format == 17u ? P_ST(VFEED) : tst.format == 16u ? P_ST(VMODE)
+        const int upto = tst.format == 28u ? P_VCF : tst.format == 23u ? P_ST(VOFREQ) : tst.format == 22u ? P_ST(VFOLD) : tst.format == 21u ? P_ST(VMOSH) : tst.format == 20u ? P_ST(VMORPH) : tst.format == 19u ? P_ST(VLAYER) : tst.format == 18u ? P_ST(VGEO) : tst.format == 17u ? P_ST(VFEED) : tst.format == 16u ? P_ST(VMODE)
                          : tst.format == 15u ? P_SETP : P_SONGP;
         const int16_t *o = (const int16_t *)(const void *)((const uint8_t *)&tst + 8);
         for (i = 0; i <= NPIECES; i++) {
@@ -405,13 +405,20 @@ int project_load(void)
         keep_fmt = 12u;
         from_project_v12(&buf.v12);
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC &&
-               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 27u))) {
+               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 28u))) {
         if (buf.now.format != PROJ_FORMAT)
             keep_fmt = buf.now.format;           /* (its patches as they are) */
         from_projstore(&buf.now);                /* (its settings to P_SPLIT; then the reel's from OBJ_TAPE) */
         proj.leds = buf.now.leds;
         tape_from_store();
         migrated = buf.now.format != PROJ_FORMAT;
+        if (buf.now.format < 29u)                /* (the ADSR's attack: the same rate, on the longer knob) */
+            for (i = 0; i <= NPIECES; i++) {
+                int16_t *par = i < NPIECES ? proj.slot[i].par : proj.par;
+                int v;
+                for (v = 0; v < EN_NVOX; v++)
+                    par[P_PL(v, PL_A)] = (int16_t)((par[P_PL(v, PL_A)] * 75 + 42) / 85);
+            }
         if (buf.now.format < 24u) {              /* (1.5.0: the pieces are new; the player's settings kept) */
             slot_t r;
             int p;
