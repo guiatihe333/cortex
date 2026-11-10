@@ -1,6 +1,6 @@
 # CORTEX
 
-CORTEX (1.5.15; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
+CORTEX (1.5.16; until 1.4.7 called AMB-1 FM6) turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's *Music for Airports*. It
 plays itself from the moment it's switched on: three FM voices (each breathing chords, ringing loops or gliding a
 bass, as you choose), a short echo, a tape loop and a plate reverb, and a reel of tape
 that records it all and plays it back as grains. You don't perform it, you tend it: pick a piece and a scale, take
@@ -122,6 +122,11 @@ puts it away; letting go after it does nothing else.
 ---
 
 ## 4. The screen
+
+**Tom** (1.5.16): a grey cat, a lynx point tabby with a ringed tail and pale blue eyes, after the one CORTEX is made
+for. Now and then he walks across the top of the screen, sometimes jumps, sometimes sits by the right edge and says
+something about the page you are on (a screen reader hears it: "Tom says"); the first time you open a page he may come
+by. He is on the start screen too, walking in through the rings and jumping onto the name.
 
 ![The Partiture page: the piece Garden, D Dorian, tempo 72; the score with the chord Dm7, the level bars on the left](img/screen-garden.png "The Partiture page (HOME)")
 

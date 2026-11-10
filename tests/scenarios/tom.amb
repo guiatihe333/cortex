@@ -1,0 +1,11 @@
+# 1.5.16: Tom, a grey cat (a lynx point tabby), comes by the header a while after the start; sitting, he gives a tip
+# on the page you are on, and a screen reader hears it ("Tom says:"); the start screen has him on the name
+wait 1500
+shot start.png
+wait 3000
+tap GLO
+listen
+wait 19000
+wait 9000
+said Tom says
+shot tom.png

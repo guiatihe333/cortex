@@ -2067,6 +2067,251 @@ static void tag(int32_t *x, const char *s, uint16_t bg, uint16_t fg)
     *x += w + 4;
 }
 
+
+static uint32_t grain(uint32_t i);
+/* ------------------------------------------------------------------ Tom --- */
+/* Tom (1.5.16), a grey cat, for the one this was made with: now and then he walks across the header, sometimes jumps,
+ * sometimes sits by the right edge and says something about the page you are on (a screen reader hears it); the first
+ * time a page is opened he may come by. 24 x 14, drawn twice the size; his frames: two steps, a jump, sitting */
+static const char TOM_A[14][25] = {
+    "..................e...e.",
+    ".................kek.kek",
+    ".................kgdgdgk",
+    ".................kgyggyk",
+    "kk...............kgggwnk",
+    "kek..............kwgwwwk",
+    ".kdk............kgwwwwk.",
+    "..kgk..kkkkkkkkkgdwwwk..",
+    "...kdkkgdggdggdgggggk...",
+    "....kgggdggdggdgggwgk...",
+    "....kggggggggggggwwk....",
+    ".....kdk.kgk...kdk.kgk..",
+    ".....kgk..kdk.kgk...kdk.",
+    ".....kk....kk.kk.....kk.",
+};
+static const char TOM_B[14][25] = {
+    "..................e...e.",
+    ".................kek.kek",
+    ".................kgdgdgk",
+    ".................kgyggyk",
+    "kk...............kgggwnk",
+    "kek..............kwgwwwk",
+    ".kdk............kgwwwwk.",
+    "..kgk..kkkkkkkkkgdwwwk..",
+    "...kdkkgdggdggdgggggk...",
+    "....kgggdggdggdgggwgk...",
+    "....kggggggggggggwwk....",
+    "......kdkkgk....kdkkgk..",
+    "......kgkkdk....kgkkdk..",
+    "......kk..kk....kk..kk..",
+};
+static const char TOM_J[14][25] = {
+    "..................e...e.",
+    ".................kek.kek",
+    ".................kgdgdgk",
+    ".................kgyggyk",
+    "kk...............kgggwnk",
+    "kek..............kwgwwwk",
+    ".kdk............kgwwwwk.",
+    "..kgk..kkkkkkkkkgdwwwk..",
+    "...kdkkgdggdggdgggggk...",
+    "....kgggdggdggdgggwgk...",
+    "....kggggggggggggwwk....",
+    "...kdk.............kdk..",
+    "..kgk...............kgk.",
+    ".kk..................kk.",
+};
+static const char TOM_S[14][25] = {
+    "..........e...e.........",
+    ".........kek.kek........",
+    ".........kgdgdgk........",
+    ".........kgygygk........",
+    ".........kggnggk........",
+    ".........kwwwwwk........",
+    "........kgdwwwdgk.......",
+    ".......kgggwwwgggk......",
+    ".......kgdgggggdgk...kk.",
+    ".......kgggdgdgggk..kek.",
+    ".......kgdgggggdgk.kdk..",
+    ".......kggkgggkggkkgk...",
+    ".......kwdkgggkdwkdk....",
+    "........kk.kkk.kkkk.....",
+};
+static uint16_t tom_col(char c)                  /* (his colours, from his photos) */
+{
+    switch (c) {
+    case 'k': return RGB(30, 26, 24);            /* his outline */
+    case 'g': return RGB(150, 136, 122);         /* warm grey-fawn */
+    case 'd': return RGB(78, 68, 60);            /* his tabby stripes, his tail's rings */
+    case 'e': return RGB(64, 56, 52);            /* his darker ears (the point) */
+    case 'w': return RGB(228, 220, 206);         /* muzzle, chin, chest */
+    case 'n': return RGB(238, 154, 128);         /* his peach nose */
+    case 'y': return RGB(160, 214, 238);         /* his pale blue eyes */
+    default: return 0;
+    }
+}
+static void tom_draw(int32_t x, int32_t y, int32_t s, const char (*f)[25], int mirror)   /* (canvas coordinates) */
+{
+    int32_t r, c;
+    for (r = 0; r < 14; r++)
+        for (c = 0; c < 24; c++) {
+            const char ch = f[r][mirror ? 23 - c : c];
+            if (ch != '.')
+                cv_rect(x + c * s, y + r * s, s, s, tom_col(ch));
+        }
+}
+static const char *const TOM_TIP[][2] = {
+    /* 0 general */
+    {"hold SEL a second:", "the last change undone"},
+    {"hold SAVE: the piece", "back to its recipe"},
+    {"HOME + SELECT:", "the tempo, anywhere"},
+    {"SEL: the dice on", "every knob of a page"},
+    /* 4 the garden */
+    {"the keys here: notes", "in and out of the scale"},
+    /* 5 a voice */
+    {"its button again: its", "own pages, patch to MOD"},
+    {"Gate all the way down:", "Natural, notes let go"},
+    /* 7 Space */
+    {"Size up, Reverb up:", "a long hall"},
+    /* 8 Setup */
+    {"GLO again: MIDI, then", "the Song page"},
+    /* 9 MIDI */
+    {"Notes in Play: a MIDI", "channel plays its voice"},
+    /* 10 Song */
+    {"load a .mid in the", "simulator or amb_mid.py"},
+    /* 11 the reel */
+    {"EDIT records a splice,", "REC overdubs it"},
+    {"Dry/Wet at Wet: you hear", "the tape alone"},
+    /* 13 the visual */
+    {"HOME again: the video", "synth, page by page"},
+    /* 14 Osc */
+    {"Freq 2 and Multiply:", "a grid; Field: Hydra"},
+    /* 15 Shape */
+    {"Shape 2: a second", "geometry at once"},
+    /* 16 Transform */
+    {"Feedback up first:", "then Zoom and Rotate"},
+    /* 17 React */
+    {"a slot: a sound moves", "a setting; All: every one"},
+    /* 18 Lights */
+    {"Setup's Lights Visual:", "the keys follow the light"},
+};
+static struct {
+    uint8_t st, tip, frame;                     /* st: 0 away, 1 walking in, 2 sitting (a tip), 3 walking on, 4 jumping */
+    int16_t x, stop;                            /* where he is, where he stops */
+    uint32_t t, next;                           /* this state's start; his next visit */
+    uint32_t seen;                              /* the layer pages opened since the start */
+} tom;
+static int tom_page_tip(int v)                  /* the page's own tip, or a general one */
+{
+    static uint8_t gen;
+    v = view_main(v);
+    if (v >= V_MAIN)
+        v = V_GARDEN;
+    switch (v) {
+    case V_GARDEN: return 4;
+    case V_PAD: case V_BELLS: case V_BASS: return 5 + (int)(plat_ms() / 7u & 1u);
+    case V_SPACE: return 7;
+    case V_SETUP: return plat_ms() & 1u ? 8 : 18;
+    case V_MIDI: return 9;
+    case V_SONG: return 10;
+    case V_TAPE: case V_GENE: case V_DECK: case V_TMOD1: case V_TMOD2: case V_TKEY: return 11 + (int)(plat_ms() / 7u & 1u);
+    case V_VIS: return 13;
+    case V_OSC: case V_OSC2: return 14;
+    case V_SHAPE: case V_SHAPE2: return 15;
+    case V_XFORM: return 16;
+    case V_REACT: return 17;
+    default: return (int)(gen++ % 4u);
+    }
+}
+static void tom_come(int tip)                   /* in from the right; to sit with a tip, or just to pass */
+{
+    tom.st = 1;
+    tom.x = 240;
+    tom.t = plat_ms();
+    tom.tip = (uint8_t)tip;
+    tom.stop = tip >= 0 ? 186 : (int16_t)(50 + (int)(grain(plat_ms()) % 110u));
+    if (tip < 0)
+        tom.tip = 255;
+}
+static void tom_step(void)                      /* each frame: where he is */
+{
+    const uint32_t now = plat_ms(), e = now - tom.t;
+    if (!tom.next)
+        tom.next = now + 25000u;                 /* (his first visit, a while after the start) */
+    if (!(tom.seen >> view_main(ui.view) & 1u) && view_main(ui.view) < 32) {   /* a page opened the first time */
+        tom.seen |= 1u << view_main(ui.view);
+        if (!tom.st && now > 6000u && grain(now) % 3u == 0u)
+            tom.next = now + 1500u, tom.tip = (uint8_t)tom_page_tip(ui.view);
+    }
+    switch (tom.st) {
+    case 0:
+        if ((int32_t)(now - tom.next) >= 0) {
+            const uint32_t g = grain(now);
+            static uint8_t met;                  /* (his first visit always with a word: he says hello) */
+            tom_come(!met || g % 5u < 3u ? tom_page_tip(ui.view) : -1);   /* (then three times in five, else a walk) */
+            met = 1;
+        }
+        break;
+    case 1:                                      /* walking in, a step every 140 ms */
+        tom.x = (int16_t)(240 - (int32_t)(e * 60u / 1000u));
+        tom.frame = (uint8_t)(e / 140u & 1u);
+        if (tom.x <= tom.stop) {
+            tom.x = tom.stop;
+            tom.t = now;
+            if (tom.tip != 255) {
+                tom.st = 2;
+                if (ann_on()) {
+                    char t[64];
+                    msg_text(TOM_TIP[tom.tip][0], TOM_TIP[tom.tip][1], t);
+                    ann_say("Tom says:", 0, ANN_NOW);
+                    ann_say(t, 0, 0);
+                }
+            } else {
+                tom.st = grain(now) % 2u ? 4 : 3;   /* a jump, or on his way */
+            }
+        }
+        break;
+    case 2:                                      /* sitting, the tip beside him: 5 s */
+        if (e > 5000u)
+            tom.st = 3, tom.t = now;
+        break;
+    case 4:                                      /* a jump: up and on, 0.6 s */
+        if (e > 600u)
+            tom.st = 3, tom.t = now;
+        break;
+    default:                                     /* on his way out, to the left */
+        tom.x = (int16_t)(tom.stop - (int32_t)(e * 70u / 1000u));
+        tom.frame = (uint8_t)(e / 130u & 1u);
+        if (tom.x < -50) {
+            tom.st = 0;
+            tom.next = now + 90000u + grain(now) % 150000u;   /* (again in 1.5 .. 4 minutes) */
+        }
+        break;
+    }
+}
+static uint32_t tom_sig(void)                   /* (the header drawn again while he moves) */
+{
+    return tom.st ? (uint32_t)tom.st << 24 ^ (uint32_t)(uint16_t)tom.x << 8 ^ tom.frame ^
+                    (tom.st == 4 ? (plat_ms() - tom.t) / 40u << 12 : 0u)
+                  : 0u;
+}
+static void tom_header(void)                     /* over the header, after it */
+{
+    if (!tom.st)
+        return;
+    if (tom.st == 2) {                           /* the tip: a dark plate, his words in two lines */
+        cv_rect(0, 0, 240, HDR_H, K_BG);         /* (the header cleared for his words) */
+        cv_text(4, 1, &FONT_XS, TOM_TIP[tom.tip][0], K_ACC);
+        cv_text(4, 14, &FONT_XS, TOM_TIP[tom.tip][1], K_TEXT);
+        tom_draw(tom.x, 0, 2, TOM_S, 0);
+    } else if (tom.st == 4) {                    /* a jump: an arc up and out of the top */
+        const float u = (float)(plat_ms() - tom.t) / 600.0f, h = 4.0f * u * (1.0f - u);
+        tom_draw(tom.x - (int32_t)(u * 30.0f), -(int32_t)(16.0f * h), 2, TOM_J, 1);
+    } else {
+        tom_draw(tom.x, 0, 2, tom.frame ? TOM_B : TOM_A, 1);   /* (walking left: him mirrored) */
+    }
+}
+
 /* the battery (plat_battery): 0 (low) .. 3 bars, 4 a USB host powers the FM-1, -1 not read yet. The
  * simulator's "battery N" (host.c) stands in for it (AMB-1's) */
 #ifdef PLAT_HOST
@@ -2115,6 +2360,7 @@ static void draw_header(void)
                       (ui.view == V_MIDI ? plat_midi_count(PORT_USB, 0) << 4 ^ plat_midi_count(PORT_TRS, 0) << 14 ^
                                                plat_midi_count(PORT_BLE, 0) << 24 ^ ui.in_ch : 0u)));
     h = hash(h, (uint32_t)theme_of(ui.view) ^ ui_lsig ^ (uint32_t)(batt() + 1) << 28);
+    h = hash(h, tom_sig());
     if (msg)
         h = hash(hash(h, (uint32_t)ui.msg[0][0] << 8 | ui.msg[0][1]), ui.msg_until);
     if (en_playing)
@@ -2220,6 +2466,8 @@ static void draw_header(void)
             }
         }
     }
+    if (!msg)
+        tom_header();                            /* (Tom over it) */
     if (!vis_over)
         cv_blit(0, 0);
 }
@@ -4088,7 +4336,7 @@ static void vis_key(int k)
 /* CORTEX's start (3 s, or until a button): static that settles, the gate of horn opening (in the Odyssey true dreams
  * come through the gate of horn, false ones through ivory) on an eye that opens, the name torn into place, the three
  * Oneiroi beneath it */
-#define SPLASH_MS 3200u
+#define SPLASH_MS 4200u
 static uint32_t splash_t0;
 static uint8_t splash_on;
 static int32_t sp_by, sp_bh;                    /* the band being drawn */
@@ -4098,59 +4346,57 @@ static inline void sp_px(int32_t x, int32_t y, uint16_t c)
         cv_px[(uint32_t)(y - sp_by) * 240u + (uint32_t)x] = swap16(c);
 }
 static uint16_t sp_mix(uint16_t a, uint16_t b, float t) { return mix(a, b, q16(t)); }
-static void sp_band(int32_t by, int32_t bh, float t)
+static void sp_band(int32_t by, int32_t bh, float t)   /* (1.5.16) the zone plate, Tom, the name */
 {
-    static const uint16_t NIGHT = 0x0806, VIOLET = 0x611A, HORN = 0xE5A8, IVORY = 0xF7BB;
+    static const uint16_t VIOLET = 0x611A, HORN = 0xE5A8, IVORY = 0xF7BB;
     int32_t x, y;
     uint32_t r = 0x9E3779B9u ^ (uint32_t)(t * 977.0f);
+    const float in = fm_clampf(t * 3.0f, 0.0f, 1.0f), dens = fm_clampf(1.0f - t * 2.5f, 0.0f, 1.0f);
+    const int32_t zf = 6 + (int32_t)(t * 40.0f), ph = (int32_t)(t * 900.0f), lv = (int32_t)(in * 150.0f);
     sp_by = by, sp_bh = bh;
-    cv_begin(240, (uint32_t)bh, NIGHT);
-    {                                            /* static, thinning as it settles */
-        const float dens = fm_clampf(1.0f - t * 2.2f, 0.0f, 1.0f);
-        for (y = by; y < by + bh; y++) {
-            for (x = 0; x < 240; x += 2) {
-                r = r * 1664525u + 1013904223u;
-                if ((float)(r >> 24) < dens * 150.0f)
-                    sp_px(x, y, sp_mix(NIGHT, VIOLET, (float)(r >> 16 & 255u) / 255.0f));
+    cv_begin(240, (uint32_t)bh, 0x0806);
+    for (y = by; y < by + bh; y++) {             /* LZX's zone plate: rings of r squared, a slow bar across, its planes
+                                                  * apart (red left, blue right), out of the static */
+        uint16_t *p = cv_px + (uint32_t)(y - by) * 240u;
+        const int32_t dy = y - 120, dy2 = dy * dy, bar = ((y * 3 + ph / 2) & 255);
+        for (x = 0; x < 240; x++) {
+            int32_t v[3], k;
+            for (k = 0; k < 3; k++) {
+                const int32_t dx = x - 120 + (k - 1) * 3, a = (((dx * dx + dy2) * zf) >> 9) + ph,
+                              q = a & 255, tri = q < 128 ? q * 2 : (255 - q) * 2;
+                v[k] = ((tri * (bar < 128 ? 3 : 2)) >> 2) * lv >> 8;
             }
+            r = r * 1664525u + 1013904223u;
+            if ((float)(r >> 24) < dens * 120.0f)   /* (the static thinning) */
+                v[0] = v[1] = v[2] = (int32_t)(r >> 16 & 127u);
+            p[x] = swap16((uint16_t)((v[0] * 7 / 8 >> 3) << 11 | (v[1] / 2 >> 2) << 5 | (v[2] >> 3)));
         }
     }
-    if (t > 0.2f) {                              /* the eye opening: two lids, an iris of rings */
-        const float o = fm_clampf((t - 0.2f) * 2.2f, 0.0f, 1.0f), cy = 104.0f;
-        int32_t k;
-        for (x = 30; x < 210; x++) {
-            const float u = ((float)x - 120.0f) / 90.0f, lid = 38.0f * o * (1.0f - u * u);
-            sp_px(x, (int32_t)(cy - lid), HORN);
-            sp_px(x, (int32_t)(cy + lid), HORN);
-            for (y = (int32_t)(cy - lid) + 1; y < (int32_t)(cy + lid); y++) {
-                const float dx = (float)x - 120.0f, dy = (float)y - cy, d = fm_sqrtf(dx * dx + dy * dy);
-                if (d < 30.0f * o) {
-                    const int ring = (int)(d * 0.4f + t * 12.0f) & 1;
-                    sp_px(x, y, d < 10.0f * o ? NIGHT : ring ? sp_mix(VIOLET, IVORY, 1.0f - d / 30.0f) : VIOLET);
-                }
-            }
-        }
-        for (k = 0; k < 9; k++) {                /* lashes */
-            const float a = -2.6f + (float)k * 0.65f, x0 = 120.0f + 92.0f * fm_cosf(a) * 0.9f;
-            const float y0 = cy - 30.0f * o * fm_sinf(-a) * 0.9f;
-            cv_line((int32_t)x0, (int32_t)y0 - sp_by, (int32_t)(x0 + 8.0f * fm_cosf(a)),
-                    (int32_t)(y0 - 10.0f * o) - sp_by, HORN);
-        }
-    }
-    if (t > 0.45f) {                             /* the name, its rows torn into place */
-        const float g = fm_clampf(1.0f - (t - 0.45f) * 3.0f, 0.0f, 1.0f);
+    cv_oy = -sp_by;
+    if (t > 0.42f) {                             /* the name */
         const char *nm = "CORTEX";
-        const int32_t w = text_w(&FONT_L, nm), x0 = 120 - w / 2, y0 = 156;
-        cv_oy = -sp_by;
-        (void)g;
-        cv_text(x0, y0, &FONT_L, nm, IVORY);   /* (1.5.3: still, no torn copy) */
-        if (t > 0.65f) {
-            const char *s = "MORPHEUS  PHOBETOR  PHANTASOS";
-            cv_text(120 - text_w(&FONT_XS, s) / 2, 196, &FONT_XS, s, HORN);
-            cv_text(120 - text_w(&FONT_XS, "FM-1  1.5") / 2, 216, &FONT_XS, "FM-1  1.5", VIOLET);
-        }
-        cv_oy = 0;
+        const int32_t w = text_w(&FONT_L, nm);
+        cv_rect(120 - w / 2 - 8, 152, w + 16, 40, 0x0806);   /* (cv_oy: screen rows) */
+        cv_text(120 - w / 2, 156, &FONT_L, nm, IVORY);
     }
+    {                                            /* Tom: in from the left, a jump, sitting on the name */
+        const int32_t s = 3, sw = 24 * s, sh = 14 * s;
+        if (t > 0.18f && t < 0.62f) {
+            const float u = (t - 0.18f) / 0.44f;
+            tom_draw((int32_t)(-sw + u * (120.0f - (float)sw / 2.0f + (float)sw)), 150 - sh, s,
+                     (int)(t * 40.0f) & 1 ? TOM_B : TOM_A, 0);   /* (cv_oy: screen rows) */
+        } else if (t >= 0.62f && t < 0.74f) {
+            const float u = (t - 0.62f) / 0.12f, hgt = 4.0f * u * (1.0f - u);
+            tom_draw(120 - sw / 2, (int32_t)(150.0f - (float)sh - 30.0f * hgt + 2.0f * u), s, TOM_J, 0);
+        } else if (t >= 0.74f) {
+            tom_draw(120 - sw / 2, 152 - sh, s, TOM_S, 0);   /* (on the name's plate) */
+        }
+    }
+    if (t > 0.74f) {
+        cv_text(120 - text_w(&FONT_XS, "for Tom") / 2, 198, &FONT_XS, "for Tom", HORN);
+        cv_text(120 - text_w(&FONT_XS, "FM-1  1.5") / 2, 216, &FONT_XS, "FM-1  1.5", VIOLET);
+    }
+    cv_oy = 0;
     cv_blit(0, (uint32_t)by);
 }
 static int draw_splash(void)                     /* the start: 1 while it plays */
@@ -5109,7 +5355,7 @@ void ui_frame(void)
     reel_saving();
     autosave();
     if (draw_splash()) {                         /* the start screen */
-    } else if (vis_full()) {                     /* the visual: the whole screen, 20 frames a second */
+    } else if ((tom_step(), vis_full())) {                     /* the visual: the whole screen, 20 frames a second */
         if (ui.frame % 3u == 0u)
             draw_vis_screen();
     } else {
