@@ -232,7 +232,7 @@ more pages of its own (ENV, ARP or LFO again).
 
 ### HOME: Partiture
 
-- **Tempo:** 30 to 120 (also HOME + SELECT, from any page).
+- **Tempo:** 30 to 240 (also HOME + SELECT, from any page; up to 1.5.20, 120).
 - **Evolve:** how restless the garden is. At 0 the loops repeat exactly; turned up, notes change or move at the end
   of a pass, the pulse patterns turn, and the voices take rests.
 - **Motion:** how far the arc swings, and how much pitch, pan and the echo wander.
@@ -512,7 +512,8 @@ MIDI comes in over USB and the TRS jack, and goes out over USB.
 A MIDI file becomes a song in one of four slots: its chords a half bar each, its melody and its bass (drums on
 channel 10 left out), its key found from its notes. On a computer, `python3 tools/amb_mid.py song.mid --song 1` sends it to
 slot 1 over USB; in the [browser simulator](https://guiatihe333.github.io/cortex/simulator/) the page does the same
-for the simulated FM-1. Then the Song page (GLO twice) plays it.
+for the simulated FM-1. Then the Song page (GLO twice) plays it, at its own tempo (since 1.5.21: a song faster than
+120 BPM was halved before; now only past 240).
 
 ### CC and NRPN, in and out
 
@@ -624,7 +625,7 @@ The defaults are Garden's; each piece has its own.
 
 | Page | Value | Range | Garden |
 |---|---|---|---|
-| Garden | Tempo | 30–120 | 72 |
+| Garden | Tempo | 30–240 | 72 |
 | Garden | Evolve | 0–100 | 35 |
 | Garden | Motion | 0–100 | 50 |
 | Garden | Drift | 20 s – 5:00 | 25 (about 40 s) |

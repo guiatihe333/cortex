@@ -32,7 +32,7 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     {"Density", 0, 100, 40},  {"Evolve", 0, 100, 35},   {"Drift", 0, 100, 25},    {"Hits", 0, 100, 35},
     {"Echo", 0, 100, 45},     {"Echo time", 0, 5, 3},   {"Reverb", 0, 100, 65},   {"Size", 0, 100, 80},
     {"Bright", 0, 100, 40},   {"Swell", 0, 100, 60},    {"V2 tone", 0, 100, 50}, {"Motion", 0, 100, 50},
-    {"Tune", -50, 50, 0},     {"MIDI out", 0, 1, 1},    {"Tempo", 30, 120, 72},   {"Root", 0, 11, 2},
+    {"Tune", -50, 50, 0},     {"MIDI out", 0, 1, 1},    {"Tempo", 30, 240, 72},   {"Root", 0, 11, 2},
     {"Mode", 0, EN_NMODES - 1, 1}, {"V2 oct", -2, 2, 0},   {"V1 patch", 0, EN_NSRC - 1, 0},
     {"V3 oct", -1, 1, 0},     {"Glide", 0, 100, 20},    {"Fifth", 0, 100, 35},
     {"Swing", 0, 100, 0},     {"Hats", 0, 100, 50},

@@ -12,7 +12,7 @@
  * patches too); storev8 N (as 1.3.95 wrote it, format 8: every GATE at N, the bells on Tubular); storev13 (as 1.4.2 wrote it,
  * format 13: the modulators' targets with no Off before them); bankfake B (a bank of 32 voices, the own patches renamed TEST 01..,
  * sent to bank B as amb_syx.py sends one: 16 SysEx chunks); dx7voice (a DX7 single voice dump, the bass's Pick
- * named DX7 VOICE, as Dexed sends one); songfake N (a test song, 4 bars of C and F, into song slot N as amb_mid.py
+ * named DX7 VOICE, as Dexed sends one); songfake N [BPM] (a test song, 4 bars of C and F, into song slot N as amb_mid.py
  * sends one); sysexfile PATH (a file of SysEx messages, each as from USB: tools/FITA.html's, written by
  * tests/host/fita_test.js). */
 /* a song's record for the tests: 4 bars at 100 BPM, C major; C and F a half bar each; a melody a quarter (C E G A
@@ -285,6 +285,8 @@ int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, c
         static uint8_t r[0x4000], f[6 + 256];
         const int slot = atoi(a), n = host_song(r);
         int c;
+        if (atoi(b) > 0)                         /* songfake N BPM: its tempo (100 else) */
+            r[7] = (uint8_t)(atoi(b) >> 7 & 127), r[8] = (uint8_t)(atoi(b) & 127);
         for (c = 0; c * 256 < n; c++) {
             f[0] = 0x7D, f[1] = 0x41, f[2] = 0x4D, f[3] = 0x07, f[4] = (uint8_t)slot, f[5] = (uint8_t)c;
             memcpy(f + 6, r + c * 256, 256);

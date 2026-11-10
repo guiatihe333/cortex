@@ -1,0 +1,13 @@
+# 1.5.21: a song faster than 120 BPM plays at its own tempo (it was halved to fit the garden's 30..120: 140 played
+# at 70); Tempo now reaches 240, HOME + SELECT and the knob too
+wait 300
+songfake 0 140
+wait 100
+tap GLO
+tap GLO
+tap GLO
+wait 100
+expect view 12
+spin K1 1
+wait 100
+expect par18 140

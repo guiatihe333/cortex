@@ -663,8 +663,8 @@ static void song_attach(int user)               /* the piece's SONG to the engin
     if (r && user) {
         int t = r[7] << 7 | r[8], t2;
         char nm[16];
-        while (t > 120)
-            t /= 2;                              /* (a fast song: half, as the garden's tempo goes to 120) */
+        while (t > 240)
+            t /= 2;                              /* (1.5.21: a song at its own tempo; past 240, half) */
         t = t < 30 ? 30 : t;
         proj.par[P_ROOT] = r[9] % 12;
         en_set(P_ROOT, proj.par[P_ROOT]);
@@ -2236,7 +2236,7 @@ static const char *const TOM_PAGE[V_MAIN + NSUB] = {
     "How the modulator spreads across the notes and comes in.",
 };
 static const char *const TOM_KNOB[(V_MAIN + NSUB) * 4] = {
-    "Tempo: beats a minute, 30 to 120. HOME + SELECT sets it from any page; MIDI clock in takes over (EXT).",
+    "Tempo: beats a minute, 30 to 240. HOME + SELECT sets it from any page; MIDI clock in takes over (EXT).",
     "Evolve: how restless it is. At 0 the loops repeat exactly; up, notes change at the end of a pass and the voices take rests.",
     "Motion: how far the slow tide swings, and how far pitch, pan and the echo's heads wander.",
     "Drift: how long a chord lasts before the garden moves to another, 20 s to 5 min. EDIT moves on now.",

@@ -16,7 +16,7 @@ are left out. The rest becomes three lanes:
   melody   the highest note beginning on each sixteenth (from middle C up), with its length
   bass     the lowest beginning on each sixteenth (under G3), with its length
 A file's tracks can be named instead: --melody 2 --bass 3 --chords 1,4 (track numbers as --dry lists them). Its key
-(Krumhansl's profiles) gives the garden's root and scale, its tempo the garden's (halved past 120). Up to 128 bars:
+(Krumhansl's profiles) gives the garden's root and scale, its tempo the garden's (halved past 240). Up to 128 bars:
 --from BAR and --bars N take part of a longer one.
 
 Needs mido (and python-rtmidi to send). Close other programs using the FM-1's MIDI port first.

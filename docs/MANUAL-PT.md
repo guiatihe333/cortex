@@ -236,7 +236,7 @@ voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
 
 ### HOME: Partiture
 
-- **Tempo:** 30 a 120 (também HOME + SELECT, de qualquer página).
+- **Tempo:** 30 a 240 (também HOME + SELECT, de qualquer página; até a 1.5.20, 120).
 - **Evolve:** o quanto o jardim é inquieto. Em 0 os loops se repetem exatamente; mais alto, notas mudam ou trocam de
   lugar no fim de uma volta, os padrões do pulso giram, e as vozes tomam fôlego.
 - **Motion:** o quanto o arco oscila, e o quanto a afinação, o pan e o eco passeiam.
@@ -522,7 +522,8 @@ O MIDI entra pelo USB e pelo conector TRS, e sai pelo USB.
 Um arquivo MIDI vira uma música num de quatro slots: os acordes dele a cada meio compasso, a melodia e o baixo (a
 bateria do canal 10 fica de fora), o tom achado pelas notas. Num computador, `python3 tools/amb_mid.py musica.mid --song 1`
 manda para o slot 1 pelo USB; no [simulador no navegador](https://guiatihe333.github.io/cortex/simulator/) a página
-faz o mesmo no FM-1 simulado. Depois a página Song (GLO duas vezes) toca a música.
+faz o mesmo no FM-1 simulado. Depois a página Song (GLO duas vezes) toca a música no andamento dela (desde a 1.5.21:
+antes, uma música acima de 120 BPM tocava na metade; agora só acima de 240).
 
 ### CC e NRPN, entrada e saída
 
@@ -637,7 +638,7 @@ Os padrões são os da Garden; cada peça tem os seus.
 
 | Página | Valor | Faixa | Garden |
 |---|---|---|---|
-| Garden | Tempo | 30–120 | 72 |
+| Garden | Tempo | 30–240 | 72 |
 | Garden | Evolve | 0–100 | 35 |
 | Garden | Motion | 0–100 | 50 |
 | Garden | Drift | 20 s – 5:00 | 25 (cerca de 40 s) |

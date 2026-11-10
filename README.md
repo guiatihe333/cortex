@@ -1,11 +1,13 @@
 # CORTEX for the M-VAVE FM-1
 
 CORTEX turns the M-VAVE FM-1 into a generative FM instrument. Three six-operator FM voices (pad, bells, bass) with
-DX7 banks play chords that grow by themselves, each voice with five modulators; a reel of tape records and replays
-them; songs come in from MIDI files; and a video synth on the screen moves with the music, its colours spilling into
-every page. It plays itself from the moment it is switched on, and every knob can be played or rolled.
+DX7 banks play chords that grow by themselves, each voice with an ADSR, a Moog-style low-pass filter and five
+modulators; a reel of tape records and replays them; songs come in from MIDI files; and a video synth on the screen
+moves with the music, from LZX- and Hydra-style oscillators to feedback and datamosh, with twelve ready looks, its
+colours spilling into every page. Tom, a cartoon cat, walks across the screen and explains every page and knob as you
+play. It plays itself from the moment it is switched on, and every knob can be played or rolled.
 
-![CORTEX's screen: the video synth](docs/img/cortex-card.png)
+![CORTEX's screen: the video synth's Kaleido look, Tom the cat saying what it is](docs/img/cortex-card.png)
 
 - **Try it in your browser** (no FM-1 needed): <https://guiatihe333.github.io/cortex/simulator/>
 - **Install it**: download `cortex-X.Y.Z.fwsc` from the [releases](https://github.com/guiatihe333/cortex/releases)

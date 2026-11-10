@@ -5,7 +5,7 @@
   "author": "guiatihe333",
   "license": "MPL-2.0",
   "tagline": "A generative FM instrument and video synth for the FM-1",
-  "description": "CORTEX turns the M-VAVE FM-1 into a generative FM instrument. Three six-operator FM voices with DX7 banks play chords, bells and bass that grow by themselves, each with five modulators; a reel of tape records and replays them. Songs come in from MIDI files, and a video synth on the screen moves with the music. It plays itself from the moment it is switched on, and every knob can be played or rolled.",
+  "description": "CORTEX turns the M-VAVE FM-1 into a generative FM instrument. Three six-operator FM voices with DX7 banks play chords, bells and bass that grow by themselves, each with an ADSR, a Moog-style low-pass filter and five modulators; a reel of tape records and replays them. Songs come in from MIDI files. A video synth on the screen moves with the music, with LZX- and Hydra-style oscillators and twelve ready looks. Tom, a cartoon cat, walks across the screen and explains every page and knob as you play. It plays itself from the moment it is switched on, and every knob can be played or rolled.",
   "tags": ["synth", "fm", "generative", "ambient", "sequencer"],
   "install": "https://guiatihe333.github.io/cortex/install/",
   "site": "https://guiatihe333.github.io/cortex/",
