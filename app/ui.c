@@ -704,6 +704,7 @@ void ui_reel_in(int ok)                         /* a file's reel came in: SOURCE
         warn("TAPE IN", "NOT SAVED YET");
 }
 static uint8_t tom_song_in;                     /* (a song came in: Tom brings word of it) */
+static uint32_t vis_us, vis_us_max, loop_us, loop_t;   /* a visual frame's time (average, most); the main loop's */
 static uint8_t tom_look;                        /* (a look picked, + 1: Tom says what it is) */
 static uint8_t tom_knob_turned;                 /* (a knob turned, + 1: Tom says what it does once it rests) */
 void ui_song_in(int slot)                       /* a song came in */
@@ -5517,6 +5518,13 @@ static void sp_page(int all)
         sp_int(plat_xruns());
         sp_cat(", shed ");
         sp_int(en_sheds);
+        sp_cat(", video frame ");               /* (1.5.22: the visual's last frames, ms, and the loop's) */
+        sp_int((int)(vis_us / 1000u));
+        sp_cat(" ms, most ");
+        sp_int((int)(vis_us_max / 1000u));
+        sp_cat(" ms, loop ");
+        sp_int((int)(loop_us / 100u));
+        sp_cat(" tenths of ms");
     }
     if (batt_words(batt())) {                    /* the battery, at the end */
         sp_cat(". ");
@@ -6004,6 +6012,12 @@ static void ui_blit(uint32_t x, uint32_t y)
 
 void ui_frame(void)
 {
+    {
+        const uint32_t t = plat_ticks24();
+        if (loop_t)
+            loop_us += ((int32_t)((t - loop_t) / 24u) - (int32_t)loop_us) / 16;
+        loop_t = t;
+    }
     input();
     en_reel_study();                             /* (a splice's key: a frame of it) */
     key_follow();
@@ -6013,8 +6027,15 @@ void ui_frame(void)
     autosave();
     if (draw_splash()) {                         /* the start screen */
     } else if ((tom_step(), vis_full())) {                     /* the visual: the whole screen, 20 frames a second */
-        if (ui.frame % 3u == 0u)
+        if (ui.frame % 3u == 0u) {               /* (1.5.22: timed, for Setup's words: can it go faster?) */
+            const uint32_t t0 = plat_ticks24();
+            uint32_t us;
             draw_vis_screen();
+            us = (plat_ticks24() - t0) / 24u;
+            vis_us += ((int32_t)us - (int32_t)vis_us) / 8;
+            if (us > vis_us_max)
+                vis_us_max = us;
+        }
     } else {
         ui_wash_on = 1;
         draw_header();
