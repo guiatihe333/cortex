@@ -591,7 +591,7 @@ static void gene_start(int k0, uint32_t s0, float L, float glen, float rate, int
 /* n samples of the reel's sound into l and r (the genes of the splice ORGANIZE picks, at SPEED). The genes are made at
  * the tape's own rate, 22.05 kHz (a sample of tape a step at 1x; half the work), each pair of the output's a line
  * from the last to the next (a sample late) */
-static float rl_al, rl_ar, rl_bl, rl_br;        /* the last two made */
+static float rl_hl[4], rl_hr[4];                /* the last four made (1.5.22: a cubic between, not a line) */
 static uint8_t rl_ph;
 static void reel_play(float *l, float *r, uint32_t n)
 {
@@ -727,19 +727,24 @@ static void reel_play(float *l, float *r, uint32_t n)
                 i1 = i0 + 1u >= s1 ? s0 : i0 + 1u;
                 p = g->pos - (float)i0;
                 x0 = (float)gene_at(g, i0);
-                x = (x0 + ((float)gene_at(g, i1) - x0) * p) * (a * (1.0f / 16384.0f));
+                {   /* (1.5.22) a 4-point Hermite through the samples round it, not a line: less dulling, less
+                     * grit as SPEED moves the pitch (the second core has the time) */
+                    const uint32_t im = i0 <= s0 ? s1 - 1u : i0 - 1u, i2 = i1 + 1u >= s1 ? s0 : i1 + 1u;
+                    const float xm = (float)gene_at(g, im), x1 = (float)gene_at(g, i1), x2 = (float)gene_at(g, i2),
+                                c1 = 0.5f * (x1 - xm), c2 = xm - 2.5f * x0 + 2.0f * x1 - 0.5f * x2,
+                                c3 = 0.5f * (x2 - xm) + 1.5f * (x0 - x1);
+                    x = (((c3 * p + c2) * p + c1) * p + x0) * (a * (1.0f / 16384.0f));
+                }
                 sl += x * g->gl;
                 sr += x * g->gr;
             }
-            rl_al = rl_bl;
-            rl_ar = rl_br;
-            rl_bl = sl;
-            rl_br = sr;
-            sl = rl_al;
-            sr = rl_ar;
-        } else {                                 /* between: halfway from the last to the next */
-            sl = 0.5f * (rl_al + rl_bl);
-            sr = 0.5f * (rl_ar + rl_br);
+            rl_hl[0] = rl_hl[1], rl_hl[1] = rl_hl[2], rl_hl[2] = rl_hl[3], rl_hl[3] = sl;
+            rl_hr[0] = rl_hr[1], rl_hr[1] = rl_hr[2], rl_hr[2] = rl_hr[3], rl_hr[3] = sr;
+            sl = rl_hl[1];
+            sr = rl_hr[1];
+        } else {                                 /* between: the cubic's middle (-1 9 9 -1) / 16, not the average */
+            sl = (9.0f * (rl_hl[1] + rl_hl[2]) - rl_hl[0] - rl_hl[3]) * (1.0f / 16.0f);
+            sr = (9.0f * (rl_hr[1] + rl_hr[2]) - rl_hr[0] - rl_hr[3]) * (1.0f / 16.0f);
         }
         rl_lpl += (sl - rl_lpl) * tc;            /* TONE: 1.5 kHz .. open */
         rl_lpr += (sr - rl_lpr) * tc;
@@ -792,7 +797,8 @@ static void reel_init(void)                      /* (the reel itself stays: a re
     int i;
     rl_rec = rl_stopping = 0;
     rl_cursor = rl_spawn = rl_gain = rl_lpl = rl_lpr = 0.0f;
-    rl_al = rl_ar = rl_bl = rl_br = 0.0f;
+    __builtin_memset(rl_hl, 0, sizeof rl_hl);
+    __builtin_memset(rl_hr, 0, sizeof rl_hr);
     for (i = 0; i < EN_NTMOD; i++) {
         tmg[i].ph = tmg[i].hold = tmg[i].from = tmg[i].to = tmg[i].vs = 0.0f;
         tmg[i].lx = 0.3f + 0.1f * (float)i;
