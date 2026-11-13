@@ -7,6 +7,8 @@
 #include "fm6_tables.h"
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
+uint32_t (*en_core)(void);                       /* (1.5.37) which core runs the caller (app.c: plat_core) */
+#define MC_CPU() (en_core ? en_core() : 0u)
 #include "fm6_core.c"
 #pragma GCC diagnostic pop
 
@@ -4323,21 +4325,90 @@ static void pad_bus(uint32_t n)
  * its patch's LFO; MOD's LFO PM adds to its vibrato */
 static float lfo_pm(int32_t lv, float pm) { return pm * (float)(lv - (1 << 23)) * (1.0f / 8388608.0f); }
 
-static void chord_block(int v)                  /* a Chord voice's block: its breaths, to the pad's bus */
+/* (1.5.37) the notes' FM and filter, the heaviest part of the render, shared between the cores: each voice's block
+ * readies its notes (syn_add), then every note of every voice is rendered at once (syn_exec: the odd slots on the
+ * second core, the even ones here; the second core's first job of a chunk also runs the reel and the space), then
+ * each voice mixes its notes in, in the order it always did: the same sound, sample for sample */
+typedef struct {
+    fm6_note_t *fm;
+    const uint8_t *p;
+    float *vf;
+    float note, vnote, bloom, cut, f[6];        /* f: what the voice's mix needs (its gains, places, ramps) */
+    int32_t lv, ld, fb, dtb[6], olb[6];
+    int8_t v, ok;
+    float x[FM6_N];
+} syn_t;
+#define SYN_N (EN_NVOX * NPOLY)                 /* (every note of the three voices; the keys: here, after) */
+static syn_t syn[SYN_N];
+static int syn_n;
+static int8_t syn_of[EN_NVOX][NPOLY];            /* each note's slot this block, -1 none */
+static volatile uint32_t rj_n;                   /* the chunk the reel and the space still have to make */
+static void job_render(uint32_t n);
+static int syn_add(fm6_note_t *fm, const uint8_t *p, float note, int32_t lv, int32_t ld, float bloom, int32_t fb,
+                   const int32_t *dt, const int32_t *ol, int v, float *vf, float vnote, float cut)
+{
+    syn_t *t = &syn[syn_n];
+    int k;
+    t->fm = fm;
+    t->p = p;
+    t->note = note;
+    t->lv = lv;
+    t->ld = ld;
+    t->bloom = bloom;
+    t->fb = fb;
+    for (k = 0; k < 6; k++) {
+        t->dtb[k] = dt[k];
+        t->olb[k] = ol[k];
+    }
+    t->v = (int8_t)v;
+    t->vf = vf;
+    t->vnote = vnote;
+    t->cut = cut;
+    t->ok = 0;
+    return syn_n++;
+}
+static void syn_run(syn_t *t)
+{
+    t->ok = (int8_t)fm_voice(t->fm, t->p, t->note, t->lv, t->ld, t->bloom, t->fb, t->dtb, t->olb, t->x);
+    if (t->ok)
+        vcf(t->v, t->vf, t->vnote, t->fm, t->p, t->cut, t->x);
+}
+static void syn_job(uint32_t from)               /* (on the second core: these notes' own state, the space's, the reel's) */
+{
+    int k;
+    if (rj_n) {
+        job_render(rj_n);
+        rj_n = 0;
+    }
+    for (k = (int)from; k < syn_n; k += 2)
+        syn_run(&syn[k]);
+}
+static void syn_exec(void)
+{
+    int k;
+    const int two = (syn_n > 1 || rj_n) && en_job_run && en_job_run(syn_job, 1u);
+    for (k = 0; k < syn_n; k += two ? 2 : 1)
+        syn_run(&syn[k]);
+    if (two && en_job_wait && en_job_wait() < 0)  /* (given up: its share here) */
+        for (k = 1; k < syn_n; k += 2)
+            syn_run(&syn[k]);
+}
+
+static void chord_block(int v)                  /* a Chord voice's block: its breaths readied (chord_mix: to the pad's bus) */
 {
     voice_t *c = &vc[v];
     const int nn = chord_n(v), amb = PL(v, ENV) == ENV_AMB && !c->decays, pub = first_role(ROLE_CHORD) == v;
-    float x[FM6_N], lvl = 0.0f;
     int32_t dtb[6], olb[6];
     mod_t m;
     int i;
-    uint32_t j;
     c->tg += (pad_gate - c->tg) *               /* (the patch's envelopes: in at once, they shape it) */
              fm_minf((float)FM6_N / ((pad_gate <= 0.0f ? 5.0f : amb ? 2.0f : 0.01f) * EN_SR), 1.0f);
     for (i = 0; i < NPOLY; i++) {
         vnote_t *n = &c->n[i];
         float amp = n->amp, g, gl, gr, pn, cut;
         int32_t lv, ld;
+        int k;
+        syn_of[v][i] = -1;
         if (amp < 1e-5f && (c->tg < 1e-4f || i >= nn)) {
             n->amp = 0.0f;
             if (pub)
@@ -4355,10 +4426,31 @@ static void chord_block(int v)                  /* a Chord voice's block: its br
         pn = fm_clampf(n->pan + 0.35f * motion * mod[(i + 3) % NMOD_PAD].v + m.pan, -1.0f, 1.0f);
         gl = fm_cosf((pn + 1.0f) * (FM_PI / 4.0f)) * g;
         gr = fm_sinf((pn + 1.0f) * (FM_PI / 4.0f)) * g;
-        if (fm_voice(&n->fm, n->vp, n->note + 0.08f * motion * mod[i].v + m.pitch + lfo_pm(lv, m.lfopm), lv, ld,
-                     n->bloom + m.bloom, m.fb, dtb, olb, x)) {
+        k = syn_add(&n->fm, n->vp, n->note + 0.08f * motion * mod[i].v + m.pitch + lfo_pm(lv, m.lfopm), lv, ld,
+                    n->bloom + m.bloom, m.fb, dtb, olb, v, n->vf, n->note, cut);
+        syn[k].f[0] = gl;
+        syn[k].f[1] = gr;
+        syn_of[v][i] = (int8_t)k;
+    }
+}
+static void chord_mix(int v)
+{
+    voice_t *c = &vc[v];
+    const int pub = first_role(ROLE_CHORD) == v;
+    float lvl = 0.0f;
+    int i;
+    uint32_t j;
+    for (i = 0; i < NPOLY; i++) {
+        vnote_t *n = &c->n[i];
+        const int k = syn_of[v][i];
+        float amp = n->amp, gl, gr;
+        if (k < 0)
+            continue;
+        gl = syn[k].f[0];
+        gr = syn[k].f[1];
+        if (syn[k].ok) {
+            const float *x = syn[k].x;
             expr_observe(v, &n->ex);
-            vcf(v, n->vf, n->note, &n->fm, n->vp, cut, x);
             const float dl = (gl - n->gl) * (1.0f / FM6_N), dr = (gr - n->gr) * (1.0f / FM6_N);
             float pl = n->gl, pr = n->gr;         /* the place ramped across the block (no zipper as it moves) */
             for (j = 0; j < FM6_N; j++) {        /* a slow drift of pitch above, as tape */
@@ -4389,16 +4481,15 @@ static void chord_block(int v)                  /* a Chord voice's block: its br
 static void loops_block(int v)                  /* a Loops voice's block: its strikes, to the bells' bus */
 {
     voice_t *c = &vc[v];
-    float x[FM6_N];
     int32_t dtb[6], olb[6];
     mod_t m;
     int i;
-    uint32_t j;
     for (i = 0; i < NPOLY; i++) {
         vnote_t *n = &c->n[i];
         const uint8_t *p = n->vp;
         int32_t lv, ld;
         float cut;
+        syn_of[v][i] = -1;
         if (!n->on)
             continue;
         if (n->wait > 0) {                      /* (to the block: up to 0.7 ms off a hand's 0..60 ms) */
@@ -4439,20 +4530,42 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
         cut = expr_mod(v, &n->ex, &n->fm, n->vp, olb);
         if (n->fade)                             /* shed: down to silence over its blocks (no click) */
             m.lvl = n->lv * (float)(n->fade - 1) / (float)n->fade;
-        if (fm_voice(&n->fm, p, (float)n->midi_note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb, olb,
-                     x)) {
-            expr_observe(v, &n->ex);
-            vcf(v, n->vf, (float)n->midi_note, &n->fm, p, cut, x);
+        {
             const float g = c->vol * 0.53f * n->vel * n->out * c->fo;   /* (AMB-1's bells' level, measured) */
             float gl = n->gl, gr = n->gr;
+            int k;
             if (m.pan != 0.0f) {                 /* SPACE: the note wanders from its loop's place */
                 float a = (fm_clampf(LOOP_PAN[n->loop] + m.pan, -1.0f, 1.0f) + 1.0f) * (FM_PI / 4.0f);
                 gl = fm_cosf(a);
                 gr = fm_sinf(a);
             }
+            k = syn_add(&n->fm, p, (float)n->midi_note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb,
+                        olb, v, n->vf, (float)n->midi_note, cut);
+            syn[k].f[0] = g;
+            syn[k].f[1] = gl;
+            syn[k].f[2] = gr;
+            syn[k].f[3] = m.lvl;
+            syn_of[v][i] = (int8_t)k;
+        }
+    }
+}
+static void loops_mix(int v)
+{
+    voice_t *c = &vc[v];
+    int i;
+    uint32_t j;
+    for (i = 0; i < NPOLY; i++) {
+        vnote_t *n = &c->n[i];
+        const uint8_t *p = n->vp;
+        const int k = syn_of[v][i];
+        if (k < 0)
+            continue;
+        if (syn[k].ok) {
+            const float *x = syn[k].x, g = syn[k].f[0], gl = syn[k].f[1], gr = syn[k].f[2], ml = syn[k].f[3];
+            expr_observe(v, &n->ex);
             {
                 const float dl = (gl - n->pl) * (1.0f / FM6_N), dr = (gr - n->pr) * (1.0f / FM6_N),
-                            dv = (m.lvl - n->lv) * (1.0f / FM6_N);
+                            dv = (ml - n->lv) * (1.0f / FM6_N);
                 float pl = n->pl, pr = n->pr, lg = n->lv;
                 for (j = 0; j < FM6_N; j++) {
                     float sm;
@@ -4468,7 +4581,7 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
             }
             n->pl = gl;
             n->pr = gr;
-            n->lv = m.lvl;
+            n->lv = ml;
         }
         if ((n->fade && --n->fade == 0) || fm6_note_done(&n->fm, p, p[FP_ALG] & 31u)) {   /* rung out, or shed */
             n->on = 0;
@@ -4484,11 +4597,10 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
     vnote_t *n = &c->n[0];
     const int env = PL(v, ENV) != ENV_AMB || c->decays || n->ex.gate != 1.0f;   /* (the patch's envelopes, or a patch that dies away: the
                                                  * level steady, the patch shapes it, struck each chord) */
-    float x[FM6_N];
     int32_t dtb[6], olb[6];
     mod_t m;
-    uint32_t j;
     int waiting = 0;
+    syn_of[v][0] = -1;
     if (c->rs > 0 && --c->rs == 0)               /* a new patch, the knob at rest: out, struck, in */
         c->xs = 1;
     if (c->xs && (c->xf <= 0.0f || n->amp < 1e-4f)) {
@@ -4541,9 +4653,34 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
         cut = expr_mod(v, &n->ex, &n->fm, n->vp, olb);
         gl = (1.0f - fm_maxf(m.pan, 0.0f) * 0.5f) * m.lvl;   /* SPACE: the bass leans a little, never far */
         gr = (1.0f + fm_minf(m.pan, 0.0f) * 0.5f) * m.lvl;
-        if (fm_voice(&n->fm, n->vp, n->note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb, olb, x)) {
+        {
+            const int k = syn_add(&n->fm, n->vp, n->note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb,
+                                  olb, v, n->vf, n->note, cut);
+            syn[k].f[0] = g;
+            syn[k].f[1] = tgt;
+            syn[k].f[2] = rate;
+            syn[k].f[3] = xt;
+            syn[k].f[4] = gl;
+            syn[k].f[5] = gr;
+            syn_of[v][0] = (int8_t)k;
+            (void)amp;
+            (void)xf;
+        }
+    }
+}
+static void bass_mix(int v)
+{
+    voice_t *c = &vc[v];
+    vnote_t *n = &c->n[0];
+    const int k = syn_of[v][0];
+    uint32_t j;
+    if (k >= 0) {
+        const float g = syn[k].f[0], tgt = syn[k].f[1], rate = syn[k].f[2], xt = syn[k].f[3], gl = syn[k].f[4],
+                    gr = syn[k].f[5];
+        float amp = n->amp, xf = c->xf;
+        if (syn[k].ok) {
+            const float *x = syn[k].x;
             expr_observe(v, &n->ex);
-            vcf(v, n->vf, n->note, &n->fm, n->vp, cut, x);
             const float dl = (gl - n->gl) * (1.0f / FM6_N), dr = (gr - n->gr) * (1.0f / FM6_N);
             float pl = n->gl, pr = n->gr;
             for (j = 0; j < FM6_N; j++) {
@@ -4688,6 +4825,7 @@ static void fm_block(void)
         for (j = 0; j < FM6_N; j++)
             fm_vtap[v][j] = 0.0f;
     mod_step();
+    syn_n = 0;
     if (first_role(ROLE_CHORD) < 0)
         en_pad_level = 0.0f;
     if (first_role(ROLE_BASS) < 0)
@@ -4714,7 +4852,16 @@ static void fm_block(void)
         else
             bass_block(v);
     }
-    kb_block();
+    syn_exec();                                  /* (every note, on both cores) */
+    for (v = 0; v < EN_NVOX; v++) {
+        if (vc[v].role == ROLE_CHORD)
+            chord_mix(v);
+        else if (vc[v].role == ROLE_LOOPS)
+            loops_mix(v);
+        else
+            bass_mix(v);
+    }
+    kb_block();                                  /* (the keys, played by hand: here, as they always were) */
 }
 
 /* the scope: armed, it waits for the voice to rise through zero (or 4096 samples: silence, a drone), takes every 2nd
@@ -4876,12 +5023,15 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
     const float dry_t = fm_minf((float)(100 - par[P_RL(MIX)]) * 0.02f, 1.0f);   /* (the garden full to the middle) */
     for (j = 0; j < n; j++)
         mixl[j] = mixr[j] = rsend[j] = esend[j] = 0.0f;
-    {   /* (1.5.22) the reel's genes on the second core while this one makes the voices; given up: here */
-        const int two = en_job_run && en_job_run(job_render, n);
+    {   /* (1.5.22) the reel's genes and the space on the second core while this one makes the voices (1.5.37: in
+         * the first FM block's job, the voices' notes shared too); no block this chunk, or given up: here */
+        rj_n = en_job_run ? n : 0u;
         fm_pull(n);
         pad_bus(n);
-        if (!two || !en_job_wait || en_job_wait() < 0)
+        if (!en_job_run || rj_n) {
+            rj_n = 0;
             job_render(n);
+        }
     }
     /* the reel and the garden: MIX (dry/wet), and FX: the space before the reel (the garden through it, the reel as it
      * was recorded, dry) or after it (the garden and the reel both into it). SOURCE: the whole mix (its space too

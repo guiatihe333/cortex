@@ -24,6 +24,7 @@ site = "https://guiatihe333.github.io/cortex/"
 screenshot = "docs/img/cortex-card.png"
 
 ram_layout = "packed"           # one SRAM budget (1.5.20): the RAM code area mostly empty, its room the pool's
+pool_spare = 6144                # (1.5.37) 6 KiB kept, not 8: 2.9 KiB went to the notes shared by the two cores
 cpu2 = true                     # the second core (1.5.22): the reel renders there while the voices render here
 cpu2_fallback = true            # a failure gives it up (one core) instead of restarting the FM-1
 cpu2_stack = 4096

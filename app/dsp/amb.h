@@ -390,6 +390,7 @@ void en_keys_off(void);
 /* the second core (1.5.22): the app's plat_cpu2_run / plat_cpu2_wait when it runs, else 0 (one core). The render
  * hands it the reel's genes while this core makes the voices */
 extern int (*en_job_run)(void (*fn)(uint32_t), uint32_t arg);
+extern uint32_t (*en_core)(void);                     /* (1.5.37) which core runs the caller: 0, 1 (plat_core) */
 extern int (*en_job_wait)(void);                         /* every key's note let go (a new piece; STOP does it too) */
 extern volatile uint32_t en_sheds;
 extern volatile int8_t en_scope_v;

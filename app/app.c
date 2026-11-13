@@ -44,6 +44,7 @@ void app_init(void)
     if (plat_cpu2_set(1) == 0 && plat_cpu2_on()) {   /* (1.5.22: the second core, a part of the render; else one core) */
         en_job_run = cpu2_audio_run;
         en_job_wait = plat_cpu2_wait;
+        en_core = plat_core;             /* (1.5.37: the notes shared, fm6_core a bus each core) */
     }
     project_load();                      /* defaults when nothing (or another format) is saved */
     project_reel_load();                 /* the reel, as it was saved */
