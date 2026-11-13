@@ -1,11 +1,13 @@
 # CORTEX for the M-VAVE FM-1
 
 CORTEX turns the M-VAVE FM-1 into a generative FM instrument. Three six-operator FM voices (pad, bells, bass) with
-DX7 banks play chords that grow by themselves, each voice with an ADSR, a Moog-style low-pass filter and five
-modulators; a reel of tape records and replays them; songs come in from MIDI files; and a video synth on the screen
-moves with the music, from LZX- and Hydra-style oscillators to feedback and datamosh, with twelve ready looks, its
-colours spilling into every page. Tom, a cartoon cat, walks across the screen and explains every page and knob as you
-play. It plays itself from the moment it is switched on, and every knob can be played or rolled.
+DX7 banks play chords and phrases that grow by themselves, each voice with an ADSR, a Moog-style low-pass filter,
+FM morphing and five modulators. A phrase sequencer lets the voices call, answer and recall each other's motifs, and
+an expression matrix (eight routes a voice, curated recipes) lets what they play shape how they sound. A reel of tape
+records and replays them; songs come in from MIDI files; and a video synth on the screen moves with the music, from
+LZX- and Hydra-style oscillators to feedback and datamosh, with twenty ready looks. Tom, a cartoon cat, runs in at
+the start and explains every page and knob as you play. It plays itself from the moment it is switched on, and every
+knob can be played or rolled.
 
 ![CORTEX's screen: the video synth's Kaleido look, Tom the cat saying what it is](docs/img/cortex-card.png)
 
@@ -14,8 +16,7 @@ play. It plays itself from the moment it is switched on, and every knob can be p
   and install it with The Firmware Hub, M-UPGRADE or `python3 base/tools/fm1_install.py`
 - **Read the manual**: [docs/MANUAL.md](docs/MANUAL.md) (Portuguese: [docs/MANUAL-PT.md](docs/MANUAL-PT.md))
 
-CORTEX is a fork of [AMB-1](https://github.com/charlesvestal/fm1-amb) by Charles Vestal (its history is this
-repository's), with the FM6 core of [JIANT FM](https://github.com/juanjiant-bit/JIANT) (msfa, Dexed's core, in
+CORTEX is a fork of [AMB-1](https://github.com/charlesvestal/fm1-amb) by Charles Vestal, with the FM6 core of [JIANT FM](https://github.com/juanjiant-bit/JIANT) (msfa, Dexed's core, in
 integer C: `app/dsp/fm6_core.c`). Its identity is `FM-1_76XXYYZZ`. It is not affiliated with M-VAVE.
 
 ## Building and testing
