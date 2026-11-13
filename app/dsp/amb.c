@@ -1438,11 +1438,26 @@ static void expr_env(int v, expr_note_t *n, uint8_t *p, int capture)
     }
     n->amount = (uint8_t)amount;
 }
+/* (1.5.43) a note's patch as its voice's Morph has it (Morph and its route, captured at the attack), then the ADSR on
+ * its carriers when the voice plays the ADSR: the morph blends envelopes too, so the ADSR comes after it, never under
+ * it; at the attack and again when the patch is edited under a sounding note */
+static void expr_morph(int v, const expr_note_t *n, uint8_t *p)
+{
+    const int amount = expr_control(v, EX_AMOUNT);
+    int morph = par[P_EX(v, EX_MORPH)] + xclamp(n->acc[XT_MORPH] * amount / 100, -100, 100);
+    if (mvalid[v] && (morph = xclamp(morph, 0, 100)) > 0) {
+        uint8_t o[EN_PATCH];
+        en_morph_patch(p, mpatch[v], morph, par[P_EX(v, EX_MORPH_KIND)], o);
+        __builtin_memcpy(p, o, EN_PATCH);
+    }
+    if (PL(v, ENV) == ENV_ADSR)
+        adsr_patch(v, p);
+}
 static void expr_strike(int v, int k, expr_note_t *n, uint8_t *p, int32_t note, int32_t vel)
 {
     const int amount = expr_control(v, EX_AMOUNT), plen = 4 + par[P_EX(v, EX_PHRASE)] / 12;
     const int ph = xpos[v] % plen;
-    int src[XS_N], acc[XT_N] = {0}, r, i, morph;
+    int src[XS_N], acc[XT_N] = {0}, r, i;
     n->sounded = 0;
     expr_sources(v, k, note, vel, src);
     __builtin_memset(n->target, 0, sizeof n->target);
@@ -1475,12 +1490,7 @@ static void expr_strike(int v, int k, expr_note_t *n, uint8_t *p, int32_t note, 
     }
     for (i = 0; i < XT_N; i++) n->acc[i] = (int16_t)acc[i];
     n->gate = 1.0f + (float)xclamp(acc[XT_GATE] * amount / 100, -100, 100) * 0.0095f;
-    morph = par[P_EX(v, EX_MORPH)] + xclamp(acc[XT_MORPH] * amount / 100, -100, 100);
-    if (mvalid[v] && (morph = xclamp(morph, 0, 100)) > 0) {
-        uint8_t o[EN_PATCH];
-        en_morph_patch(p, mpatch[v], morph, par[P_EX(v, EX_MORPH_KIND)], o);
-        __builtin_memcpy(p, o, EN_PATCH);
-    }
+    expr_morph(v, n, p);
     expr_env(v, n, p, 1);
     xlast[v] = (uint8_t)xclamp((int)note, 0, 127);
     xvel[v] = (uint8_t)xclamp((int)vel, 0, 127);
@@ -1535,8 +1545,7 @@ static void note_refresh(int v, int k, const uint8_t *src)
 {
     vnote_t *n = &vc[v].n[k];
     mod_patch(GEN(v, k), src, n->vp);
-    if (PL(v, ENV) == ENV_ADSR)
-        adsr_patch(v, n->vp);
+    expr_morph(v, &n->ex, n->vp);                /* (1.5.43: its Morph kept, the ADSR after it) */
     expr_env(v, &n->ex, n->vp, 1);
     fm6_note_refresh(&n->fm, n->vp);
     fm6_lfo_reset(&n->lfo, n->vp);
@@ -2429,7 +2438,8 @@ static int coordinated_loop(int v,int l)
                 int at=cursor++%EN_LOOP_LEN[0], offset=motif_memory[owner][bank][at];
                 if(offset>=0) {
                     /* A reply keeps the listener's rhythm and register, borrowing contour. */
-                    vc[v].loop_note[l][i]=(int8_t)(offset%(nsteps*4));
+                    while(offset>=nsteps*4) offset-=nsteps;   /* (1.5.43: a smaller scale since: an octave down, not four) */
+                    vc[v].loop_note[l][i]=(int8_t)offset;
                     vc[v].loop_vel[l][i]=(uint8_t)xclamp(((int)phrase_vel[v][l][i]+motif_velocity[owner][bank][at])/2,1,127);
                     music_recall[v]=1;
                 }

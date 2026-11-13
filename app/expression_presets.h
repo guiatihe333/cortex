@@ -3,7 +3,7 @@
 typedef struct {
     const char *name;
     int16_t control[6]; /* amount, style, phrase, variation, memory, link */
-    int16_t route[4][XR_N]; /* source, target, depth, timing, curve, smoothing, min, max */
+    int16_t route[8][XR_N]; /* source, target, depth, timing, curve, smoothing, min, max (all eight routes) */
 } expression_preset_t;
 #define XROUTE(s,t,d,w,c,z) {s,t,d,w,c,z,0,100}
 static const expression_preset_t EXPRESSION_PRESET[] = {
@@ -87,7 +87,81 @@ static const expression_preset_t EXPRESSION_PRESET[] = {
         XROUTE(XS_CALL,XT_INDEX,20,XW_LIVE,XC_SOFT,80),
         XROUTE(XS_TENSION,XT_CUTOFF,30,XW_LIVE,XC_SOFT,85),
         XROUTE(XS_ANSWER,XT_RELEASE,25,XW_NOTE,XC_SOFT,75),
-        XROUTE(XS_RECALL,XT_MORPH,15,XW_NOTE,XC_SOFT,80)}}
+        XROUTE(XS_RECALL,XT_MORPH,15,XW_NOTE,XC_SOFT,80)}},
+    /* The full-score recipes: all eight routes, the phrase's stages and the voices' listening steering the sound
+     * and the sequencer together. Sequencer targets live and smooth; the sound's at the note or the phrase. */
+    {"Duet", {56,XSTYLE_NATURAL,55,8,85,80}, {      /* two voices taking turns: the caller forward, the other waits */
+        XROUTE(XS_CALL,XT_LEVEL,22,XW_LIVE,XC_SOFT,70),
+        XROUTE(XS_ANSWER,XT_INDEX,-18,XW_NOTE,XC_SOFT,60),
+        XROUTE(XS_OTHER,XT_GATE,-26,XW_NOTE,XC_SOFT,60),
+        XROUTE(XS_SILENCE,XT_DIALOGUE,40,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_TENSION,XT_PASSING,34,XW_LIVE,XC_SOFT,80),
+        XROUTE(XS_ANSWER,XT_RESOLVE,60,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_RECALL,XT_MOTIF,28,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_LINK,XT_RELEASE,20,XW_NOTE,XC_SOFT,70)}},
+    {"Rising Tide", {66,XSTYLE_BREATH,80,6,90,40}, {   /* each phrase builds and lets go: brighter, fuller, then wide */
+        XROUTE(XS_ARCH,XT_CUTOFF,44,XW_PHRASE,XC_SOFT,88),
+        XROUTE(XS_ARCH,XT_DENSITY,28,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_TENSION,XT_INDEX,34,XW_NOTE,XC_SOFT,70),
+        XROUTE(XS_TENSION,XT_ACCENT,30,XW_LIVE,XC_SOFT,80),
+        XROUTE(XS_ANSWER,XT_RELEASE,40,XW_NOTE,XC_SOFT,75),
+        XROUTE(XS_ANSWER,XT_DENSITY,-30,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_ENERGY,XT_LEVEL,14,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_MEMORY,XT_LENGTH,30,XW_LIVE,XC_SOFT,92)}},
+    {"Choir Breath", {62,XSTYLE_BREATH,70,10,88,55}, {   /* pads as voices: breathing, swelling into long notes */
+        XROUTE(XS_BREATH,XT_LEVEL,28,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_BREATH,XT_CUTOFF,34,XW_LIVE,XC_CENTER,88),
+        XROUTE(XS_DURATION,XT_ATTACK,30,XW_NOTE,XC_SOFT,70),
+        XROUTE(XS_LEAP,XT_ATTACK,22,XW_NOTE,XC_SOFT,60),
+        XROUTE(XS_REGISTER,XT_CUTOFF,-20,XW_LIVE,XC_CENTER,70),
+        XROUTE(XS_LINK,XT_GATE,30,XW_NOTE,XC_SOFT,75),
+        XROUTE(XS_SILENCE,XT_MORPH,24,XW_NOTE,XC_SOFT,80),
+        XROUTE(XS_OPEN,XT_INDEX,18,XW_LIVE,XC_SOFT,85)}},
+    {"Glass Rain", {58,XSTYLE_PLUCK,25,18,50,20}, {   /* bells struck harder ring brighter; space opens in the gaps */
+        XROUTE(XS_ACCENT,XT_INDEX,40,XW_NOTE,XC_STEP,6),
+        XROUTE(XS_LEAP,XT_MORPH,30,XW_NOTE,XC_SOFT,30),
+        XROUTE(XS_DENSITY,XT_DECAY,-30,XW_NOTE,XC_SOFT,40),
+        XROUTE(XS_REGISTER,XT_LEVEL,-20,XW_NOTE,XC_CENTER,40),
+        XROUTE(XS_SILENCE,XT_SPACE,40,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_ENERGY,XT_PASSING,24,XW_LIVE,XC_SOFT,80),
+        XROUTE(XS_ACCENT,XT_HUMAN,-18,XW_LIVE,XC_SOFT,70),
+        XROUTE(XS_OTHER,XT_RELEASE,26,XW_NOTE,XC_SOFT,60)}},
+    {"Restless", {60,XSTYLE_NATURAL,45,22,70,45}, {   /* the music rewrites itself as it plays, then settles */
+        XROUTE(XS_ENERGY,XT_EVOLVE,34,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_DENSITY,XT_ROTATION,30,XW_LIVE,XC_SOFT,88),
+        XROUTE(XS_MEMORY,XT_MOTIF,34,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_LEAP,XT_RANGE,24,XW_LIVE,XC_CENTER,80),
+        XROUTE(XS_ACCENT,XT_SWING,18,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_TENSION,XT_DRIFT,-30,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_ANSWER,XT_RESOLVE,50,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_CALL,XT_DIALOGUE,30,XW_LIVE,XC_SOFT,90)}},
+    {"Night Drive", {64,XSTYLE_PLUCK,10,8,40,30}, {   /* a pulse that grooves: accents that bite, a loose swing */
+        XROUTE(XS_ACCENT,XT_LEVEL,34,XW_LIVE,XC_STEP,10),
+        XROUTE(XS_ACCENT,XT_CUTOFF,30,XW_NOTE,XC_STEP,8),
+        XROUTE(XS_ENERGY,XT_GATE,-24,XW_NOTE,XC_SOFT,30),
+        XROUTE(XS_DENSITY,XT_SWING,24,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_OTHER,XT_ACCENT,20,XW_LIVE,XC_SOFT,80),
+        XROUTE(XS_REGISTER,XT_INDEX,-16,XW_NOTE,XC_CENTER,40),
+        XROUTE(XS_SILENCE,XT_HUMAN,20,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_CALL,XT_PASSING,24,XW_LIVE,XC_SOFT,80)}},
+    {"Memory Garden", {54,XSTYLE_LEGATO,75,6,95,70}, {   /* themes come back, changed: recalled notes glow and morph */
+        XROUTE(XS_RECALL,XT_MORPH,34,XW_NOTE,XC_SOFT,70),
+        XROUTE(XS_RECALL,XT_CUTOFF,20,XW_NOTE,XC_SOFT,70),
+        XROUTE(XS_MEMORY,XT_DIALOGUE,50,XW_LIVE,XC_SOFT,92),
+        XROUTE(XS_MEMORY,XT_LENGTH,38,XW_LIVE,XC_SOFT,92),
+        XROUTE(XS_LINK,XT_MOTIF,24,XW_LIVE,XC_SOFT,88),
+        XROUTE(XS_DURATION,XT_RELEASE,30,XW_NOTE,XC_SOFT,75),
+        XROUTE(XS_ARCH,XT_SPACE,24,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_ANSWER,XT_SUSTAIN,20,XW_NOTE,XC_SOFT,70)}},
+    {"Question", {60,XSTYLE_NATURAL,50,10,80,60}, {   /* tension asked, held and resolved: the drama of a phrase */
+        XROUTE(XS_TENSION,XT_TENSION,44,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_TENSION,XT_MORPH,28,XW_NOTE,XC_SOFT,60),
+        XROUTE(XS_TENSION,XT_LEVEL,14,XW_LIVE,XC_SOFT,80),
+        XROUTE(XS_ANSWER,XT_RESOLVE,70,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_ANSWER,XT_ATTACK,24,XW_NOTE,XC_SOFT,60),
+        XROUTE(XS_CALL,XT_INDEX,24,XW_NOTE,XC_SOFT,60),
+        XROUTE(XS_SILENCE,XT_RELEASE,34,XW_NOTE,XC_SOFT,70),
+        XROUTE(XS_ENERGY,XT_DENSITY,-20,XW_LIVE,XC_SOFT,90)}}
 };
 #undef XROUTE
 #define NEXPRESSION_PRESET ((int)(sizeof EXPRESSION_PRESET / sizeof *EXPRESSION_PRESET))
@@ -105,6 +179,14 @@ static const int16_t ROUTING_LFO[NROUTING_PRESET][MS_N] = {
     {40,9,SHAPE_SINE,MOD_SEQ + XT_SWING-XT_DENSITY + 1,0,20,SYNC_TEMPO,95},       /* Swing Tide: 4 bars */
     {45,17,SHAPE_WALK,MOD_SEQ + XT_LENGTH-XT_DENSITY + 1,0,30,SYNC_TEMPO,90},     /* Bicker: phrase length */
     {50,25,SHAPE_TRI,MOD_SEQ + XT_RANGE-XT_DENSITY + 1,0,40,SYNC_TEMPO,88}        /* Compass: octave range */,
-    {0} /* Conversation: phase sources, no LFO replacement */
+    {0}, /* Conversation: phase sources, no LFO replacement */
+    {0},                                                                          /* Duet: routes only */
+    {25,6,SHAPE_SINE,MOD_SEQ + XT_EVOLVE-XT_DENSITY + 1,0,30,SYNC_TEMPO,90},      /* Rising Tide: evolve, 8 bars */
+    {0},                                                                          /* Choir Breath: routes only */
+    {0},                                                                          /* Glass Rain: routes only */
+    {40,17,SHAPE_WALK,MOD_SEQ + 1,0,30,SYNC_TEMPO,90},                            /* Restless: density wanders */
+    {35,75,SHAPE_SH,MOD_SEQ + XT_ACCENT-XT_DENSITY + 1,0,0,SYNC_TEMPO,20},        /* Night Drive: an accent an 1/8 */
+    {0},                                                                          /* Memory Garden: routes only */
+    {0}                                                                           /* Question: routes only */
 };
 _Static_assert(sizeof ROUTING_LFO / sizeof *ROUTING_LFO == NROUTING_PRESET, "a routing recipe an LFO row");

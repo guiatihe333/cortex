@@ -1,4 +1,4 @@
-# 1.5.26: the routing recipes on the Expression page: PRESET rounds every one of them, and each
+# 1.5.26: the routing recipes on the Expression page (1.5.45: and the eight full-score ones): PRESET rounds every one of them, and each
 # leaves its own modulator 5 target, read back from the Mod page.
 wait 300
 turn SELECT 5 100
@@ -44,6 +44,38 @@ turn PRESET 1 150
 wait 300
 where
 said Preset Conversation
+turn PRESET 1 150
+wait 300
+where
+said Preset Duet
+turn PRESET 1 150
+wait 300
+where
+said Preset Rising Tide
+turn PRESET 1 150
+wait 300
+where
+said Preset Choir Breath
+turn PRESET 1 150
+wait 300
+where
+said Preset Glass Rain
+turn PRESET 1 150
+wait 300
+where
+said Preset Restless
+turn PRESET 1 150
+wait 300
+where
+said Preset Night Drive
+turn PRESET 1 150
+wait 300
+where
+said Preset Memory Garden
+turn PRESET 1 150
+wait 300
+where
+said Preset Question
 turn PRESET 1 150
 wait 300
 where

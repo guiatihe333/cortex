@@ -405,8 +405,18 @@ receitas de roteamento (Flow, Slow Orbit e Living Touch). SEL mantido desfaz a �
 | Swing Tide | O swing respira em quatro compassos, e o silêncio adia as notas. |
 | Bicker | O comprimento das frases muda a cada dois compassos; as vozes se interrompem. |
 | Compass | Um triângulo de dois compassos abre e fecha a extensão do loop, em oitavas. |
+| Duet | Duas vozes se revezam: quem chama vem à frente, a outra espera e responde mais escura; o silêncio reabre o diálogo e a resposta resolve. |
+| Rising Tide | Cada frase cresce (mais brilho, mais notas, acentos na tensão) e solta (caudas longas, menos notas); o Evolve respira em oito compassos. |
+| Choir Breath | Pads como vozes: a respiração incha volume e brilho, notas longas e saltos abrem devagar, o silêncio muda a cor (Morph). |
+| Glass Rain | Sinos tocados mais forte soam mais brilhantes, saltos fazem morph, trechos densos decaem antes e as pausas abrem o espaço. |
+| Restless | A música se reescreve enquanto toca (evolução, rotação, motivo, extensão), segura o acorde na tensão e resolve na resposta. |
+| Night Drive | Groove: acentos mordem no volume e no filtro, gates encurtam com a energia, swing solto e acento sample & hold em colcheias. |
+| Memory Garden | Temas voltam transformados: notas recuperadas fazem morph e brilham, a memória alonga frases e diálogo. |
+| Question | O drama da frase: a tensão pergunta (tensão do sequenciador, morph, um pouco mais alto) e a resposta resolve com ataques macios. |
 
-As sete últimas são receitas de **roteamento**: o **PRESET**, nas páginas Expression ou Gesture, passa de uma a
+As oito últimas (de Duet a Question) são receitas de **partitura completa**: usam as oito rotas, e as fases da frase (Call, Tension, Answer, Recall) e o que as vozes ouvem umas das outras movem o som e o sequenciador juntos. Rotas de Morph precisam do patch B do Morph da voz; rotas de Cutoff, do filtro.
+
+As sete anteriores (de Flow a Compass) são receitas de **roteamento**: o **PRESET**, nas páginas Expression ou Gesture, passa de uma a
 outra, enquanto EDIT e REC continuam escolhendo os presets de interpretação. Todas usam profundidades
 controladas e suavização alta, e cada uma ocupa o quinto modulador da voz com um alvo próprio do sequenciador
 (Rotation, Accent, Swing, Length, Range) ou com a variação expressiva, para o sequenciador se mover sem

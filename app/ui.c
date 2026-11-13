@@ -1091,7 +1091,7 @@ static int expression_preset_index(int v)
             continue;
         for (r = 0; r < EN_XROUTES; r++) {
             for (k = 0; k < XR_N; k++) {
-                const int expected = r < 4 && p->route[r][XR_SOURCE] ? p->route[r][k] : k == XR_MAX ? 100 : 0;
+                const int expected = r < 8 && p->route[r][XR_SOURCE] ? p->route[r][k] : k == XR_MAX ? 100 : 0;
                 if (proj.par[P_XR(v, r, k)] != expected)
                     break;
             }
@@ -1120,7 +1120,7 @@ static void expression_preset_apply(int v, int n)
     }
     for (r = 0; r < EN_XROUTES; r++)
         for (k = 0; k < XR_N; k++) {
-            const int value = r < 4 && p->route[r][XR_SOURCE] ? p->route[r][k] : k == XR_MAX ? 100 : 0;
+            const int value = r < 8 && p->route[r][XR_SOURCE] ? p->route[r][k] : k == XR_MAX ? 100 : 0;
             proj.par[P_XR(v, r, k)] = (int16_t)value;
             en_set(P_XR(v, r, k), value);
             par_out(P_XR(v, r, k));
@@ -5312,6 +5312,68 @@ static void vis_seg(int x0, int yy0, int x1, int yy1, uint16_t c, int y0, int h)
         }
     }
 }
+/* (1.5.44) a row of the picture, from the field to the screen's pixels, run from RAM (PLAT_RAM_CODE): the visual's
+ * heaviest loop out of the way of the flash cache's misses, which the audio's interrupts keep causing. The same
+ * pixels as before: between the field's two rows (wb quarters), a quarter towards each side's neighbour, sharpened
+ * along the row, dithered (dr, unless POSTER), mapped (lut), then to the screen through the palette (pal), shifted
+ * by o, the RGB planes spr apart. No calls: RAM code may call only RAM code */
+static PLAT_RAM_CODE void vis_row(const uint8_t *a, const uint8_t *b, int wb, uint8_t *col, uint8_t *ln,
+                                  const int8_t *bayer, int dith, const uint8_t *lut, const uint16_t *pal, uint16_t *out,
+                                  int o, int spr, int vfw)
+{
+    const int d0 = bayer[0], d1 = bayer[1], d2 = bayer[2], d3 = bayer[3];
+    int x, pl;
+    for (x = 0; x < vfw; x++)
+        col[x] = (uint8_t)((a[x] * (4 - wb) + b[x] * wb) >> 2);
+    for (x = 0; x < vfw; x++) {
+        const int l = col[x > 0 ? x - 1 : 0], r = col[x + 1 < vfw ? x + 1 : vfw - 1], c = col[x];
+        ln[2 * x] = (uint8_t)((3 * c + l) >> 2);
+        ln[2 * x + 1] = (uint8_t)((3 * c + r) >> 2);
+    }
+    pl = ln[0];
+    for (x = 0; x < 240; x++) {
+        const int c = ln[x];
+        int v = c, d;
+        if (x > 0 && x < 239) {
+            const int sh = 2 * c - pl - ln[x + 1];
+            v = c + (sh >= 0 ? (int)(((uint32_t)sh * 43691u) >> 17) : -(int)(((uint32_t)-sh * 43691u) >> 17));
+            v = v < 0 ? 0 : v > 255 ? 255 : v;
+        }
+        pl = c;
+        if (dith && v > 8) {
+            const int k = x & 3;
+            d = v + (k == 0 ? d0 : k == 1 ? d1 : k == 2 ? d2 : d3);
+        } else {
+            d = v;
+        }
+        ln[x] = lut[d < 0 ? 0 : d > 255 ? 255 : d];
+    }
+    if (!spr && o > -240 && o < 240) {           /* no RGB separation: the row's shift as two runs */
+        const int oo = o < 0 ? o + 240 : o;
+        for (x = 0; x < oo; x++)
+            out[x] = pal[ln[x + 240 - oo]];
+        for (; x < 240; x++)
+            out[x] = pal[ln[x - oo]];
+    } else if (!spr) {
+        for (x = 0; x < 240; x++) {
+            int xg = x - o;
+            xg = xg < 0 ? xg + 240 : xg >= 240 ? xg - 240 : xg;
+            out[x] = pal[ln[xg]];
+        }
+    } else {
+        for (x = 0; x < 240; x++) {
+            int xg = x - o, xr, xb;
+            xg = xg < 0 ? xg + 240 : xg >= 240 ? xg - 240 : xg;
+            xr = xg - spr;
+            xb = xg + spr;
+            xr = xr < 0 ? xr + 240 : xr >= 240 ? xr - 240 : xr;
+            xb = xb < 0 ? xb + 240 : xb >= 240 ? xb - 240 : xb;
+            xr = xr < 0 ? xr + 240 : xr;
+            xb = xb >= 240 ? xb - 240 : xb;
+            out[x] = (pal[ln[xr]] & 0x00F8u) | (pal[ln[xg]] & 0xE007u) | (pal[ln[xb]] & 0x1F00u);
+        }
+    }
+}
 static void vis_band(int y0, int h)
 {
     const float syn = (float)VPAR(VSYNC) * 0.01f, rgb = (float)VPAR(VRGB) * 0.01f;
@@ -5355,66 +5417,43 @@ static void vis_band(int y0, int h)
                       ((fi & 1) ? (int)((float)VPAR(VSLICE) * 0.06f * (vband[3] + vbeat)) : 0),   /* (interlace) */
                   spr = sp + vchan[fi >> 3];
         vrow_o[y - y0] = (int16_t)o;
-        if (ps > 1) {                            /* PIXEL: blocks of ps cells (Fairlight's mosaic) */
-            const uint8_t *q = vf[fi / ps * ps];
-            for (x = 0; x < VF_W; x++)
-                ln[2 * x] = ln[2 * x + 1] = q[vpixel_x[x]];
-        } else {
-            for (x = 0; x < VF_W; x++)
-                col[x] = (uint8_t)((a[x] * (4 - wb) + b[x] * wb) >> 2);
-            for (x = 0; x < VF_W; x++) {         /* (and across: a quarter towards each side's neighbour) */
-                const int l = col[x > 0 ? x - 1 : 0], r = col[x + 1 < VF_W ? x + 1 : VF_W - 1], c = col[x];
-                ln[2 * x] = (uint8_t)((3 * c + l) >> 2);
-                ln[2 * x + 1] = (uint8_t)((3 * c + r) >> 2);
-            }
-        }
         /* the 4 x 4 Bayer offsets already halved, as BAYER[][] / 2 was (C's division: toward zero) */
         static const int8_t BAYER2[4][4] = {{-3, 1, -2, 2}, {3, -1, 4, 0}, {-1, 2, -2, 1}, {4, 0, 3, 0}};
         const int8_t *dr = BAYER2[y & 3];
-        if (ps <= 1) {                           /* (1.5.22: sharpened along the row, dithered and mapped in one pass,
-                                                  * the same pixels: n / 3 as (n * 43691) >> 17, exact below 65536) */
-            int pl = ln[0];
-            for (x = 0; x < 240; x++) {
-                const int c = ln[x];
-                int v = c, d;
-                if (x > 0 && x < 239) {
-                    const int sh = 2 * c - pl - ln[x + 1];
-                    v = c + (sh >= 0 ? (int)(((uint32_t)sh * 43691u) >> 17) : -(int)(((uint32_t)-sh * 43691u) >> 17));
-                    v = v < 0 ? 0 : v > 255 ? 255 : v;
-                }
-                pl = c;
-                d = v + (dith && v > 8 ? dr[x & 3] : 0);
-                ln[x] = vlut[d < 0 ? 0 : d > 255 ? 255 : d];
-            }
-        } else {
+        if (ps <= 1) {                           /* (1.5.44: the row in RAM code) */
+            PLAT_FAR(vis_row)(a, b, wb, col, ln, dr, dith, vlut, vpal_screen, out, o, spr, VF_W);
+        } else {                                 /* PIXEL: blocks of ps cells (Fairlight's mosaic) */
+            const uint8_t *q = vf[fi / ps * ps];
+            for (x = 0; x < VF_W; x++)
+                ln[2 * x] = ln[2 * x + 1] = q[vpixel_x[x]];
             for (x = 0; x < VF_W * 2; x++) {     /* (dithered between the palette's steps, unless POSTER; CHROMA) */
                 const int d = ln[x] + (dith && ln[x] > 8 ? dr[x & 3] : 0);
                 ln[x] = vlut[d < 0 ? 0 : d > 255 ? 255 : d];
             }
-        }
-        if (!spr && o > -240 && o < 240) {     /* no RGB separation: one palette fetch; the row's shift as two runs */
-            const int oo = o < 0 ? o + 240 : o;
-            for (x = 0; x < oo; x++)
-                out[x] = vpal_screen[ln[x + 240 - oo]];
-            for (; x < 240; x++)
-                out[x] = vpal_screen[ln[x - oo]];
-        } else if (!spr) {
-            for (x = 0; x < 240; x++) {
-                int xg = x - o;
+            if (!spr && o > -240 && o < 240) {
+                const int oo = o < 0 ? o + 240 : o;
+                for (x = 0; x < oo; x++)
+                    out[x] = vpal_screen[ln[x + 240 - oo]];
+                for (; x < 240; x++)
+                    out[x] = vpal_screen[ln[x - oo]];
+            } else if (!spr) {
+                for (x = 0; x < 240; x++) {
+                    int xg = x - o;
+                    xg = xg < 0 ? xg + 240 : xg >= 240 ? xg - 240 : xg;
+                    out[x] = vpal_screen[ln[xg]];
+                }
+            } else for (x = 0; x < 240; x++) {
+                int xg = x - o, xr, xb;
                 xg = xg < 0 ? xg + 240 : xg >= 240 ? xg - 240 : xg;
-                out[x] = vpal_screen[ln[xg]];
+                xr = xg - spr;
+                xb = xg + spr;
+                xr = xr < 0 ? xr + 240 : xr >= 240 ? xr - 240 : xr;
+                xb = xb < 0 ? xb + 240 : xb >= 240 ? xb - 240 : xb;
+                xr = xr < 0 ? xr + 240 : xr;
+                xb = xb >= 240 ? xb - 240 : xb;
+                out[x] = (vpal_screen[ln[xr]] & 0x00F8u) | (vpal_screen[ln[xg]] & 0xE007u) |
+                         (vpal_screen[ln[xb]] & 0x1F00u);
             }
-        } else for (x = 0; x < 240; x++) {
-            int xg = x - o, xr, xb;
-            xg = xg < 0 ? xg + 240 : xg >= 240 ? xg - 240 : xg;
-            xr = xg - spr;
-            xb = xg + spr;
-            xr = xr < 0 ? xr + 240 : xr >= 240 ? xr - 240 : xr;
-            xb = xb < 0 ? xb + 240 : xb >= 240 ? xb - 240 : xb;
-            xr = xr < 0 ? xr + 240 : xr;
-            xb = xb >= 240 ? xb - 240 : xb;
-            out[x] = (vpal_screen[ln[xr]] & 0x00F8u) | (vpal_screen[ln[xg]] & 0xE007u) |
-                     (vpal_screen[ln[xb]] & 0x1F00u);
         }
         if ((y & 1) && y >> 1 < VF_H)
             vtear[y >> 1] = (int8_t)(vtear[y >> 1] * 3 / 4);
