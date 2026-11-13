@@ -2439,21 +2439,48 @@ static uint32_t grain(uint32_t i);
  * sometimes sits by the right edge and says something about the page you are on (a screen reader hears it); the first
  * time a page is opened he may come by. 24 x 14, drawn twice the size; his frames: two steps, a jump, sitting */
 #include "tom_art.h"                            /* (tools/gen_tom.py: drawn, from his photos) */
+#include "tom_head.h"                           /* (1.5.38, tools/gen_tom_head.py: his markings, an ink blot) */
 enum { TOM_JUMP = 6, TOM_SIT = 7, TOM_BLINK = 8, TOM_SLEEP = 9, TOM_STRETCH = 10 };
 /* frame f of his drawing (big: the start screen's 112 x 56, else the header's 56 x 28) with its top left at (x, y)
  * (canvas coordinates), each pixel laid over what is there by its alpha; mirror: facing left */
 static void tom_draw(int32_t x, int32_t y, int big, int f, int mirror)
 {
     const int32_t w = big ? TOM_LW : TOM_SW, h = big ? TOM_LH : TOM_SH;
-    const uint16_t *a = big ? TOM_L[f < TOM_NL ? f : TOM_SIT] : TOM_S[f];
+    const uint8_t *a = big ? TOM_L[f < TOM_NL ? f : TOM_L_SIT] : TOM_S[f];   /* (1.5.39: indices into TOM_PAL) */
     int32_t r, c;
     for (r = 0; r < h; r++)
         for (c = 0; c < w; c++) {
-            const uint16_t v = a[r * w + (mirror ? w - 1 - c : c)];
+            const uint16_t v = TOM_PAL[a[r * w + (mirror ? w - 1 - c : c)]];
             if (v >> 12)
                 melt_px(x + c, y + r + cv_oy, v >> 12, (uint32_t)(v >> 8 & 15u) * 31u / 15u,
                         (uint32_t)(v >> 4 & 15u) * 63u / 15u, (uint32_t)(v & 15u) * 31u / 15u);
         }
+}
+/* (1.5.40) the big frame f turned by deg (clockwise on the screen), its middle at (cx, cy): each pixel of the turned
+ * square fetched back from the drawing (nearest), so he can run up a wall, across a ceiling, tilt with his flight */
+static void tom_draw_rot(float cx, float cy, int f, int mirror, float deg)
+{
+    const float a = deg * (3.1415927f / 180.0f), c = fm_cosf(a), sn = fm_sinf(a);
+    const uint8_t *img = TOM_L[f < TOM_NL ? f : TOM_L_SIT];
+    const int32_t R = 63, x0 = (int32_t)(cx + 0.5f), y0 = (int32_t)(cy + 0.5f);
+    int32_t dx, dy;
+    for (dy = -R; dy <= R; dy++) {
+        const int32_t py = y0 + dy + cv_oy;
+        if (py < 0 || py >= 240)
+            continue;
+        for (dx = -R; dx <= R; dx++) {
+            const float sx = (float)dx * c + (float)dy * sn + (float)TOM_LW * 0.5f,
+                        sy = -(float)dx * sn + (float)dy * c + (float)TOM_LH * 0.5f;
+            const int32_t u = (int32_t)(sx + 1000.0f) - 1000, v = (int32_t)(sy + 1000.0f) - 1000;
+            uint16_t p;
+            if ((uint32_t)u >= (uint32_t)TOM_LW || (uint32_t)v >= (uint32_t)TOM_LH)
+                continue;
+            p = TOM_PAL[img[v * TOM_LW + (mirror ? TOM_LW - 1 - u : u)]];
+            if (p >> 12)
+                melt_px(x0 + dx, py, p >> 12, (uint32_t)(p >> 8 & 15u) * 31u / 15u, (uint32_t)(p >> 4 & 15u) * 63u / 15u,
+                        (uint32_t)(p & 15u) * 31u / 15u);
+        }
+    }
 }
 /* his words: tips (0 .. 4 for any page, then the pages', then what he brings word of), a page's intro, each
  * knob's meaning, a value's (1.5.19); wrapped to TOM_COLS, shown two lines at a time beside him */
@@ -5484,7 +5511,7 @@ static void vis_key(int k)
 /* CORTEX's start (3 s, or until a button): static that settles, the gate of horn opening (in the Odyssey true dreams
  * come through the gate of horn, false ones through ivory) on an eye that opens, the name torn into place, the three
  * Oneiroi beneath it */
-#define SPLASH_MS 4200u
+#define SPLASH_MS 4800u
 static uint32_t splash_t0;
 static uint8_t splash_on;
 static int32_t sp_by, sp_bh;                    /* the band being drawn */
@@ -5494,30 +5521,162 @@ static inline void sp_px(int32_t x, int32_t y, uint16_t c)
         cv_px[(uint32_t)(y - sp_by) * 240u + (uint32_t)x] = swap16(c);
 }
 static uint16_t sp_mix(uint16_t a, uint16_t b, float t) { return mix(a, b, q16(t)); }
-static void sp_band(int32_t by, int32_t bh, float t)   /* (1.5.16) the zone plate, Tom, the name */
+/* (1.5.40) Tom's way through the start: the flights between his contacts (the floor, the right wall, the ceiling, the
+ * left wall, the name), each ballistic */
+static const struct { float t0, t1, x0, y0, x1, y1; } TOM_SEG[4] = {
+    {1.10f, 1.40f, 160.0f, 200.0f, 213.0f, 112.0f},   /* floor -> right wall */
+    {1.53f, 1.83f, 213.0f, 100.0f, 118.0f, 27.0f},    /* right wall -> ceiling */
+    {1.93f, 2.23f, 112.0f, 27.0f, 27.0f, 104.0f},     /* ceiling -> left wall */
+    {2.35f, 2.80f, 27.0f, 100.0f, 120.0f, 124.0f},    /* left wall -> the name */
+};
+#define TOM_G 900.0f                            /* (his gravity, px/s^2) */
+/* where his middle is s seconds into the start (*k: the flight, -1 none); 0 before he comes in */
+static int tom_at(float s, float *x, float *y, int *k)
 {
-    static const uint16_t VIOLET = 0x611A, HORN = 0xE5A8, IVORY = 0xF7BB;
+    int i;
+    *k = -1;
+    if (s < 0.2f)
+        return 0;
+    if (s < 1.1f) {                              /* the gallop: quickening, then steady */
+        const float u = (s - 0.2f) / 0.9f;
+        *x = -70.0f + 230.0f * (u < 0.25f ? 2.0f * u * u : u - 0.125f) / 0.875f;
+        *y = 208.0f;
+        return 1;
+    }
+    for (i = 0; i < 4; i++)
+        if (s >= TOM_SEG[i].t0 && s < TOM_SEG[i].t1) {
+            const float T = TOM_SEG[i].t1 - TOM_SEG[i].t0, e = s - TOM_SEG[i].t0,
+                        vy0 = (TOM_SEG[i].y1 - TOM_SEG[i].y0 - 0.5f * TOM_G * T * T) / T;
+            *x = TOM_SEG[i].x0 + (TOM_SEG[i].x1 - TOM_SEG[i].x0) * e / T;
+            *y = TOM_SEG[i].y0 + vy0 * e + 0.5f * TOM_G * e * e;
+            *k = i;
+            return 1;
+        }
+    if (s < 1.53f) {                             /* the right wall */
+        *x = 213.0f, *y = 112.0f - 12.0f * (s - 1.40f) / 0.13f;
+    } else if (s < 1.93f) {                      /* the ceiling */
+        *x = 118.0f - 60.0f * (s - 1.83f), *y = 27.0f;
+    } else if (s < 2.35f) {                      /* the left wall */
+        *x = 27.0f, *y = 104.0f - 4.0f * (s - 2.23f) / 0.12f;
+    } else {                                     /* the name */
+        *x = 120.0f, *y = 124.0f + (s < 2.94f ? 2.0f * fm_sinf((s - 2.80f) / 0.14f * 3.1416f) : 0.0f);
+    }
+    return 1;
+}
+static void sp_band(int32_t by, int32_t bh, float t)   /* (1.5.16; 1.5.41: the video synth over his markings) */
+{
+    static const uint16_t VIOLET = 0x611A, IVORY = 0xF7BB,
+                          GREY_T = 0x5AEC, GREY_B = 0x4A6B;   /* (a grey, a little cool at the bottom) */
     int32_t x, y;
     uint32_t r = 0x9E3779B9u ^ (uint32_t)(t * 977.0f);
-    const float in = fm_clampf(t * 3.0f, 0.0f, 1.0f), dens = fm_clampf(1.0f - t * 2.5f, 0.0f, 1.0f);
-    const int32_t zf = 6 + (int32_t)(t * 40.0f), ph = (int32_t)(t * 900.0f), lv = (int32_t)(in * 150.0f);
+    const float dens = fm_clampf(1.0f - t * 2.5f, 0.0f, 1.0f),
+                f = fm_clampf((t - 0.05f) * 2.2f, 0.0f, 1.0f),   /* (the markings' fade: 0 .. 1 by mid-way) */
+                ring = t * 70.0f, amp = 1.5f + 6.0f * (1.0f - f);   /* (the contours going out; the sync's wobble) */
+    const int in = q16(t * 3.0f), iq = q16(f), cq = q16(0.9f - 0.3f * f);
+    const int32_t sep = 2 + (int32_t)(9.0f * (1.0f - f) * (1.0f - f));   /* (the RGB planes apart, coming together) */
+    uint16_t hue[64];                            /* the colorama: hues round the wheel, turning with time */
+    uint8_t row[240 + 48];
+    const uint8_t *hp = TOM_INK;
+    uint32_t left = 0, skip = (uint32_t)by * 240u;
+    uint8_t ink = 0;
+    for (x = 0; x < 64; x++) {
+        const float h = (float)x * (6.0f / 64.0f);
+        const int32_t i = (int32_t)h;
+        const float q = h - (float)i;
+        float rr, gg, bb;
+        switch (i) {
+        case 0: rr = 1.0f, gg = q, bb = 0.0f; break;
+        case 1: rr = 1.0f - q, gg = 1.0f, bb = 0.0f; break;
+        case 2: rr = 0.0f, gg = 1.0f, bb = q; break;
+        case 3: rr = 0.0f, gg = 1.0f - q, bb = 1.0f; break;
+        case 4: rr = q, gg = 0.0f, bb = 1.0f; break;
+        default: rr = 1.0f, gg = 0.0f, bb = 1.0f - q; break;
+        }
+        hue[x] = (uint16_t)((uint32_t)(rr * 26.0f + 3.0f) << 11 | (uint32_t)(gg * 52.0f + 6.0f) << 5 | (uint32_t)(bb * 26.0f + 3.0f));
+    }
+    while (skip) {                               /* (to this band's first row) */
+        uint32_t k;
+        if (!left) {
+            ink = *hp >> 7;
+            left = (uint32_t)(*hp & 127u) + 1u;
+            hp++;
+        }
+        k = left < skip ? left : skip;
+        left -= k;
+        skip -= k;
+    }
     sp_by = by, sp_bh = bh;
     cv_begin(240, (uint32_t)bh, 0x0806);
-    for (y = by; y < by + bh; y++) {             /* LZX's zone plate: rings of r squared, a slow bar across, its planes
-                                                  * apart (red left, blue right), out of the static */
+    for (y = by; y < by + bh; y++) {             /* out of the static: the grey, the synth over it */
         uint16_t *p = cv_px + (uint32_t)(y - by) * 240u;
-        const int32_t dy = y - 120, dy2 = dy * dy, bar = ((y * 3 + ph / 2) & 255);
+        const int32_t ph = (int32_t)(t * 90.0f) + y / 3,
+                      wob = (int32_t)(amp * fm_sinf((float)y * 0.09f + t * 25.0f));   /* (the sync, wavering) */
+        const uint16_t paper = mix(0x0806, mix(mix(GREY_T, GREY_B, (int)(y * 16 / 239)), hue[(y / 4 + ph / 2) & 63], 3), in);
+        const float gy = fm_clampf((float)y * 0.25f - 0.5f, 0.0f, 58.999f);
+        const int32_t y0 = (int32_t)gy;
+        const float fy = gy - (float)y0;
+        const uint8_t *d0 = TOM_INK_D + y0 * 60, *d1 = d0 + 60;
+        for (x = 0; x < 240 + 48; x++)
+            row[x] = 0;
+        for (x = 0; x < 240; x++) {              /* (this row of the markings) */
+            if (!left) {
+                ink = *hp >> 7;
+                left = (uint32_t)(*hp & 127u) + 1u;
+                hp++;
+            }
+            left--;
+            row[x + 24] = ink;
+        }
         for (x = 0; x < 240; x++) {
-            int32_t v[3], k;
-            for (k = 0; k < 3; k++) {
-                const int32_t dx = x - 120 + (k - 1) * 3, a = (((dx * dx + dy2) * zf) >> 9) + ph,
-                              q = a & 255, tri = q < 128 ? q * 2 : (255 - q) * 2;
-                v[k] = ((tri * (bar < 128 ? 3 : 2)) >> 2) * lv >> 8;
+            uint16_t c = paper;
+            const int32_t xs = x + wob;
+            const int rI = row[xs + 24 - sep], gI = row[xs + 24], bI = row[xs + 24 + sep];
+            if (iq && (rI | gI | bI)) {          /* his markings: colour, the planes apart */
+                const uint16_t h = mix(0x5A06, hue[(x / 4 + ph) & 63], cq), m = mix(paper, h, iq);
+                c = (uint16_t)((rI ? m : paper) & 0xF800) | ((gI ? m : paper) & 0x07E0) | ((bI ? m : paper) & 0x001F);
+            } else if (iq) {                     /* the contours radiating from them, in hues, fading as they go */
+                const float gx = fm_clampf((float)xs * 0.25f - 0.5f, 0.0f, 58.999f);
+                const int32_t x0 = (int32_t)gx;
+                const float fx = gx - (float)x0,
+                            dd = ((float)d0[x0] * (1.0f - fx) + (float)d0[x0 + 1] * fx) * (1.0f - fy) +
+                                 ((float)d1[x0] * (1.0f - fx) + (float)d1[x0 + 1] * fx) * fy;
+                if (dd < 72.0f) {
+                    const float q = dd - ring;
+                    const int32_t qi = (int32_t)(q + 1800.0f) % 18;
+                    if (qi < 2)
+                        c = mix(paper, hue[((int32_t)dd / 3 + ph) & 63], q16((1.0f - dd * (1.0f / 72.0f)) * f * 0.6f));
+                }
             }
             r = r * 1664525u + 1013904223u;
-            if ((float)(r >> 24) < dens * 120.0f)   /* (the static thinning) */
-                v[0] = v[1] = v[2] = (int32_t)(r >> 16 & 127u);
-            p[x] = swap16((uint16_t)((v[0] * 7 / 8 >> 3) << 11 | (v[1] / 2 >> 2) << 5 | (v[2] >> 3)));
+            if ((float)(r >> 24) < dens * 120.0f) {   /* (the static thinning) */
+                const uint32_t g = r >> 16 & 127u;
+                c = (uint16_t)((g >> 3) << 11 | (g >> 2) << 5 | (g >> 3));
+            }
+            p[x] = swap16(c);
+        }
+    }
+    {   /* his way so far, left behind as an RGB trail: the red, green and blue planes each a little apart */
+        const float s = t * (float)SPLASH_MS * 0.001f;
+        float u;
+        for (u = 0.22f; u < s && u < 2.94f; u += 0.006f) {
+            float tx, ty;
+            int k, ch;
+            if (!tom_at(u, &tx, &ty, &k))
+                continue;
+            for (ch = 0; ch < 3; ch++) {
+                static const uint16_t MASK[3] = {0xF800, 0x07E0, 0x001F};
+                const int32_t cx = (int32_t)tx + (ch - 1) * 4, cy = (int32_t)ty + (ch - 1) * 2;
+                int32_t px, py;
+                for (py = cy - 2; py <= cy + 2; py++) {
+                    if (py < by || py >= by + bh)
+                        continue;
+                    for (px = cx - 2; px <= cx + 2; px++)
+                        if ((uint32_t)px < 240u && (px - cx) * (px - cx) + (py - cy) * (py - cy) <= 5) {
+                            uint16_t *q = cv_px + (uint32_t)(py - by) * 240u + (uint32_t)px;
+                            *q = swap16((uint16_t)(swap16(*q) | MASK[ch]));
+                        }
+                }
+            }
         }
     }
     cv_oy = -sp_by;
@@ -5527,21 +5686,45 @@ static void sp_band(int32_t by, int32_t bh, float t)   /* (1.5.16) the zone plat
         cv_rect(120 - w / 2 - 8, 152, w + 16, 40, 0x0806);   /* (cv_oy: screen rows) */
         cv_text(120 - w / 2, 156, &FONT_L, nm, IVORY);
     }
-    {                                            /* Tom: in from the left, a jump, sitting on the name */
-        const int32_t sw = TOM_LW, sh = TOM_LH;
-        if (t > 0.18f && t < 0.62f) {
-            const float u = (t - 0.18f) / 0.44f;
-            tom_draw((int32_t)(-sw + u * (120.0f - (float)sw / 2.0f + (float)sw)), 152 - sh, 1, (int)(t * 60.0f) % 6, 0);
-        } else if (t >= 0.62f && t < 0.74f) {
-            const float u = (t - 0.62f) / 0.12f, hgt = 4.0f * u * (1.0f - u);
-            tom_draw(120 - sw / 2, (int32_t)(152.0f - (float)sh - 30.0f * hgt), 1, TOM_JUMP, 0);
-        } else if (t >= 0.74f) {
-            tom_draw(120 - sw / 2, 152 - sh, 1, t > 0.9f && t < 0.94f ? TOM_BLINK : TOM_SIT, 0);   /* (on the name) */
+    {   /* Tom (1.5.40), a cat's parkour: in at a gallop along the floor, a leap to the right wall (his feet on it, his
+         * head up, gathered), a kick up and across to the ceiling (upside down, a touch of the paws), down and across
+         * to the left wall, a kick off it in an arc onto the name, the forepaws landing first, then sitting. Each
+         * flight ballistic (tom_at); his body turned with his flight (nose along the way he goes) */
+        const float s = t * (float)SPLASH_MS * 0.001f;
+        float x, y;
+        int k;
+        if (tom_at(s, &x, &y, &k)) {
+            if (s < 1.1f) {                      /* the gallop: the frames follow the ground covered */
+                tom_draw_rot(x, y, TOM_L_RUN0 + (int)((x + 70.0f) / 5.7f) % 6, 0, 0.0f);
+            } else if (k >= 0) {                 /* a flight */
+                const float T = TOM_SEG[k].t1 - TOM_SEG[k].t0, e = s - TOM_SEG[k].t0, u = e / T,
+                            vx = (TOM_SEG[k].x1 - TOM_SEG[k].x0) / T,
+                            vy = (TOM_SEG[k].y1 - TOM_SEG[k].y0 - 0.5f * TOM_G * T * T) / T + TOM_G * e;
+                const int lf = vx < 0.0f;
+                const float up = fm_clampf(vo_atan2(-vy, lf ? -vx : vx) * (180.0f / 3.1415927f), -70.0f, 70.0f);
+                tom_draw_rot(x, y, u < 0.25f ? TOM_L_LAUNCH : u > 0.8f ? TOM_L_LAND : TOM_L_FLIGHT, lf, lf ? up : -up);
+            } else if (s < 1.53f) {              /* the right wall: feet on it, head up, gathered, the kick */
+                tom_draw_rot(x, y, s < 1.48f ? TOM_L_TUCK : TOM_L_LAUNCH, 0, -90.0f);
+            } else if (s < 1.93f) {              /* the ceiling: upside down, a touch of the paws */
+                tom_draw_rot(x, y, TOM_L_TUCK, 0, 180.0f);
+            } else if (s < 2.35f) {              /* the left wall: feet on it, head down, gathered, the kick */
+                tom_draw_rot(x, y, s < 2.3f ? TOM_L_TUCK : TOM_L_LAUNCH, 0, 90.0f);
+            } else if (s < 2.94f) {              /* landed on the name: the forepaws take it, the rump comes down */
+                tom_draw_rot(x, y, TOM_L_LAND, 0, 0.0f);
+            } else {
+                const int blink = (s > 3.5f && s < 3.62f) || (s > 4.2f && s < 4.32f);
+                tom_draw_rot(x, y, blink ? TOM_L_BLINK : TOM_L_SIT, 0, 0.0f);   /* (on the name) */
+            }
         }
     }
-    if (t > 0.74f) {
-        cv_text(120 - text_w(&FONT_XS, "for Tom") / 2, 198, &FONT_XS, "for Tom", HORN);
-        cv_text(120 - text_w(&FONT_XS, "FM-1  1.5") / 2, 216, &FONT_XS, "FM-1  1.5", VIOLET);
+    if (t > 0.79f) {
+        /* (1.5.42) the dedication in the bold face, on its own dark plate (over the trail and the synth), the
+         * version under it */
+        const int32_t wt = text_w(&FONT_B, "for Tom"), wv = text_w(&FONT_XS, "FM-1  1.5");
+        cv_rect(120 - wt / 2 - 8, 197, wt + 16, 21, 0x0806);
+        cv_text(120 - wt / 2, 199, &FONT_B, "for Tom", IVORY);
+        cv_rect(120 - wv / 2 - 6, 220, wv + 12, 13, 0x0806);
+        cv_text(120 - wv / 2, 222, &FONT_XS, "FM-1  1.5", VIOLET);
     }
     cv_oy = 0;
     cv_blit(0, (uint32_t)by);
