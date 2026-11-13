@@ -95,7 +95,7 @@ Não sabe o que um botão faz? Segure-o por um segundo: aparece um cartão expli
 | Teclas | A escala. Cada tecla põe ou tira sua nota da escala; as teclas acendem para as notas que estão nela. Todas as oitavas de uma nota são a mesma tecla. A tônica fica, e a escala mantém pelo menos três notas. |
 | PLAY | Cresce / descansa. Descansando, os sons somem devagar e o reverb se apaga. Verde enquanto cresce. |
 | REC | **Freeze**: o acorde fica parado e o reverb soa sem fim. De novo: descongela. Nas páginas da fita: grava (veja [A fita](#s8)). |
-| EDIT | O próximo acorde, no começo do próximo compasso. Nas páginas da fita: um splice novo. |
+| EDIT | O próximo acorde, no começo do próximo compasso. Nas páginas da fita: um splice novo; segurado 1,5 s, corta o splice escolhido nos ataques. |
 | HOME | A página Cortex (a partitura). |
 | ENV · ARP · LFO | As Voices 1, 2 e 3. De novo: as páginas PATCH, OPERATOR e MOD da voz, e volta. |
 | SEQ | A fita: Tape. De novo: Gene, Deck, Tape Mod, Tape Mod 2, e dá a volta. |
@@ -184,11 +184,17 @@ FM (seis operadores, como um DX7) num de três **papéis** (Role), e qualquer vo
 - **Chord:** até quatro notas que respiram. Cada uma entra, fica e some no seu próprio ciclo (de tamanhos diferentes,
   como nos loops de fita de "2/1"), pegando sua nota do acorde ao começar, de modo que o acorde se forma e se desfaz
   em vez de ficar parado. De tempos em tempos (**Drift**) o acorde muda para outro da escala; as notas que o novo
-  acorde também tem ficam até o fim da respiração, as outras somem e respiram de novo nas notas novas.
+  acorde também tem ficam até o fim da respiração, as outras somem e respiram de novo nas notas novas. Com
+  **Evolve**, a mudança ganha uma direção sem virar regra: o acorde prefere o passo seguinte de uma cadência suave
+  (V→I, IV→I, ii→V, vi→IV), volta mais à tônica quanto mais tempo passou longe dela, e nos momentos de tensão do arco
+  escolhe graus de mais tensão. Em 0, o passeio é o de antes, sem direção.
 - **Loops:** quatro loops de fita de 13, 17, 23 e 29 passos. Cada um guarda algumas notas, então os loops deslizam
   uns contra os outros e a melodia nunca se repete igual. Cada loop é um tom diferente do patch, e de vez em quando
-  uma nota soa com sua oitava.
-- **Bass:** a tônica do acorde, grave e suave, deslizando; às vezes se apoia na quinta.
+  uma nota soa com sua oitava. No fim de uma volta, com **Evolve**, o loop pode guardar seu desenho e transformá-lo:
+  o mesmo motivo um grau acima ou abaixo, tocado ao contrário, ou espelhado em torno do seu centro. O número de
+  notas e a escala ficam; só o desenho muda.
+- **Bass:** a tônica do acorde, grave e suave, deslizando; às vezes se apoia na quinta. Com **Evolve**, de vez em
+  quando outra nota do acorde (a terça, a quinta) entra como nota de passagem, e o baixo volta à fundamental.
 
 Por padrão a Voice 1 é um acorde, a Voice 2 os loops e a Voice 3 o baixo, como eram o pad, os sinos e o baixo do
 AMB-1.
@@ -203,6 +209,9 @@ Por cima de tudo:
   baixo, mais reverb) e cheio. **Motion** define o quanto ele oscila, e o quanto a afinação, o pan e as cabeças do eco
   passeiam.
 - **Pausas:** com **Evolve** alto, as vozes tomam fôlego: um baixo pula um acorde, um loop fica quieto por uma volta.
+- **Swing:** o balanço (o parâmetro 26; MIDI CC 46 no canal 16). De 50% (reto) a 75%, ele atrasa o segundo de cada
+  par de passos nas grades de semicolcheia e colcheia: os loops e o baixo, não a música de um arquivo. No valor 0
+  (50%), tudo fica reto, como antes.
 
 ---
 
@@ -238,9 +247,14 @@ voz tem mais páginas próprias (ENV, ARP ou LFO de novo).
 
 - **Tempo:** 30 a 240 (também HOME + SELECT, de qualquer página; até a 1.5.20, 120).
 - **Evolve:** o quanto o CORTEX é inquieto. Em 0 os loops se repetem exatamente; mais alto, notas mudam ou trocam de
-  lugar no fim de uma volta, os padrões do pulso giram, e as vozes tomam fôlego.
+  lugar no fim de uma volta, o motivo de um loop é transposto, invertido ou espelhado, o acorde segue uma direção
+  harmônica, o baixo toma notas de passagem, e as vozes tomam fôlego.
 - **Motion:** o quanto o arco oscila, e o quanto a afinação, o pan e o eco passeiam.
-- **Drift:** quanto tempo dura um acorde antes de mudar, de 20 segundos a 5 minutos. EDIT muda agora.
+- **Drift:** quanto tempo dura um acorde antes de mudar, de 2 segundos a 5 minutos. EDIT muda agora.
+- **Sequence (SELECT):** Motif, Rotation, Accent e Passing afinam a geração. **HOME de novo, na página Sequence,
+  abre a Seq 2**, com o **Swing** (50% reto a 75%), que atrasa o segundo de cada par de semicolcheias ou colcheias
+  nos loops e no baixo. As rotas de **Expression** também podem mirar **Density**, **Evolve** e **Drift** do
+  sequenciador, por voz; com Amount em 0 tudo fica como nos knobs.
 
 ### ENV · ARP · LFO: Voices 1, 2, 3
 
@@ -323,7 +337,7 @@ do Osc (0: na horizontal).
 
 **Looks** (1.5.20): nas páginas do video synth, o **PRESETS** escolhe um look em vez de uma peça (a peça e a música
 continuam): Default, Tunnel, LZX Grid, Hydra, Kaleido, Datamosh, Rutt-Etra, Calm, Vectors, Prism, Starfield, Broken
-TV. Um look é um template: ele volta todos os ajustes de vídeo ao início e aplica os seus (o Visual, o Osc, o
+TV, Aurora, Mandala, Phosphor, Moire, Wormhole, VHS, Synthwave, Ink. Um look é um template: ele volta todos os ajustes de vídeo ao início e aplica os seus (o Visual, o Osc, o
 feedback, o transform, as cores, os glitches), um ponto de partida para depois girar os knobs. Bars, Delay e os quatro
 slots do React ficam como você deixou. O Tom diz o que é cada look. Segure SEL um segundo para voltar ao que era antes.
 Fica salvo com a peça, como qualquer ajuste.
@@ -349,8 +363,63 @@ GLO na Setup abre a **MIDI**, depois a **Song**, e volta à Setup.
 
 ### ENV, ARP ou LFO de novo: as páginas de uma voz
 
-O patch de cada voz é uma voz de DX7 de seis operadores, editada como um DX7 edita, com cinco moduladores
-generativos. As páginas vêm em três grupos: aperte o botão da voz de novo para **PATCH**, de novo para **OPERATOR**,
+O patch de cada voz é uma voz de DX7 de seis operadores, com cinco moduladores e uma matriz de interpretação musical. Na tela principal da voz, Preset fica no KNOB 3. O botão da voz passa pelos grupos **Expression → Gen → Patch → Operator → Mod → tela principal**. O SELECT percorre as subpáginas. Octave fica no KNOB 1 da página Patch.
+
+**GENERATIVIDADE DE PARÂMETROS**
+
+O segundo toque no botão da voz abre Expression, separada do gerador de patches Gen. O monitor mostra Energy, Link, Open e Breath, a posição da frase e quantas rotas estão ativas. São valores do motor de áudio, inclusive durante notas sustentadas; Amount em zero desliga a interpretação, sem desligar o morph independente.
+
+| Página | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
+| --- | --- | --- | --- | --- |
+| Expression | Amount | Style | Phrase | Variation |
+| Gesture | Memory | Link | — | — |
+| Morph | Source B | Morph | Kind | Match (leitura) |
+| Matrix | Route (1–8) | Source | Target | Depth |
+| Matrix 2 | Route | When | Curve | Smooth |
+| Matrix 3 | Route | Minimum | Maximum | — |
+
+A matriz desenha **fonte → destino**, destaca a rota entre as oito e mostra a contribuição assinada atual. Depth negativo inverte a contribuição; Minimum/Maximum limitam a janela da fonte, sem reescrever o preset. Note captura cada ataque; Phrase mantém o valor durante a frase; Live acompanha Level, Cutoff e Index continuamente. Envelopes, Gate e Morph são aplicados no próximo ataque. Smooth indica o tempo aproximado de resposta; mesmo em 100 continua respondendo.
+
+Em Expression ou Gesture, **EDIT escolhe o próximo preset e REC o anterior**; o giro do **PRESET** percorre as
+receitas de roteamento (Flow, Slow Orbit e Living Touch). SEL mantido desfaz a última aplicação. Alterar os controles ou a matriz faz o nome virar Custom; ao salvar, os próprios valores são guardados por peça. Os presets substituem as oito rotas e a interpretação, preservando patch, afinação, filtro e os ajustes de morph A/B.
+
+| Preset | Intenção musical |
+| --- | --- |
+| Off | Interpretação desligada; útil para comparar com o som original. |
+| Glow | Abertura presa ao desenho da frase e à duração das notas, com brilho que responde à respiração. |
+| Shiver | Ataque e brilho reagindo a saltos e acentos: articulação frágil, quase falada. |
+| Tide | Vozes que cedem espaço e voltam juntas, com caudas que seguem o silêncio. |
+| Subtle | Pequenos movimentos de dinâmica e abertura, com pouca variação. |
+| Breath | Abertura acompanhando a respiração e articulação macia. |
+| Pluck | Ataque destacado, gate curto em trechos densos e brilho pelo acento. |
+| Legato | Ligação entre vozes e caudas mais longas. |
+| Cloud | Memória longa, movimento lento e controle de volume na densidade. |
+| CallResponse | Uma voz abre espaço quando as outras estão ativas. |
+| Sparse | Frases mais contidas, com gates e dinâmica reduzidos em trechos densos. |
+| Swell | Crescimento de volume e abertura ao longo dos gestos. |
+| Pulse | Dinâmica e brilho ligados ao acento, com articulação marcada. |
+| Flow | Energia e respiração movem motivo, rotação, diálogo e espaço, sem tocar nos knobs. |
+| Slow Orbit | Um LFO de oito compassos gira a rotação do sequenciador. |
+| Living Touch | Um LFO de quatro compassos faz a variação expressiva respirar. |
+| Ratchet | Acento por semicolcheia (LFO sample & hold) somado a notas de passagem no baixo. |
+| Swing Tide | O swing respira em quatro compassos, e o silêncio adia as notas. |
+| Bicker | O comprimento das frases muda a cada dois compassos; as vozes se interrompem. |
+| Compass | Um triângulo de dois compassos abre e fecha a extensão do loop, em oitavas. |
+
+As sete últimas são receitas de **roteamento**: o **PRESET**, nas páginas Expression ou Gesture, passa de uma a
+outra, enquanto EDIT e REC continuam escolhendo os presets de interpretação. Todas usam profundidades
+controladas e suavização alta, e cada uma ocupa o quinto modulador da voz com um alvo próprio do sequenciador
+(Rotation, Accent, Swing, Length, Range) ou com a variação expressiva, para o sequenciador se mover sem
+saturar os parâmetros. Drift e Swing são alvos globais: valem a média das três vozes.
+
+Flow, Slow Orbit e Living Touch são receitas de **roteamento**: o **PRESET**, nas páginas Expression ou Gesture,
+passa de uma a outra, enquanto EDIT e REC continuam escolhendo os presets de interpretação. Elas usam
+profundidades baixas e suavização alta, e Slow Orbit e Living Touch ocupam o quinto modulador da voz, para o
+sequenciador se mover sem saturar os parâmetros.
+
+Cutoff precisa do filtro da voz ligado para ser ouvido. Gate controla a duração das notas geradas; nas teclas tocadas, soltar a tecla continua determinando o fim da nota. Os presets não ligam o filtro automaticamente.
+
+**PATCH**, de novo para **OPERATOR**,
 de novo para **MOD**, e mais uma vez para voltar. O SELECT passa pelas páginas do grupo; cada grupo volta na página
 em que foi deixado. O alto da tela diz qual voz e qual página. Cada peça guarda tudo isso.
 
@@ -358,7 +427,7 @@ em que foi deixado. O alto da tela diz qual voz e qual página. Cada peça guard
 
 | Página | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
 | --- | --- | --- | --- | --- |
-| Patch | Patch | Algorithm (1–32) | Feedback (0–7) | Index (±24 dB nos moduladores) |
+| Patch | Octave | Algorithm (1–32) | Feedback (0–7) | Index (±24 dB nos moduladores) |
 | Play | Envelope (AMB, Patch, ADSR) | Gate (5–100 %) | Pace | Glide |
 | ADSR | Attack (1 ms – 8,7 s) | Decay | Sustain | Release (3 ms – 13 s) |
 | Filter | Filter (Off, On) | Cutoff (30 Hz – 18 kHz) | Resonance | Env |
@@ -393,8 +462,10 @@ em que foi deixado. O alto da tela diz qual voz e qual página. Cada peça guard
   dos transistores. **Filter** Off (o padrão: a voz como antes, sem gastar nada) ou On; **Cutoff**, de 30 Hz a
   18 kHz, seguindo metade da altura da nota (uma oitava acima, meia oitava mais brilhante); **Resonance**, um pico
   no corte, que assobia sozinho perto de 100; **Env**, o corte aberto pelo volume da nota (o envelope dos carriers:
-  o do ADSR ou o do patch), até seis oitavas, fechando enquanto ela some. Ligado, ele gasta CPU (veja o CPU da página
-  Setup): com as três vozes filtradas e o FM-1 ocupado, ele toca menos notas, como faz com qualquer carga.
+  o do ADSR ou o do patch), até seis oitavas, fechando enquanto ela some. O nível acompanha: aberto, o filtro é
+  transparente (mesmo com o patch alto) e o pico da ressonância não tira o corpo da nota; só um Cutoff abaixo da
+  própria nota a deixa mais baixa, que é o filtro trabalhando. Ligado, ele gasta CPU (veja o CPU da página Setup):
+  com as três vozes filtradas e o FM-1 ocupado, ele toca menos notas, como faz com qualquer carga.
 
 ![A página Filter da Voice 1: FILTER On, CUTOFF 1.4 kHz, RESONANCE 25, ENV 30](img/screen-filter.png "A página Filter")
 
@@ -472,6 +543,10 @@ gravados e os splices.
   começa o próximo; **REC** para.
 - **REC** faz overdub no splice escolhido no Organize, dando voltas nele, som sobre som (**SOS**: quanto do que havia
   fica; 0 substitui). REC de novo para.
+- **EDIT segurado** 1,5 s, com a fita parada, corta o splice escolhido no Organize nos seus **ataques**: ele vira até
+  oito splices, no próprio lugar, sem mexer no áudio gravado (só os limites mudam). Sem ataques claros, o splice é
+  dividido em quatro partes iguais (ou menos, se for curto demais). Um splice curto demais para duas partes, ou uma
+  fita já com oito splices, não é cortado. As teclas dos splices novos são estudadas de novo.
 - **SAVE** guarda as peças e a fita; a tela mostra o progresso, e a fita volta depois de reiniciar. **REC segurado**
   1,5 s apaga a fita (salve depois para apagar também a salva).
 - Um splice não pode ser apagado sozinho: faça overdub nele com SOS 0, ou apague a fita.
@@ -488,6 +563,10 @@ dois a quatro sobrepostos (55–100), espalhados no estéreo (acima de 75), uma 
 (acima de 85). **Tone** escurece (de 1,5 kHz a aberto).
 
 ![A página Gene: GENE 100, SLIDE 0, MORPH 45, ORGANIZE 2](img/screen-gene.png "A página Gene")
+
+**Tocar só a fita:** nas páginas da fita, **PLAY** liga e desliga a fita sozinha: o CORTEX continua descansando,
+sem as vozes gastarem CPU, e o que se ouve é só a fita (com o espaço, se o FX estiver em After). Fora dessas
+páginas, PLAY continua sendo o do CORTEX.
 
 **Dry/Wet:** o CORTEX contra a fita: Dry, só o CORTEX; 50, os dois cheios; Wet, só a fita (o CORTEX continua sendo
 gravado, sem ser ouvido, como um envio).
@@ -645,7 +724,7 @@ Os valores mostrados são os da Hypnagogia, a primeira peça; cada peça tem os 
 | Cortex | Tempo | 30–240 | 58 |
 | Cortex | Evolve | 0–100 | 40 |
 | Cortex | Motion | 0–100 | 60 |
-| Cortex | Drift | 20 s – 5:00 | 50 (1:17) |
+| Cortex | Drift | 2 s – 5:00 | 50 (1:17) |
 | Voice 1, 2, 3 | Level | 0–100 | 60, 50, 35 |
 | Voice 1, 2, 3 | Role | Chord, Loops, Bass | Chord, Loops, Bass |
 | Voice 1, 2, 3 | Octave | −2 – +2 | 0 |
@@ -710,3 +789,45 @@ compartilhe também o código dos arquivos modificados. O código vem junto (`co
 
 M-VAVE, FM-1, Yamaha, DX7, Make Noise, Morphagene e TASCAM são marcas de seus donos. O CORTEX não tem ligação com
 nenhum deles, com Brian Eno nem com a Hügelton Instruments.
+
+
+### Navigation update / Atualização da navegação
+
+CORTEX → Sequence → Voice 1 → Voice 2 → Voice 3 → Expression → Tape (six pages) → Space → Setup → MIDI → Song → Visual.
+
+Expression contains Expression, Gesture, Morph, Matrix (three pages), and Mod (three pages).
+Use SELECT to move through them; ENV / ARP / LFO select voice 1 / 2 / 3 while in this area.
+Voice buttons elsewhere open the voice, then Gen, Patch and Operator. FX still opens Space; SEQ opens Tape.
+
+Na área Expression, SELECT percorre expressão, gesto, morph, matriz e modulação.
+ENV / ARP / LFO escolhem a voz 1 / 2 / 3. Os controles continuam independentes por voz.
+
+
+Density / Duration: Density now follows notes rendered by each layer (four notes = 100%, including keyboard notes and release tails). Duration follows their mean sounded age (four seconds = 100%). Both are zero during silence; the Density and Gate knobs no longer act as these matrix sources.
+
+
+### Sequencer and independent tape transport
+
+Order: CORTEX → Sequence → Voice 1 → Voice 2 → Voice 3 → Expression → Tape → Space → Setup/MIDI.
+Role, Pace, Density and Gate remain on the voices. Sequence has four new independent controls:
+Motif: chance of a structured transformation at the end of a loop, scaled by Evolve.
+Rotation: weight of cyclic rhythm rotation among motif transformations.
+Accent: weight of accent redistribution among motif transformations.
+Passing: chance of a bass chord tone between root notes, scaled by Evolve.
+Evolve 0 disables these generative transformations. Notes remain in the scale; motif operations preserve note count.
+PLAY on Tape controls only tape playback; PLAY elsewhere controls only the sequencer. Each can run while the other is stopped.
+
+
+Sequence modulation (1.5.28): LFO and expression targets now include Density, Evolve, Drift, Motif, Rotation, Accent, Passing and Swing. Existing destination IDs are preserved. Each layer's routes sum as signed offsets around the saved knob, bounded to the valid control range. Global Drift and Swing average the three layers. Modulation does not change the scale, root, tempo or saved parameters. Use Smooth in the route/LFO to glide the control. Motifs and rotations are sampled at loop boundaries, passing at bass steps, Swing at offbeats and Drift at the next chord timer reset. Expression Amount zero bypasses its routes; LFOs remain independent. Saved projects from formats 30/31 retain their original four-bit matrix target encoding during migration to format 32.
+
+
+### Rhythm and question/answer phrases
+
+HOME within Sequence cycles Sequence → Seq 2 → Phrase → Sequence.
+Seq 2: Swing, Humanize (0..40 ms, also capped to one fifth of a sixteenth), Space (0..80% skipped loop attacks, motif kept), Range (one to four octaves of scale steps per loop).
+Phrase: Dialogue (probability of using a coordinated phrase), Length (two to eight loop passes, captured at phrase start), Tension (chance of transforming the penultimate pass), Resolve (probability of pulling answer notes toward the current chord).
+Opening passes preserve the motif. The penultimate pass creates a question; the last restores the original shape and favors chord tones. Dialogue and Evolve must be above zero. Each unequal loop has its own phrase cycle. These controls have LFO and expression destinations with signed bounded offsets. None changes the master clock or the scale.
+
+HOME em Sequence alterna Sequence → Seq 2 → Phrase. Humanize desloca o ataque sem alterar o relógio; Space cria pausas sem apagar o motivo; Range limita a região melódica. Em Phrase, Dialogue inicia frases, Length escolhe de duas a oito voltas, Tension controla a pergunta e Resolve favorece notas do acorde na resposta. As voltas iniciais preservam o motivo e a última recupera a forma original.
+
+Drift: nominal minimum is now 2 seconds; values from 25 upward keep their previous duration. Phrase jitter and Drift modulation can vary the actual chord duration.

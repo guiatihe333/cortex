@@ -62,7 +62,9 @@ enum {
     P_SONGP = P_TMOD + 5 * 6,                         /* then the song's (SG_*) */
     P_SETP = P_SONGP + 4,                             /* then MIDI's and Key sync (ST_*) */
     P_VCF = P_SETP + 64,                              /* then each voice's filter: EN_NVOX of VF_N (P_VF, 1.5.20) */
-    P_NPARAMS = P_VCF + 3 * 4
+    P_EXPR = P_VCF + 3 * 4,
+    P_SEQ = P_EXPR + 3 * 73,
+    P_SEQ_MOTIF = P_SEQ, P_SEQ_ROTATE, P_SEQ_ACCENT, P_SEQ_PASS, P_SEQ_HUMAN, P_SEQ_SPACE, P_SEQ_RANGE, P_SEQ_DIALOGUE, P_SEQ_LENGTH, P_SEQ_TENSION, P_SEQ_RESOLVE, P_NPARAMS
 };
 /* the three FM6 voices, each with its own patch (en_patch: a DX7 voice, edited operator by operator), its own FM
  * index and five generative modulators */
@@ -106,6 +108,34 @@ enum { ENV_AMB, ENV_PATCH, ENV_ADSR, EN_NENV };
  * following the note), RESONANCE (to self-oscillation), ENV (the cutoff opened by the note's loudness, up to 6 octaves) */
 enum { VF_ON, VF_CUT, VF_RES, VF_ENV, VF_N };
 #define P_VF(v, k) (P_VCF + (v) * VF_N + (k))
+/* Interpretation: per-voice controls and eight compact matrix routes. All OFF
+ * through EX_AMOUNT=0; morph is independent and captured at the next attack. */
+#define EN_XROUTES 8
+#define EN_XSTRIDE 73
+enum { EX_AMOUNT, EX_STYLE, EX_PHRASE, EX_VARIATION, EX_MEMORY, EX_LINK,
+       EX_MORPH_SRC, EX_MORPH, EX_MORPH_KIND, EX_N };
+enum { XR_SOURCE, XR_TARGET, XR_DEPTH, XR_WHEN, XR_CURVE, XR_SMOOTH, XR_MIN, XR_MAX, XR_N };
+#define P_EX(v,k) (P_EXPR + (v) * EN_XSTRIDE + (k))
+#define P_XR(v,r,k) P_EX(v, EX_N + (r) * XR_N + (k))
+enum { XS_OFF, XS_ENERGY, XS_LINK, XS_OPEN, XS_BREATH, XS_DENSITY, XS_DURATION,
+       XS_ACCENT, XS_ARCH, XS_SILENCE, XS_LEAP, XS_REGISTER, XS_OTHER, XS_MEMORY, XS_N };
+enum { XT_OFF, XT_ATTACK, XT_DECAY, XT_SUSTAIN, XT_RELEASE, XT_GATE, XT_LEVEL, XT_CUTOFF, XT_INDEX, XT_MORPH,
+       XT_DENSITY, XT_EVOLVE, XT_DRIFT, XT_MOTIF, XT_ROTATION, XT_ACCENT, XT_PASSING, XT_SWING, XT_HUMAN, XT_SPACE, XT_RANGE, XT_DIALOGUE, XT_LENGTH, XT_TENSION, XT_RESOLVE, XT_N };   /* (1.5.26: the last three aim at the sequencer) */
+enum { XW_NOTE, XW_PHRASE, XW_LIVE, XW_N };
+enum { XC_LINEAR, XC_SOFT, XC_STEP, XC_CENTER, XC_N };
+enum { XSTYLE_NATURAL, XSTYLE_BREATH, XSTYLE_PLUCK, XSTYLE_LEGATO, XSTYLE_CLOUD, XSTYLE_N };
+enum { XM_COLOR, XM_COMPATIBLE, XM_N };
+_Static_assert(EX_N + EN_XROUTES * XR_N == EN_XSTRIDE, "expression layout");
+/* B is staged by the UI/loader, then copied only by the audio command queue. */
+void en_morph_load(int voice, const uint8_t *patch);
+int en_morph_compatible(const uint8_t *a, const uint8_t *b);
+void en_morph_patch(const uint8_t *a, const uint8_t *b, int amount, int kind, uint8_t *out);
+/* Read-only audio snapshots, 0..100: energy/link/open/breath, for UI meters. */
+extern volatile uint8_t en_expression[EN_NVOX][4];
+/* Latest applied route contributions (signed percent) and phrase position, 0..100. */
+extern volatile int16_t en_expr_route[EN_NVOX][EN_XROUTES];
+extern volatile uint8_t en_expr_phase[EN_NVOX];
+
 enum { ROLE_CHORD, ROLE_LOOPS, ROLE_BASS, EN_NROLE };
 /* the settings of before each voice had its own (Swell, Density, Bell oct, Bass oct, Glide, Fifth: still in the table,
  * unshown) into each voice's (a piece's recipe, a project of an older format) */
@@ -177,7 +207,7 @@ enum { ST_CH1, ST_CH2, ST_CH3, ST_NOTES, ST_KSYNC, ST_VMODE, ST_VPAL, ST_VTRAIL,
 #define EN_AR_NTGT24 (ST_VKEY - ST_VMODE + 2)     /* (format 24's All) */
 #define P_ST(k) (P_SETP + ST_##k)
 _Static_assert(P_SONGP == P_TMOD + EN_NTMOD * TM_N && P_SETP == P_SONGP + SG_N && P_VCF == P_SETP + ST_N &&
-                   P_NPARAMS == P_VCF + EN_NVOX * VF_N,
+                   P_EXPR == P_VCF + EN_NVOX * VF_N && P_SEQ == P_EXPR + EN_NVOX * EN_XSTRIDE && P_NPARAMS == P_SEQ + 11,
                "the reel's modulators, the song's, MIDI's");
 /* the splices' keys (reel.c): each studied once recorded (en_reel_study, from the UI, a frame of it a call: the splice
  * studied, -1 none to study), its 12 pitch classes' weights (en_reel_keyvec: 0 not known yet, or silent); or set by
@@ -197,7 +227,7 @@ void en_detune(int dcents);
 extern volatile float en_bands[EN_NBAND];
 extern volatile int8_t en_wave[EN_WAVE_N];
 extern volatile uint32_t en_wave_w;                       /* the garden's tuning moved by dcents tenths of a cent (Key sync) */
-enum { EN_REEL_NEW = 1, EN_REEL_DUB, EN_REEL_ERASE, EN_REEL_TAKE };
+enum { EN_REEL_NEW = 1, EN_REEL_DUB, EN_REEL_ERASE, EN_REEL_TAKE, EN_REEL_CHOP };
 /* a reel from a file (FITA.html): its blocks and their states written in place (en_reel_mem 1, 3) while it is erased,
  * then its splices (its 80-byte metadata, as en_reel_mem 0 has it) taken at once */
 void en_reel_take(const void *meta);
@@ -205,6 +235,10 @@ void en_reel_take(const void *meta);
  * the reel's SOURCE USB records it */
 void en_usb(const int16_t *mono, uint32_t n);
 void en_reel(int op);                             /* a new splice at the end; overdub the one picked (again: stop); erase */
+/* the splice cut at its attacks (EDIT held on the tape's pages): a frame a call (en_reel_chop_step), the audio left as
+ * it is. 0 started; -1 no splice, -2 too short, -3 recording, -4 already cutting, -5 the reel is full */
+int en_reel_chop(int spl);
+int en_reel_chop_step(void);                      /* 1 working, 0 cut (the engine does it), -1 idle, -2 too short */
 extern volatile uint8_t en_reel_state, en_reel_nspl;   /* 0 resting, 1 recording a new splice, 2 overdubbing; splices */
 extern volatile uint32_t en_reel_len, en_reel_w;  /* samples recorded (22.05 kHz, of 260096); where it records */
 extern volatile float en_reel_pos;                /* the cursor in the splice playing, 0..1 */
@@ -253,6 +287,7 @@ void en_init(void);
 void en_set(int param, int value);
 void en_pool(uint32_t pool);                   /* the scale, relative to the root (bit 0 always set) */
 void en_play(int on);                          /* the garden grows / rests (the tails ring on) */
+void en_tape(int on);                          /* the reel's own transport: the tape alone, the garden left resting */
 void en_next(void);                            /* the next chord: on the next bar (now while resting) */
 void en_freeze(int on);
 void en_seed(uint32_t s);                      /* stir some entropy into the generators */
@@ -270,6 +305,7 @@ void en_midi_out(uint32_t st, uint32_t d1, uint32_t d2);
 
 /* state for the screen (UI) */
 extern volatile uint8_t en_playing, en_frozen, en_ext;
+extern volatile uint8_t en_tape_playing;        /* the reel plays while the garden rests (PLAY on its pages) */
 extern volatile uint8_t en_chord[EN_NPAD];     /* the chord's notes (MIDI), pad voices' targets */
 extern volatile uint8_t en_chord_root;         /* the chord's root, MIDI pitch class 0..11 */
 extern volatile uint8_t en_chord_n;            /* its distinct tones: 3 or 4 */
@@ -304,7 +340,9 @@ enum { MOD_TIMBRE, MOD_RATIO, MOD_METAL, MOD_FEEDBACK, MOD_DECAY, MOD_PITCH, MOD
 /* then each operator's own, MOD_OP + (n - 1) * OPT_N + kind for operator n (1..6): */
 enum { OPT_LEVEL, OPT_RATIO, OPT_FINE, OPT_ATK, OPT_DEC, OPT_SUS, OPT_REL, OPT_N };
 #define MOD_MSLOT (MOD_OP + 6 * OPT_N)            /* then the voice's own modulators: M1..M5's depth, M1..M5's rate */
-#define EN_NMODDEST (MOD_MSLOT + 2 * 5)
+#define MOD_SEQ (MOD_MSLOT + 2 * 5)
+#define MOD_EXPR (MOD_SEQ + 15)
+#define EN_NMODDEST (MOD_EXPR + 2)
 /* a modulator's target as its setting has it: 0 Off (the default), then 1 + one of the EN_NMODDEST (the voices') or of
  * the EN_NTMDEST (the reel's) */
 #define EN_MOD_OFF 0

@@ -85,6 +85,21 @@ static const en_param_t PARAMS[P_NPARAMS] = {
 #define VF_PARAMS(w) {w " filter", 0, 1, 0}, {w " cutoff", 0, 100, 60}, {w " resonance", 0, 100, 25}, {w " f.env", 0, 100, 30}
     VF_PARAMS("V1"), VF_PARAMS("V2"), VF_PARAMS("V3"),
 #undef VF_PARAMS
+#define XR_PARAMS(w, n) {w " r" n " source", 0, XS_N - 1, 0}, {w " r" n " target", 0, XT_N - 1, 0}, \
+    {w " r" n " depth", -100, 100, 0}, {w " r" n " when", 0, XW_N - 1, XW_NOTE}, \
+    {w " r" n " curve", 0, XC_N - 1, XC_LINEAR}, {w " r" n " smooth", 0, 100, 0}, \
+    {w " r" n " min", 0, 100, 0}, {w " r" n " max", 0, 100, 100}
+#define EX_PARAMS(w) {w " expr", 0, 100, 0}, {w " style", 0, XSTYLE_N - 1, XSTYLE_NATURAL}, \
+    {w " phrase", 0, 100, 50}, {w " variation", 0, 100, 30}, {w " memory", 0, 100, 40}, {w " link", 0, 100, 50}, \
+    {w " morph src", 0, EN_NSRC - 1, 0}, {w " morph", 0, 100, 0}, {w " morph kind", 0, XM_N - 1, XM_COLOR}, \
+    XR_PARAMS(w, "1"), XR_PARAMS(w, "2"), XR_PARAMS(w, "3"), XR_PARAMS(w, "4"), \
+    XR_PARAMS(w, "5"), XR_PARAMS(w, "6"), XR_PARAMS(w, "7"), XR_PARAMS(w, "8")
+    EX_PARAMS("V1"), EX_PARAMS("V2"), EX_PARAMS("V3"),
+    {"Motif", 0, 100, 35}, {"Rotation", 0, 100, 25}, {"Accent", 0, 100, 25}, {"Passing", 0, 100, 22},
+    {"Humanize", 0, 100, 20}, {"Space", 0, 100, 0}, {"Range", 0, 100, 100},
+    {"Dialogue", 0, 100, 0}, {"Length", 0, 100, 20}, {"Tension", 0, 100, 40}, {"Resolve", 0, 100, 70},
+#undef EX_PARAMS
+#undef XR_PARAMS
 #undef VOX_PARAMS
 #undef MS_PARAMS
 };
@@ -137,7 +152,14 @@ static char *cat_word(char *b, const char *w)
 }
 void en_moddest_text(int d, char *b)            /* (M1..M5 depth, rate: the voice's own modulators) */
 {
-    if (d >= MOD_MSLOT && d < EN_NMODDEST) {
+    if (d >= MOD_EXPR && d < EN_NMODDEST) {
+        copy9(d == MOD_EXPR ? "ExprAmt" : "ExprVar",b); return;
+    }
+    if (d >= MOD_SEQ && d < MOD_EXPR) {
+        static const char *const names[15] = {"Density", "Evolve", "Drift", "Motif", "Rotation", "Accent", "Passing", "Swing", "Humanize", "Space", "Range", "Dialogue", "Length", "Tension", "Resolve"};
+        copy9(names[d - MOD_SEQ], b); return;
+    }
+    if (d >= MOD_MSLOT && d < MOD_SEQ) {
         b[0] = 'M';
         b[1] = (char)('1' + (d - MOD_MSLOT) % 5);
         copy9(d - MOD_MSLOT < 5 ? " depth" : " rate", b + 2);
@@ -269,7 +291,7 @@ static char *itoa_s(int v, char *b)
     return b;
 }
 
-static float drift_secs(int v) { return 20.0f * fm_exp2f((float)v * 0.039069f); }   /* 20 s .. 5 min */
+static float drift_secs(int v) { return v < 25 ? 2.0f * fm_exp2f((float)v * 0.17194612f) : 20.0f * fm_exp2f((float)v * 0.039069f); }   /* 2 s .. 5 min; preserve existing values from 25 upward */
 static float mod_secs(int v) { return 60.0f * fm_exp2f((float)v * -0.09f); }         /* 60 s .. 0.12 s */
 static float fade_secs(int v) { return 8.0f * (float)(v * v) * 0.0001f; }            /* 0 .. 8 s */
 static float smooth_secs(int v) { return 0.002f + 0.498f * (float)(v * v) * 0.0001f; }   /* 2 ms .. 0.5 s */
@@ -457,6 +479,78 @@ void en_param_text(int i, int v, char *b)
         s = EN_MODE_NAME[(unsigned)v < EN_NMODES ? v : 0];
     else if (i == P_ROOT)
         s = EN_NOTE_NAME[(unsigned)v < 12u ? v : 0];
+    else if (i >= P_EXPR && i < P_SEQ) {
+        const int off = (i - P_EXPR) % EN_XSTRIDE;
+        if (off == EX_STYLE) {
+            static const char *const XSTYLE_NAME[XSTYLE_N] = {"Natural", "Breath", "Pluck", "Legato", "Cloud"};
+            s = XSTYLE_NAME[(unsigned)v < XSTYLE_N ? v : 0];
+        } else if (off == EX_PHRASE) {
+            b = itoa_s(4 + v / 12, b);
+            *b++ = ' '; *b++ = 'n'; *b++ = 'o'; *b++ = 't'; *b++ = 'e'; *b++ = 's'; *b = 0;
+            return;
+        } else if (off == EX_MORPH_KIND) {
+            static const char *const XM_NAME[XM_N] = {"Color", "Compat"};
+            s = XM_NAME[(unsigned)v < XM_N ? v : 0];
+        } else if (off == EX_MORPH_SRC) {
+            if ((unsigned)v < EN_NFACT) {
+                s = PATCH_NAME[v];
+            } else {
+                v -= EN_NFACT;
+                *b++ = 'B';
+                *b++ = (char)('0' + (v / 32 + 1) / 10);
+                *b++ = (char)('0' + (v / 32 + 1) % 10);
+                *b++ = '-';
+                *b++ = (char)('0' + (v % 32 + 1) / 10);
+                *b++ = (char)('0' + (v % 32 + 1) % 10);
+                *b = 0;
+                return;
+            }
+        } else if (off >= EX_N) {
+            const int rk = (off - EX_N) % XR_N;
+            if (rk == XR_SOURCE) {
+                static const char *const XS_NAME[XS_N] = {
+                    "Off", "Energy", "Link", "Open", "Breath", "Density", "Duration",
+                    "Accent", "Arch", "Silence", "Leap", "Register", "Other", "Memory"
+                };
+                s = XS_NAME[(unsigned)v < XS_N ? v : 0];
+            } else if (rk == XR_TARGET) {
+                static const char *const XT_NAME[XT_N] = {
+                    "Off", "Attack", "Decay", "Sustain", "Release", "Gate", "Level", "Cutoff", "Index", "Morph",
+                    "Density", "Evolve", "Drift", "Motif", "Rotation", "Accent", "Passing", "Swing", "Humanize", "Space", "Range", "Dialogue", "Length", "Tension", "Resolve"
+                };
+                s = XT_NAME[(unsigned)v < XT_N ? v : 0];
+            } else if (rk == XR_WHEN) {
+                static const char *const XW_NAME[XW_N] = {"Note", "Phrase", "Live"};
+                s = XW_NAME[(unsigned)v < XW_N ? v : 0];
+            } else if (rk == XR_CURVE) {
+                static const char *const XC_NAME[XC_N] = {"Linear", "Soft", "Step", "Center"};
+                s = XC_NAME[(unsigned)v < XC_N ? v : 0];
+            } else if (rk == XR_DEPTH) {
+                if (v > 0)
+                    *b++ = '+';
+                b = itoa_s(v, b);
+                *b++ = '%';
+                *b = 0;
+                return;
+            } else if (rk == XR_SMOOTH) {
+                b = itoa_s(v ? (int)(smooth_secs(v) * 1000.0f + 0.5f) : 0, b);
+                *b++ = 'm';
+                *b++ = 's';
+                *b = 0;
+                return;
+            } else if (rk == XR_MIN || rk == XR_MAX) {
+                b = itoa_s(v, b);
+                *b++ = '%';
+                *b = 0;
+                return;
+            }
+        } else if (off == EX_MORPH || off == EX_AMOUNT || off == EX_VARIATION || off == EX_MEMORY || off == EX_LINK) {
+            b = itoa_s(v, b);
+            *b++ = '%';
+            *b = 0;
+            return;
+        }
+    }
     if (s) {
         copy9(s, b);
         return;
@@ -467,11 +561,11 @@ void en_param_text(int i, int v, char *b)
         ms_text((i - P_PLAY) % PL_N == PL_A ? ADSR_ATK_MS[x] : ADSR_FALL_MS[x], b);
         return;
     }
-    if (i >= P_VCF && i < P_NPARAMS && (i - P_VCF) % VF_N == VF_ON) {
+    if (i >= P_VCF && i < P_EXPR && (i - P_VCF) % VF_N == VF_ON) {
         copy9(ONOFF[v ? 1 : 0], b);
         return;
     }
-    if (i >= P_VCF && i < P_NPARAMS && (i - P_VCF) % VF_N == VF_CUT) {   /* "440 Hz", "2.4 kHz" */
+    if (i >= P_VCF && i < P_EXPR && (i - P_VCF) % VF_N == VF_CUT) {   /* "440 Hz", "2.4 kHz" */
         const int hz = (int)(vcf_hz(v) + 0.5f);
         if (hz < 1000) {
             b = itoa_s(hz, b);
@@ -485,6 +579,12 @@ void en_param_text(int i, int v, char *b)
         *b++ = 'z';
         *b = 0;
         return;
+    }
+    if (i == P_SEQ_LENGTH || i == P_SEQ_RANGE) {
+        const char *unit = i == P_SEQ_LENGTH ? " loops" : " oct";
+        b = itoa_s(i == P_SEQ_LENGTH ? 2 + v*6/100 : 1 + v*3/100, b);
+        while (*unit) { *b++ = *unit++; }
+        *b = 0; return;
     }
     if (i == P_DRIFT) {
         int sec = (int)(drift_secs(v) + 0.5f);
@@ -731,8 +831,8 @@ const char *en_chord_name(const int *pcs, int n, char *buf)
 
 /* ------------------------------------------------------------ commands --- */
 enum { C_SET, C_POOL, C_PLAY, C_NEXT, C_FREEZE, C_SEED, C_PANIC, C_CLOCK, C_REGROW, C_PBYTE, C_PDONE, C_PLOAD,
-       C_REEL, C_KEY, C_SONG, C_DETUNE };
-_Static_assert(P_NPARAMS <= 512, "C_SET carries a parameter's index in 9 bits");
+       C_REEL, C_KEY, C_SONG, C_DETUNE, C_MLOAD, C_TAPE };
+_Static_assert(P_NPARAMS <= 1024, "C_SET carries a parameter's index in 10 bits");
 _Static_assert(FP_SIZE <= 256, "C_PBYTE carries a patch byte's offset in 8 bits");
 #define QN 1024u                              /* a piece (project_apply) posts every parameter and patch byte at once */
 static uint32_t q[QN];
@@ -742,13 +842,14 @@ static void post(uint32_t c, int a, int b)
     uint32_t w = q_w;
     if (w - q_r >= QN)
         return;                                   /* full: dropped (never, at the UI's rate) */
-    q[w % QN] = c << 25 | ((uint32_t)a & 0x1FFu) << 16 | ((uint32_t)b & 0xFFFFu);   /* (7, 9, 16 bits) */
+    q[w % QN] = c << 26 | ((uint32_t)a & 0x3FFu) << 16 | ((uint32_t)b & 0xFFFFu);   /* (6, 10, 16 bits) */
     BARRIER();
     q_w = w + 1;
 }
 void en_set(int p, int v) { post(C_SET, p, v); }
 void en_pool(uint32_t pool) { post(C_POOL, 0, (int)(pool & 0xFFFu)); }
 void en_play(int on) { post(C_PLAY, on, 0); }
+void en_tape(int on) { post(C_TAPE, on, 0); }
 void en_next(void) { post(C_NEXT, 0, 0); }
 void en_freeze(int on) { post(C_FREEZE, on, 0); }
 void en_seed(uint32_t s) { post(C_SEED, 0, (int)(s & 0xFFFFu)); }
@@ -778,6 +879,7 @@ static void reel_new(void);                      /* (reel.c) */
 static void reel_take(void);
 static void reel_dub(void);
 static void reel_erase(void);
+static void reel_chop_apply(void);
 static void reel_init(void);
 void en_patch_byte(int voice, int off, int v) { post(C_PBYTE, voice, off << 8 | (v & 0xFF)); }
 void en_patch_done(int voice, int fresh) { post(C_PDONE, voice, fresh); }
@@ -803,6 +905,7 @@ void en_patch_load(int voice, const uint8_t *p, int fresh)
 
 /* -------------------------------------------------------------- state --- */
 volatile uint8_t en_playing, en_frozen, en_ext;
+volatile uint8_t en_tape_playing;              /* the reel's own transport: it plays while the garden rests */
 volatile uint8_t en_chord[EN_NPAD], en_chord_root, en_chord_n;
 volatile float en_drift, en_pad_level, en_bass_level, en_tempo;
 volatile uint8_t en_loop_pos[EN_NLOOP];
@@ -816,6 +919,7 @@ volatile float en_pad_amp[EN_NPAD];
 static uint32_t pool = 0xAADu;                  /* Ionian until told */
 static int nsteps, steps[12];                   /* the scale */
 static int deg;                                 /* the chord's scale degree */
+static int since_home;                          /* chord changes since the tonic (the pull home grows) */
 static float tunefac = 1.0f;
 static uint32_t rng = 0x9E3779B9u;
 
@@ -962,7 +1066,7 @@ static float vcf_amp(const fm6_note_t *n, const uint8_t *p)   /* the note's carr
         }
     return fm_exp2f(fm_clampf((float)best * (1.0f / 16777216.0f), -20.0f, 0.0f));
 }
-static void vcf(int v, float *s, float note, const fm6_note_t *n, const uint8_t *p, float *x)
+static void vcf(int v, float *s, float note, const fm6_note_t *n, const uint8_t *p, float cut, float *x)
 {
     float g, k, oct;
     uint32_t i;
@@ -970,18 +1074,21 @@ static void vcf(int v, float *s, float note, const fm6_note_t *n, const uint8_t 
         s[0] = s[1] = s[2] = s[3] = 0.0f;
         return;
     }
-    oct = (float)par[P_VF(v, VF_CUT)] * 0.0924f + (note - 60.0f) * (0.5f / 12.0f) +
+    oct = cut + (float)par[P_VF(v, VF_CUT)] * 0.0924f + (note - 60.0f) * (0.5f / 12.0f) +
           (float)par[P_VF(v, VF_ENV)] * 0.06f * vcf_amp(n, p);
     g = 1.0f - fm_expf(-2.0f * FM_PI * fm_minf(30.0f * fm_exp2f(fm_minf(oct, 9.3f)), 0.42f * EN_SR) * (1.0f / EN_SR));
     k = (float)par[P_VF(v, VF_RES)] * 0.041f;   /* (4: the ladder sings) */
     for (i = 0; i < FM6_N; i++) {
-        float u = x[i] * 0.5f - k * s[3];
+        /* (1.5.32) The drive leaves the clip room: 0.3 in, 3.333 back, unity in the passband until the voice itself
+         * is at +11 dBFS, where 0.5 in lost 6 dB on a loud patch. The output carries half of what the feedback takes
+         * from the bass (1 + k): at RESONANCE 100 that used to be 8 dB quieter than Off. */
+        float u = x[i] * 0.3f - k * s[3];
         u = u > 1.5f ? 1.0f : u < -1.5f ? -1.0f : u - 0.148148f * u * u * u;   /* (a tanh's shape, no divide) */
         s[0] += g * (u - s[0]);
         s[1] += g * (s[0] - s[1]);
         s[2] += g * (s[1] - s[2]);
         s[3] += g * (s[2] - s[3]);
-        x[i] = s[3] * (2.0f + 0.5f * k);         /* (the drive's half back; the bass the resonance takes, half) */
+        x[i] = s[3] * (3.333f + 1.667f * k);   /* (half of the bass the feedback takes, back) */
     }
     for (i = 0; i < 4u; i++)                     /* (a stage gone quiet to nothing: 0, not a denormal crawling) */
         if (fm_fabsf(s[i]) < 1e-12f)
@@ -1022,8 +1129,17 @@ static float breath(float t)                    /* rise, hang, fall, a short res
  * echo), the bass to the mix. A voice changing its role fades out (20 ms), changes, and fades in. */
 #define NPOLY EN_NPAD                           /* a voice's notes */
 typedef struct {
+    int16_t acc[XT_N];                          /* note/phrase routes and the strike's style/variation, before Amount */
+    int8_t route[EN_XROUTES];                   /* captured continuous targets, removed if that route becomes Live */
+    uint8_t target[EN_XROUTES];
+    uint8_t env[6][4], amount;                  /* unexpressed articulation: restore it without restarting a note */
+    uint32_t sounded;                          /* samples actually rendered since this attack */
+    float gate;                                /* held-time multiplier, captured only at the strike */
+} expr_note_t;
+typedef struct {
     fm6_note_t fm;
     fm6_lfo_t lfo;
+    expr_note_t ex;
     uint8_t vp[FP_SIZE + 1];                    /* the note's own copy of its voice's patch, made as it strikes */
     float note, target;                         /* MIDI: the note sounding, the next one (a chord, the bass) */
     float t, rate, peak;                        /* a chord: t 0..1 through the breath (per block), its pace, strength */
@@ -1044,11 +1160,12 @@ typedef struct {
     uint8_t role, gen;                          /* the role playing (PL_ROLE once faded); a new patch: gen one more */
     float vol, gain, tg, fo;                    /* Level; the patch's level; the transport's fade; the role's fade */
     float glide_k;                              /* 1 / GLIDE's time, in samples */
-    uint8_t pc, rest, strike, xs;               /* the bass: its pitch class; sitting this chord out; struck next
-                                                 * block; fading out for a new patch */
+    uint8_t pc, rest, strike, xs, alt;          /* the bass: its pitch class; sitting this chord out; struck next
+                                                 * block; fading out for a new patch; on a passing tone */
     uint8_t decays;                             /* its patch dies away (no carrier held): on AMB's envelope it plays
                                                  * as on the patch's, struck each time (patch_decays) */
     int rs;                                     /* the bass: blocks to a new patch's restrike (the knob at rest) */
+    int32_t swait;                              /* the bass: samples to its strike (Swing) */
     int32_t held;                               /* the bass: samples until its key is let go; 0 let go */
     int32_t slen;                               /* the bass: a song's note, held this long at its strike (0: the Gate's) */
     float sglide;                               /* the bass: a song's note's glide, quick enough for its length (0: GLIDE's) */
@@ -1124,6 +1241,260 @@ static void adsr_patch(int v, uint8_t *p)
         o[FP_L1 + 3] = 0;
     }
 }
+/* ---------------------------------------------------------- interpretation --- */
+/* Live Level/Cutoff/Index run at FM6 block rate through gain/cutoff offsets, never re-keying an envelope.
+ * The other targets are articulation, captured at the attack even when their route says Live. Phrase routes
+ * capture together on the first note of each phrase; smoothing follows elapsed audio time, not note density. */
+volatile uint8_t en_expression[EN_NVOX][4];
+volatile int16_t en_expr_route[EN_NVOX][EN_XROUTES];
+volatile uint8_t en_expr_phase[EN_NVOX];
+static uint8_t mpatch[EN_NVOX][EN_PATCH], mstage[EN_NVOX][EN_PATCH], mvalid[EN_NVOX];
+static volatile uint8_t mstaged[EN_NVOX];
+static float xsm[EN_NVOX][EN_XROUTES], xtarget[EN_NVOX][EN_XROUTES];
+static float xmem[EN_NVOX], xhold[EN_NVOX][EN_XROUTES], xshown[EN_NVOX][EN_XROUTES];
+static uint8_t xvalid[EN_NVOX], xpos[EN_NVOX], xlast[EN_NVOX], xvel[EN_NVOX], xleap[EN_NVOX];
+static uint32_t expr_rng;
+static float seq_offset(int v, int target);
+static int16_t xseq[EN_NVOX][15];                /* (1.5.26) what Expression asks of the sequencer: Density, Evolve,
+                                                 * Drift (the voices' mean), signed percent */
+static uint32_t xduration_sum[EN_NVOX];
+static uint8_t xrendered[EN_NVOX], xdensity[EN_NVOX], xduration[EN_NVOX];
+/* Publish the previous audio block, so all voices see one coherent observation.
+ * Four sounding notes fill Density; Duration reaches 100 at four seconds.
+ * Release tails count until the FM core reports silence. */
+static void expr_observe(int v, expr_note_t *n)
+{
+    const uint32_t limit = (uint32_t)(EN_SR * 4);
+    if (n->sounded < limit) n->sounded += FM6_N;
+    if (n->sounded > limit) n->sounded = limit;
+    xduration_sum[v] += n->sounded;
+    xrendered[v]++;
+}
+static void expr_observation_block(void)
+{
+    int v;
+    for (v = 0; v < EN_NVOX; v++) {
+        const unsigned count = xrendered[v];
+        xdensity[v] = (uint8_t)(count >= NPOLY ? 100 : count * 100 / NPOLY);
+        xduration[v] = count ? (uint8_t)(xduration_sum[v] / count * 100u / (uint32_t)(EN_SR * 4)) : 0;
+        xrendered[v] = 0;
+        xduration_sum[v] = 0;
+    }
+}
+
+void en_morph_load(int voice, const uint8_t *patch)
+{
+    int i;
+    if ((unsigned)voice >= EN_NVOX)
+        return;
+    if (!patch) {
+        mstaged[voice] = 0;
+        post(C_MLOAD, voice, 0);
+        return;
+    }
+    for (i = 0; i < EN_PATCH; i++)
+        mstage[voice][i] = patch[i] > en_patch_max(i) ? en_patch_max(i) : patch[i];
+    mstaged[voice] = 1;
+    post(C_MLOAD, voice, 1);
+}
+/* LFOs modulate effective interpretation only; persisted controls stay untouched. */
+static int expr_control(int v, int k);
+static int xclamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
+static int xnorm(float f) { return xclamp((int)(f * 100.0f + 0.5f), 0, 100); }
+static int xlive(int v, int r)
+{
+    const int t = par[P_XR(v, r, XR_TARGET)];
+    return par[P_XR(v, r, XR_WHEN)] == XW_LIVE && (t == XT_LEVEL || t == XT_CUTOFF || t == XT_INDEX || (t >= XT_DENSITY && t <= XT_RESOLVE));
+}
+static float xrandom(void)
+{
+    uint32_t x = expr_rng;
+    x ^= x << 13;
+    x ^= x >> 17;
+    expr_rng = x ^ (x << 5);
+    return (float)(expr_rng >> 8) * (1.0f / 16777216.0f);
+}
+static int chord_n(int v);
+static void expr_sources(int v, int k, int note, int vel, int *src)
+{
+    float others = 0.0f, peak = 0.0f, br = 0.0f;
+    const int plen = 4 + par[P_EX(v, EX_PHRASE)] / 12;
+    const int ph = xpos[v] % plen;
+    int i, energy, leap = xleap[v];
+    for (i = 0; i < EN_NVOX; i++) {
+        peak = fm_maxf(peak, en_vox_level[i]);
+        if (i != v) others += en_vox_level[i];
+    }
+    if (vc[v].role == ROLE_CHORD) {
+        if (k >= 0) br = breath(vc[v].n[k].t);
+        else for (i = 0; i < chord_n(v); i++) br = fm_maxf(br, breath(vc[v].n[i].t));
+    } else br = (float)en_expr_phase[v] * 0.01f;
+    energy = (xnorm(peak) + xclamp((int)((arcm + 1.0f) * 50.0f), 0, 100)) / 2;
+    if (note >= 0 && xlast[v]) {
+        int d = note - (int)xlast[v];
+        leap = xclamp((d < 0 ? -d : d) * 100 / 12, 0, 100);
+    }
+    src[XS_OFF] = 0;
+    src[XS_ENERGY] = energy;
+    src[XS_LINK] = xnorm(others * 0.5f) * par[P_EX(v, EX_LINK)] / 100;
+    src[XS_OPEN] = par[P_VF(v, VF_ON)] ? par[P_VF(v, VF_CUT)] : 100;
+    src[XS_BREATH] = xnorm(br);
+    src[XS_DENSITY] = xdensity[v];
+    src[XS_DURATION] = xduration[v];
+    src[XS_ACCENT] = xclamp((vel >= 0 ? vel : xvel[v]) * 100 / 127, 0, 100);
+    src[XS_ARCH] = note >= 0 ? (ph * 2 > plen - 1 ? plen - 1 - ph : ph) * 200 / (plen - 1)
+                                   : (en_expr_phase[v] > 50 ? 100 - en_expr_phase[v] : en_expr_phase[v]) * 2;
+    src[XS_SILENCE] = 100 - energy;
+    src[XS_LEAP] = leap;
+    src[XS_REGISTER] = xclamp(((note >= 0 ? note : xlast[v]) - 36) * 100 / 60, 0, 100);
+    src[XS_OTHER] = xnorm(others * 0.5f);
+    src[XS_MEMORY] = xclamp((int)xmem[v], 0, 100);
+    for (i = 0; i < 4; i++) en_expression[v][i] = (uint8_t)src[XS_ENERGY + i];
+}
+static float expr_value(int v, int r, const int *src)
+{
+    const int curve = par[P_XR(v, r, XR_CURVE)];
+    const int lo = par[P_XR(v, r, XR_MIN)], hi = par[P_XR(v, r, XR_MAX)];
+    float x = (float)src[par[P_XR(v, r, XR_SOURCE)]];
+    if (curve == XC_SOFT) x = x * x * (3.0f - 0.02f * x) * 0.01f;
+    else if (curve == XC_STEP) x = x >= 50.0f ? 100.0f : 0.0f;
+    else if (curve == XC_CENTER) x = fm_fabsf(x - 50.0f) * 2.0f;
+    return (float)lo + (float)(hi - lo) * x * 0.01f;
+}
+static float expr_contribution(int v, int r)
+{
+    return xsm[v][r] * (float)par[P_XR(v, r, XR_DEPTH)] * 0.01f;
+}
+static void expr_block(int v)
+{
+    int src[XS_N], r;
+    const int amount = expr_control(v, EX_AMOUNT);
+    expr_sources(v, -1, -1, -1, src);
+    /* Memory's 20 ms .. 2 s follows elapsed time too, and remains audible at Memory 100. */
+    xmem[v] += ((float)src[XS_ENERGY] - xmem[v]) *
+               fm_minf((float)FM6_N / (EN_SR * (0.02f + (float)par[P_EX(v, EX_MEMORY)] * 0.0198f)), 1.0f);
+    for (r = 0; r < 15; r++) xseq[v][r] = 0;
+    if (!amount) {
+        for (r = 0; r < EN_XROUTES; r++) en_expr_route[v][r] = 0;
+        return;
+    }
+    for (r = 0; r < EN_XROUTES; r++) {
+        const int active = par[P_XR(v, r, XR_SOURCE)] && par[P_XR(v, r, XR_TARGET)];
+        if (active) {
+            const int smooth = par[P_XR(v, r, XR_SMOOTH)];
+            /* Smooth the source continuously, then sample it at a note/phrase boundary when requested. */
+            xtarget[v][r] = expr_value(v, r, src);
+            xsm[v][r] += (xtarget[v][r] - xsm[v][r]) *
+                (smooth ? fm_minf((float)FM6_N / (EN_SR * smooth_secs(smooth)), 1.0f) : 1.0f);
+            if (xlive(v, r)) xshown[v][r] = expr_contribution(v, r);
+        }
+        en_expr_route[v][r] = (int16_t)(active ? xclamp((int)(xshown[v][r] * (float)amount * 0.01f), -100, 100) : 0);
+        if (active) {                            /* (1.5.26) the sequencer's own targets, summed a voice */
+            const int t = par[P_XR(v, r, XR_TARGET)];
+            if (t >= XT_DENSITY && t <= XT_RESOLVE)
+                /* Eight bounded routes sum to at most +/-800: int16_t is sufficient.
+                 * Preserve cancellation across routes and LFOs; seq_offset clamps once. */
+                xseq[v][t - XT_DENSITY] += en_expr_route[v][r];
+        }
+    }
+}
+static void expr_env(int v, expr_note_t *n, uint8_t *p, int capture)
+{
+    const uint32_t car = fm6_carriers(p[FP_ALG] & 31u);
+    const int amount = expr_control(v, EX_AMOUNT);
+    int i, j;
+    static const uint8_t off[4] = {FP_R1, FP_R1 + 1, FP_L1 + 2, FP_R1 + 3};
+    static const uint8_t tgt[4] = {XT_ATTACK, XT_DECAY, XT_SUSTAIN, XT_RELEASE};
+    for (i = 0; i < 6; i++) {
+        if (!(car >> i & 1u)) continue;
+        for (j = 0; j < 4; j++) {
+            uint8_t *b = p + i * FP_OP + off[j];
+            int d = n->acc[tgt[j]] * amount / 100;
+            if (capture) n->env[i][j] = *b;
+            d = xclamp(d, -100, 100) * (j == 2 ? 3 : 4) / 10;
+            *b = d ? (uint8_t)xclamp((int)n->env[i][j] + d, 0, 99) : n->env[i][j];
+        }
+    }
+    n->amount = (uint8_t)amount;
+}
+static void expr_strike(int v, int k, expr_note_t *n, uint8_t *p, int32_t note, int32_t vel)
+{
+    const int amount = expr_control(v, EX_AMOUNT), plen = 4 + par[P_EX(v, EX_PHRASE)] / 12;
+    const int ph = xpos[v] % plen;
+    int src[XS_N], acc[XT_N] = {0}, r, i, morph;
+    n->sounded = 0;
+    expr_sources(v, k, note, vel, src);
+    __builtin_memset(n->target, 0, sizeof n->target);
+    for (r = 0; amount && r < EN_XROUTES; r++) {
+        const int s = par[P_XR(v, r, XR_SOURCE)], t = par[P_XR(v, r, XR_TARGET)];
+        const int phrase = par[P_XR(v, r, XR_WHEN)] == XW_PHRASE;
+        if (!s || !t) { xshown[v][r] = 0.0f; continue; }
+        if (!phrase || !ph || !(xvalid[v] >> r & 1u)) {
+            xtarget[v][r] = expr_value(v, r, src);
+            if (!par[P_XR(v, r, XR_SMOOTH)] || (!(xvalid[v] >> r & 1u) && !xlive(v, r)))
+                xsm[v][r] = xtarget[v][r];
+            xhold[v][r] = expr_contribution(v, r);
+            xvalid[v] |= (uint8_t)(1u << r);
+        }
+        xshown[v][r] = phrase ? xhold[v][r] : expr_contribution(v, r);
+        if (!xlive(v, r)) {
+            acc[t] += (int)xshown[v][r];
+            if (t == XT_LEVEL || t == XT_CUTOFF || t == XT_INDEX) {
+                n->target[r] = (uint8_t)t;
+                n->route[r] = (int8_t)xshown[v][r];
+            }
+        }
+    }
+    if (amount) {
+        static const int8_t LEAN[XSTYLE_N][2] = {{0, 0}, {-30, 15}, {40, -25}, {-20, 25}, {-35, 10}};
+        const int style = par[P_EX(v, EX_STYLE)], var = expr_control(v, EX_VARIATION);
+        acc[XT_ATTACK] += LEAN[style][0];
+        acc[XT_DECAY] += LEAN[style][1];
+        for (i = 1; var && i <= XT_MORPH; i++) acc[i] += (int)((xrandom() * 2.0f - 1.0f) * (float)var * 0.3f);
+    }
+    for (i = 0; i < XT_N; i++) n->acc[i] = (int16_t)acc[i];
+    n->gate = 1.0f + (float)xclamp(acc[XT_GATE] * amount / 100, -100, 100) * 0.0095f;
+    morph = par[P_EX(v, EX_MORPH)] + xclamp(acc[XT_MORPH] * amount / 100, -100, 100);
+    if (mvalid[v] && (morph = xclamp(morph, 0, 100)) > 0) {
+        uint8_t o[EN_PATCH];
+        en_morph_patch(p, mpatch[v], morph, par[P_EX(v, EX_MORPH_KIND)], o);
+        __builtin_memcpy(p, o, EN_PATCH);
+    }
+    expr_env(v, n, p, 1);
+    xlast[v] = (uint8_t)xclamp((int)note, 0, 127);
+    xvel[v] = (uint8_t)xclamp((int)vel, 0, 127);
+    xleap[v] = (uint8_t)src[XS_LEAP];
+    en_expr_phase[v] = (uint8_t)(ph * 100 / (plen - 1));
+    xpos[v] = (uint8_t)((ph + 1) % plen);
+}
+/* The FM core ramps these operator gain offsets over the block; no envelope or LFO is restarted. */
+static float expr_mod(int v, expr_note_t *n, fm6_note_t *fm, uint8_t *p, int32_t *ol)
+{
+    const int amount = expr_control(v, EX_AMOUNT);
+    int acc[XT_N], i, r;
+    uint32_t car;
+    if (n->amount != amount) { expr_env(v, n, p, 0); fm6_note_refresh(fm, p); }
+    if (!amount) return 0.0f;
+    for (i = 0; i < XT_N; i++) acc[i] = n->acc[i];
+    for (r = 0; r < EN_XROUTES; r++)
+        if (xlive(v, r) && par[P_XR(v, r, XR_SOURCE)]) {
+            if (n->target[r]) acc[n->target[r]] -= n->route[r];
+            acc[par[P_XR(v, r, XR_TARGET)]] += (int)expr_contribution(v, r);
+        }
+    car = fm6_carriers(p[FP_ALG] & 31u);
+    for (i = 0; i < 6; i++) {
+        const int base = p[i * FP_OP + FP_OL];
+        const int d = xclamp(acc[car >> i & 1u ? XT_LEVEL : XT_INDEX] * amount / 100, -100, 100) * 3 / 10;
+        if (d) ol[i] += (fm6_scaleout(xclamp(base + d, 0, 99)) - fm6_scaleout(base)) * 2097152;
+    }
+    return (float)xclamp(acc[XT_CUTOFF] * amount / 100, -100, 100) * 0.05f;
+}
+static int32_t expr_hold(const expr_note_t *n, int32_t samples)
+{
+    if (n->gate == 1.0f || samples <= 0) return samples;
+    return (int32_t)fm_maxf((float)FM6_N, (float)samples * n->gate);
+}
+
 /* note k of voice v struck: its own copy of src (MOD's envelopes, the ADSR), its LFO again (Key sync: from the top) */
 static void note_strike(int v, int k, const uint8_t *src, int32_t note, int32_t vel, int fresh)
 {
@@ -1132,6 +1503,7 @@ static void note_strike(int v, int k, const uint8_t *src, int32_t note, int32_t 
     mod_patch(GEN(v, k), src, n->vp);
     if (PL(v, ENV) == ENV_ADSR)
         adsr_patch(v, n->vp);
+    expr_strike(v, k, &n->ex, n->vp, note, vel);
     fm_note_on(&n->fm, n->vp, note, vel, fresh);
     fm6_lfo_reset(&n->lfo, n->vp);
     fm6_lfo_key(&n->lfo);
@@ -1144,6 +1516,7 @@ static void note_refresh(int v, int k, const uint8_t *src)
     mod_patch(GEN(v, k), src, n->vp);
     if (PL(v, ENV) == ENV_ADSR)
         adsr_patch(v, n->vp);
+    expr_env(v, &n->ex, n->vp, 1);
     fm6_note_refresh(&n->fm, n->vp);
     fm6_lfo_reset(&n->lfo, n->vp);
 }
@@ -1158,7 +1531,8 @@ void en_load(int pct)
 static int chord_n(int v)                       /* its voices sounding, 1..4 (under load one fewer, then two; two at
                                                  * least) */
 {
-    const int n = 1 + (PL(v, DENS) * 3 + 50) / 100, m = n - load_cap;
+    const int density = xclamp(PL(v, DENS) + (int)seq_offset(v, 0), 0, 100);
+    const int n = 1 + (density * 3 + 50) / 100, m = n - load_cap;
     return m < 2 ? (n < 2 ? n : 2) : m;
 }
 static void chord_breathe(int v, int i)         /* a new breath: its length, its strength, its note */
@@ -1240,15 +1614,16 @@ static void chord_coefs(int v, int i)           /* every FM6 block (32 samples):
             chord_breathe(v, i);
     }
     br = breath(n->t);
-    if (PL(v, ENV) != ENV_AMB || vc[v].decays) {   /* the patch's envelopes (or the ADSR; or a patch that dies away,
-                                                 * which AMB's slow breath would only find gone): struck at the breath, let go
-                                                 * at GATE of it (its sounding part, 0.9), the level steady */
-        if (!n->up && n->t >= (GATE_NAT(v) ? step_len * n->rate * (1.0f / 32.0f) : GATE_F(v) * 0.9f)) {
+    if (PL(v, ENV) != ENV_AMB || vc[v].decays || n->ex.gate != 1.0f) {
+        const float gate = GATE_NAT(v) ? step_len * n->rate * (1.0f / 32.0f) : GATE_F(v) * 0.9f;
+        if (!n->up && n->t >= (n->ex.gate == 1.0f ? gate : fm_minf(gate * n->ex.gate, 0.99f))) {
             fm6_note_key(&n->fm, n->vp, 0);
             if (en_playing)
                 midi(0x80u | (uint32_t)v, n->midi_note, 0);   /* (MIDI out let go with it) */
             n->up = 1;
         }
+    }
+    if (PL(v, ENV) != ENV_AMB || vc[v].decays) {
         br = 0.7f;
         n->tgt = n->peak * vc[v].tg * n->hf;
     } else {
@@ -1393,7 +1768,7 @@ static void mod_step(void)                      /* once an FM6 block */
         float dd[EN_NSLOT] = {0}, rr[EN_NSLOT] = {0};
         for (s = 0; s < EN_NSLOT; s++) {        /* the modulators aimed at others: their value at the voice's first */
             const int d = vx[v].s[s].dest;
-            if (d >= MOD_MSLOT && d < EN_NMODDEST) {
+            if (d >= MOD_MSLOT && d < MOD_SEQ) {
                 const float m = en_mod[s][VOX_GEN0[v]];
                 if (d - MOD_MSLOT < EN_NSLOT)
                     dd[d - MOD_MSLOT] += 0.5f * m;   /* depth: +-50 */
@@ -1671,6 +2046,7 @@ static void pad_retarget(void)                  /* the chord's tones (the scale'
 static void bass_note(int v, int n)             /* the bass voice to note n (MIDI), struck */
 {
     voice_t *c = &vc[v];
+    c->swait = 0;
     c->n[0].target = (float)n;
     c->pc = (uint8_t)(n % 12);
     if (en_playing && (c->n[0].midi_note != n || !c->mon)) {   /* (the same pitch again once let go: on again) */
@@ -1708,11 +2084,54 @@ static void key_moved(void)                     /* a new key or scale: the chord
 }
 
 static float drift_left, drift_total, evolve;   /* evolve: Evolve, 0..1 */
+static float swing_amt;                         /* Swing, 0..0.5: the off-beat step's delay, a step's fraction */
 static uint8_t change_pending, fifth_done;
+
+/* (1.5.26) what Expression asks of the sequencer, as the engine reads it: a voice's Evolve and Density, the chord
+ * timer's Drift (the voices' mean). 0 everywhere: exactly the knobs, as before. */
+/* Signed offsets never rewrite saved knobs. LFOs use each layer's lead generator;
+ * global controls average layers to avoid tripling their range. */
+static float seq_offset(int v, int target)
+{
+    float sum = (float)xseq[v][target];
+    int slot;
+    for (slot = 0; slot < EN_NSLOT; slot++)
+        if (vx[v].s[slot].dest == MOD_SEQ + target)
+            sum += en_mod[slot][VOX_GEN0[v]] * 100.0f;
+    return fm_clampf(sum, -100.0f, 100.0f);
+}
+static int expr_control(int v, int k)
+{
+    float value=(float)par[P_EX(v,k)];
+    int slot, dest=MOD_EXPR+(k==EX_VARIATION);
+    for(slot=0;slot<EN_NSLOT;slot++)
+        if(vx[v].s[slot].dest==dest) value+=en_mod[slot][VOX_GEN0[v]]*100.0f;
+    return (int)fm_clampf(value,0.0f,100.0f);
+}
+
+static int seq_value(int v, int param, int target)
+{
+    return xclamp(par[param] + (int)seq_offset(v, target), 0, 100);
+}
+static float seq_global(int target)
+{
+    float sum = 0.0f; int v;
+    for (v = 0; v < EN_NVOX; v++) sum += seq_offset(v,target);
+    return sum / (float)EN_NVOX;
+}
+static float xevolve(int v) { return fm_clampf(evolve + seq_offset(v, XT_EVOLVE - XT_DENSITY) * 0.01f, 0.0f, 1.0f); }
+static int xdens(int v) { return xclamp(PL(v, DENS) + (int)seq_offset(v, 0), 0, 100); }
+static float xdrift_scale(void)
+{
+    int v, sum = 0;
+    for (v = 0; v < EN_NVOX; v++)
+        sum += (int)seq_offset(v, XT_DRIFT - XT_DENSITY);
+    return fm_clampf(1.0f + (float)sum * (1.0f / (float)EN_NVOX) * 0.01f, 0.25f, 4.0f);
+}
 
 static void drift_reset(void)
 {
-    drift_total = drift_secs(par[P_DRIFT]) * (0.7f + 0.6f * frand()) * EN_SR;
+    drift_total = drift_secs(par[P_DRIFT]) * (0.7f + 0.6f * frand()) * xdrift_scale() * EN_SR;
     drift_left = drift_total;
     fifth_done = 0;
 }
@@ -1720,10 +2139,25 @@ static void drift_reset(void)
 static void chord_change(void)                  /* to another degree: the near, strong moves first */
 {
     static const float W7[7] = {4.0f, 2.0f, 1.0f, 3.0f, 3.0f, 3.0f, 0.4f};
-    float w[12], sum = 0.0f, r;
+    /* where a degree tends to go: I->IV, ii->V, iii->ii, IV->I, V->I, vi->IV, vii->I (a soft cadence, not a rule) */
+    static const uint8_t NEXT7[7] = {3, 4, 1, 0, 0, 3, 0};
+    float w[12], sum = 0.0f, r, pull;
     int i, v;
+    const int cv = first_role(ROLE_CHORD);
+    const float evo = cv >= 0 ? xevolve(cv) : evolve;
+    pull = evo * fm_minf((float)since_home * 0.25f, 1.0f);
     for (i = 0; i < nsteps; i++) {
         w[i] = i == deg ? 0.0f : nsteps == 7 ? W7[i] : i == 0 ? 3.0f : 1.5f;
+        if (i != deg && evo > 0.0f) {            /* Evolve: a direction, never a rule (0: the old walk, untouched) */
+            if (nsteps == 7 && i == NEXT7[deg])
+                w[i] += 6.0f * evo;              /* the cadence's own move */
+            if (i == 0)
+                w[i] += 4.0f * pull;             /* longer away, more pull home */
+            if (nsteps == 7 && (i == 3 || i == 4))
+                w[i] += 2.0f * evo * fm_maxf(arcm, 0.0f);      /* full: the far side */
+            if (w[i] < 0.05f)
+                w[i] = 0.05f;                    /* (no move is forbidden: still generative) */
+        }
         sum += w[i];
     }
     r = frand() * sum;
@@ -1735,14 +2169,19 @@ static void chord_change(void)                  /* to another degree: the near, 
     if (i >= nsteps)
         i = deg == 0 ? (nsteps > 1 ? 1 : 0) : 0;
     deg = i;
+    if (deg == 0)
+        since_home = 0;
+    else if (since_home < 8)
+        since_home++;
     pad_retarget();
     for (v = 0; v < EN_NVOX; v++)
         if (vc[v].role == ROLE_CHORD) {
             chord_leave(v);
         } else if (vc[v].role == ROLE_BASS) {
+            vc[v].alt = 0;
             bass_to(v, chord_pcs[0]);
             /* Evolve: the bass sometimes sits a chord out, more often when the arc is sparse */
-            vc[v].rest = frand() < evolve * 0.3f + 0.25f * fm_maxf(-arcm, 0.0f);
+            vc[v].rest = frand() < xevolve(v) * 0.3f + 0.25f * fm_maxf(-arcm, 0.0f);
         }
     drift_reset();
 }
@@ -1774,7 +2213,7 @@ static int loop_count(int v, int l)
 
 static int loop_target(int v)                   /* 0..5 notes: DENSITY, swelled and thinned by the arc */
 {
-    float d = (float)PL(v, DENS) * 0.05f * (1.0f + 0.8f * arcm);
+    float d = (float)xdens(v) * 0.05f * (1.0f + 0.8f * arcm);
     return (int)(fm_clampf(d, 0.0f, 5.0f) + frand());
 }
 
@@ -1819,16 +2258,95 @@ static void loop_regrow(int v, int l)
     loop_publish(v, l);
 }
 
+/* a structured variation of a loop's motif: the same shape moved a scale step, turned round, or mirrored around its
+ * middle. The count and the scale stay (the notes are still scale steps from the chord's degree); Evolve decides how
+ * often loop_pass takes one, so at 0 a loop is only grown and pruned, as before. */
+static void loop_motif(int v, int l)
+{
+    int i, len = EN_LOOP_LEN[l], n = 0, lo = 127, hi = -127, mid, kind = irand(3);
+    const int choice = irand(100 + seq_value(v, P_SEQ_ROTATE, XT_ROTATION - XT_DENSITY) + seq_value(v, P_SEQ_ACCENT, XT_ACCENT - XT_DENSITY));
+    if (choice >= 100) kind = choice < 100 + seq_value(v, P_SEQ_ROTATE, XT_ROTATION - XT_DENSITY) ? 3 : 4;
+    int8_t o[EN_LOOP_MAX];
+    uint8_t ov[EN_LOOP_MAX];
+    for (i = 0; i < len; i++) {
+        o[i] = vc[v].loop_note[l][i];
+        ov[i] = vc[v].loop_vel[l][i];
+        if (o[i] >= 0) {
+            n++;
+            if (o[i] < lo) lo = o[i];
+            if (o[i] > hi) hi = o[i];
+        }
+    }
+    if (n < 2 || nsteps <= 0)
+        return;
+    mid = (lo + hi) / 2;
+    {
+        const int shift = frand() < 0.5f ? 1 : -1;
+        const int rotation = kind == 3 ? 1 + irand(len - 1) : 0;
+        int xs[EN_LOOP_MAX], low = 127, lift = 0;
+        for (i = 0; i < len; i++) {
+            const int s = kind == 1 ? len - 1 - i : (i + rotation) % len, x0 = o[s];
+            int x = x0;
+            if (x0 < 0) {
+                xs[i] = -128;                    /* (a rest, kept apart from a note that may land on -1) */
+                vc[v].loop_vel[l][i] = 0;
+                continue;
+            }
+            if (kind == 0)
+                x += shift;                      /* the same shape, a scale step up or down */
+            else if (kind == 2)
+                x = 2 * mid - x;                 /* mirrored around its middle */
+            xs[i] = x;
+            vc[v].loop_vel[l][i] = kind == 4 ? (uint8_t)xclamp((int)ov[s] + ((i & 3) == 0 ? 12 : -4), 35, 127) : ov[s];
+            if (x < low)
+                low = x;
+        }
+        if (low < 0)                             /* (below the chord's degree: the whole shape an octave up) */
+            lift = nsteps * ((-low + nsteps - 1) / nsteps);
+        for (i = 0; i < len; i++)
+            vc[v].loop_note[l][i] = xs[i] == -128 ? -1 : (int8_t)((xs[i] + lift) % (nsteps * 4));
+    }
+    loop_publish(v, l);
+}
+
+/* A phrase snapshot is audio-owned and restored only at a loop boundary. */
+static int8_t phrase_notes[EN_NVOX][EN_NLOOP][EN_LOOP_MAX];
+static uint8_t phrase_vel[EN_NVOX][EN_NLOOP][EN_LOOP_MAX];
+static uint8_t phrase_pos[EN_NVOX][EN_NLOOP], phrase_len[EN_NVOX][EN_NLOOP], phrase_on[EN_NVOX][EN_NLOOP];
+static int phrase_pass(int v, int l)
+{
+    int i, len = EN_LOOP_LEN[l], pos = phrase_pos[v][l];
+    const int dialogue = seq_value(v,P_SEQ_DIALOGUE,XT_DIALOGUE-XT_DENSITY);
+    if (!dialogue || xevolve(v) <= 0.0f) { phrase_pos[v][l] = phrase_on[v][l] = 0; return 0; }
+    if (!pos) {
+        phrase_len[v][l] = (uint8_t)(2 + seq_value(v,P_SEQ_LENGTH,XT_LENGTH-XT_DENSITY) * 6 / 100);
+        phrase_on[v][l] = (uint8_t)(frand() < (float)dialogue * 0.01f);
+        for (i=0;i<len;i++) { phrase_notes[v][l][i]=vc[v].loop_note[l][i]; phrase_vel[v][l][i]=vc[v].loop_vel[l][i]; }
+    }
+    if (phrase_on[v][l]) {
+        /* Opening repetitions are stable; the penultimate pass asks, the last answers. */
+        if (pos == phrase_len[v][l]-2 && frand() < (float)seq_value(v,P_SEQ_TENSION,XT_TENSION-XT_DENSITY)*0.01f)
+            loop_motif(v,l);
+        if (pos == phrase_len[v][l]-1)
+            for (i=0;i<len;i++) { vc[v].loop_note[l][i]=phrase_notes[v][l][i]; vc[v].loop_vel[l][i]=phrase_vel[v][l][i]; }
+    }
+    phrase_pos[v][l]=(uint8_t)((pos+1)%phrase_len[v][l]);
+    return phrase_on[v][l];
+}
 static void loop_pass(int v, int l)             /* the end of a pass: grow, prune, evolve */
 {
     voice_t *c = &vc[v];
     int n = loop_count(v, l), t = loop_target(v), s;
+    const float ev = xevolve(v);
     for (; n < t; n++)                          /* DENSITY: to its count by the end of a pass */
         loop_add(v, l);
     for (; n > t && (s = loop_pick(v, l)) >= 0; n--)
         c->loop_note[l][s] = -1;
-    c->loop_rest[l] = frand() < evolve * 0.15f + 0.15f * fm_maxf(-arcm, 0.0f);
-    if (frand() < evolve * 0.7f && (s = loop_pick(v, l)) >= 0) {
+    if (phrase_pass(v,l)) { loop_publish(v,l); return; }
+    c->loop_rest[l] = frand() < ev * 0.15f + 0.15f * fm_maxf(-arcm, 0.0f);
+    if (ev > 0.0f && frand() < ev * (float)seq_value(v, P_SEQ_MOTIF, XT_MOTIF - XT_DENSITY) * 0.01f) {
+        loop_motif(v, l);                        /* a shape kept, moved or turned: the motif survives the pass */
+    } else if (frand() < ev * 0.7f && (s = loop_pick(v, l)) >= 0) {
         if (frand() < 0.5f) {
             c->loop_note[l][s] = (int8_t)rand_offset();          /* another note */
         } else {
@@ -1913,13 +2431,13 @@ typedef struct {
 static const gen_kind_t GEN_KIND[EN_NGEN] = {
     /*  alg          atk     rel     dec sus  mol    matk msus fb   r  vib kvs */
     {{5, 1, 22}, 30, 38, 30, 38, 30, 94, 64, 80, -4, 82, 2, 5, 0, 0, 1},    /* Pad */
-    {{5, 22, 5}, 34, 44, 30, 36, 30, 90, 58, 80, -2, 72, 0, 2, 1, 0, 1},    /* Glass */
+    {{5, 19, 22}, 68, 84, 32, 44, 42, 35, 68, 90, 8, 24, 0, 2, 1, 0, 2},    /* Glass */
     {{5, 22, 1}, 30, 38, 30, 38, 30, 94, 60, 76, -4, 80, 3, 6, 2, 4, 1},    /* Air */
-    {{5, 1, 2}, 32, 40, 32, 40, 30, 95, 68, 80, -4, 84, 4, 6, 0, 4, 1},     /* Strings */
-    {{5, 5, 19}, 80, 95, 30, 40, 34, 60, 62, 86, 6, 50, 0, 2, 3, 0, 2},     /* Bell */
-    {{5, 5, 1}, 90, 99, 45, 55, 38, 72, 60, 84, 6, 52, 0, 3, 4, 0, 3},      /* Keys */
+    {{1, 2, 3}, 42, 54, 34, 44, 34, 92, 74, 88, 2, 86, 3, 5, 0, 4, 1},     /* Strings */
+    {{5, 19, 17}, 90, 99, 30, 42, 38, 0, 76, 94, 4, 0, 0, 2, 3, 0, 2},     /* Bell */
+    {{5, 4, 1}, 90, 99, 45, 55, 44, 24, 68, 90, 6, 12, 0, 3, 4, 0, 3},      /* Keys */
     {{5, 2, 1}, 95, 99, 48, 58, 48, 0, 66, 90, 8, 40, 2, 6, 0, 0, 3},       /* Pluck */
-    {{5, 1, 16}, 85, 99, 55, 65, 40, 90, 66, 86, 4, 74, 4, 6, 5, 0, 2},     /* Bass */
+    {{16, 1, 18}, 90, 99, 58, 70, 52, 68, 76, 94, 4, 35, 4, 7, 5, 0, 2},     /* Bass */
     {{32, 31, 5}, 24, 32, 26, 32, 28, 96, 50, 74, -6, 80, 1, 4, 6, 0, 0},   /* Drone */
     {{22, 5, 31}, 26, 40, 28, 36, 30, 88, 48, 78, -8, 72, 3, 7, 7, 0, 1},   /* Texture */
 };
@@ -1954,7 +2472,9 @@ static int clamp_to(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : 
 
 void en_gen(int kind, int bright, int motion, uint32_t seed, uint8_t *p)
 {
-    const gen_kind_t *g = &GEN_KIND[(unsigned)kind < EN_NGEN ? kind : 0];
+    const gen_kind_t *g;
+    kind = (unsigned)kind < EN_NGEN ? kind : 0;
+    g = &GEN_KIND[kind];
     const gen_ratio_t *rt = &GEN_RATIO[g->ratios];
     uint32_t d[6][8], dv[8], car;
     int k, j, alg, catk, crel, seen[6][3], ns = 0;
@@ -2530,6 +3050,8 @@ static void patch_apply(int v, int fresh)
 static void loop_regrow(int v, int l);
 static void role_enter(int v)
 {
+    __builtin_memset(phrase_pos[v], 0, sizeof phrase_pos[v]);
+    __builtin_memset(phrase_on[v], 0, sizeof phrase_on[v]);
     voice_t *c = &vc[v];
     int i, l;
     midi(0xB0u | (uint32_t)v, 123, 0);
@@ -2653,13 +3175,29 @@ static void bell_voice(int v, int l, int n, float vel, int32_t wait, int32_t sle
     midi(0x90u | (uint32_t)v, (uint32_t)n, (uint32_t)(vel * 110.0f));
 }
 
-static void bell_ring(int v, int l, int slot)
+static void bell_ring(int v, int l, int slot, int32_t sw)
 {
-    int n = bell_note(v, l, vc[v].loop_note[l][slot]);
+    const int range = 1 + seq_value(v,P_SEQ_RANGE,XT_RANGE-XT_DENSITY) * 3 / 100;
+    int offset = vc[v].loop_note[l][slot];
+    int n;
+    if (nsteps > 0) offset %= nsteps * range;
+    n = bell_note(v, l, offset);
+    if (phrase_on[v][l] && phrase_pos[v][l] == 0 &&
+        frand() < (float)seq_value(v,P_SEQ_RESOLVE,XT_RESOLVE-XT_DENSITY)*0.01f) {
+        int d, c, found=0;
+        for (d=0;d<=6 && !found;d++) for(c=0;c<chord_nt;c++) {
+            if ((n+d)%12==chord_pcs[c] && n+d<=127) { n+=d; found=1; break; }
+            if ((n-d+120)%12==chord_pcs[c] && n-d>=0) { n-=d; found=1; break; }
+        }
+    }
+    if (seq_value(v,P_SEQ_SPACE,XT_SPACE-XT_DENSITY) > 0 &&
+        frand() < (float)seq_value(v,P_SEQ_SPACE,XT_SPACE-XT_DENSITY)*0.008f) return;
     float vel = (float)vc[v].loop_vel[l][slot] * 0.01f;
-    int32_t wait = irand(2600);                 /* a human hand: up to 60 ms late */
+    int human = seq_value(v,P_SEQ_HUMAN,XT_HUMAN-XT_DENSITY);
+    int cap = (int)fm_minf(1764.0f, step_len * 0.2f);
+    int32_t wait = sw + (human ? irand(1 + cap * human / 100) : 0);            /* Swing, then a human hand: up to 60 ms late */
     bell_voice(v, l, n, vel, wait, 0);
-    if (n + 12 <= 103 && frand() < 0.08f + 0.12f * fm_maxf(arcm, 0.0f))
+    if (n + 12 <= 103 && n + 12 < bell_note(v,l,0) + range*12 && frand() < 0.08f + 0.12f * fm_maxf(arcm, 0.0f))
         bell_voice(v, l, n + 12, vel * 0.4f, wait + 300 + irand(2000), 0);   /* now and then, its octave */
 }
 
@@ -2747,8 +3285,10 @@ static void song_chord(int i)                   /* its chord at half bar i, if i
     for (v = 0; v < EN_NVOX; v++)
         if (vc[v].role == ROLE_CHORD)
             chord_leave(v);
-        else if (vc[v].role == ROLE_BASS && (fm < 75 || (v != song_mel_v && v != song_bass_v)))
+        else if (vc[v].role == ROLE_BASS && (fm < 75 || (v != song_mel_v && v != song_bass_v))) {
+            vc[v].alt = 0;
             bass_to(v, root);                    /* (following the song: its notes, not the roots) */
+        }
 }
 static int song_offset(void)                    /* a loops note from the song's melody near here: scale steps above
                                                  * the chord's degree; -1 none */
@@ -2844,6 +3384,14 @@ static void song_step(void)                      /* a sixteenth of the song */
 
 /* the grid: one call a sixteenth (MIDI clock: 6 ticks) */
 static uint32_t sixteenth;
+static int32_t swing_delay(int st)              /* the off-beat step's late arrival (Swing), in samples: the second of
+                                                 * each pair of steps, at a sixteenth or eighth grid (0: straight) */
+{
+    const float swing = fm_clampf(swing_amt + seq_global(XT_SWING - XT_DENSITY) * 0.005f, 0.0f, 0.5f);
+    if (swing <= 0.0f || st <= 0 || st > 2)
+        return 0;
+    return (sixteenth / (uint32_t)st) & 1u ? (int32_t)(swing * (float)st * step_len) : 0;
+}
 static void tick(void)
 {
     int l, v;
@@ -2853,11 +3401,12 @@ static void tick(void)
         voice_t *c = &vc[v];
         int st;
         if (c->role == ROLE_LOOPS && sixteenth % (uint32_t)loops_step(v) == 0u) {   /* the loops: PACE's step */
+            const int32_t sw = swing_delay(loops_step(v));
             for (l = 0; l < EN_NLOOP; l++) {
                 int s = c->loop_pos[l];
                 if (c->loop_note[l][s] >= 0 && !c->loop_rest[l] &&
                     !(song && (v == song_mel_v || v == song_bass_v) && frand() < song_mel()))
-                    bell_ring(v, l, s);          /* (a song followed: the voices playing its melody and its bass give
+                    bell_ring(v, l, s, sw);      /* (a song followed: the voices playing its melody and its bass give
                                                   * way to it, the loops' own the rest of the time; the others play on) */
                 if (first_role(ROLE_LOOPS) == v)
                     en_loop_pos[l] = (uint8_t)s;
@@ -2868,7 +3417,19 @@ static void tick(void)
             }
         } else if (c->role == ROLE_BASS && (PL(v, ENV) != ENV_AMB || c->decays) && (st = bass_step(v)) > 0 &&
                    sixteenth % (uint32_t)st == 0u) {
-            c->strike = 1;                       /* the bass struck again, PACE's step */
+            if (c->alt) {                        /* back from a passing tone to the chord's root */
+                c->alt = 0;
+                if (c->pc != chord_pcs[0])
+                    bass_to(v, chord_pcs[0]);
+                else
+                    c->strike = 1;
+            } else if (xevolve(v) > 0.0f && chord_nt > 1 && frand() < xevolve(v) * (float)seq_value(v, P_SEQ_PASS, XT_PASSING - XT_DENSITY) * 0.01f) {
+                c->alt = 1;                      /* a chord tone on the way (the third or fifth) */
+                bass_to(v, chord_pcs[1 + irand(chord_nt - 1)]);
+            } else {
+                c->strike = 1;                   /* the bass struck again, PACE's step */
+            }
+            c->swait = swing_delay(st);
         }
     }
     if ((sixteenth & 15u) == 0u && change_pending && !en_frozen && !song) {   /* chords move on the bar */
@@ -3244,6 +3805,7 @@ static void apply(int p, int v)
         }
         break;
     case P_MOTION: motion = (float)v * 0.01f; break;
+    case P_SWING: swing_amt = (float)v * 0.005f; break;    /* 50% straight .. 75%: up to half a step late */
     case P_TUNE: tunefac = fm_exp2f((float)v * (1.0f / 1200.0f)); break;
     case P_TEMPO: tempo_changed(); break;
     case P_ROOT:
@@ -3269,12 +3831,15 @@ static void pool_set(uint32_t p)
     scale_set();
     if (deg >= nsteps)
         deg = 0;
+    since_home = 0;
     key_moved();
 }
 
 static void regrow(void)                        /* a new piece: fresh loops, home chord, patterns home */
 {
     int l, v;
+    __builtin_memset(phrase_pos, 0, sizeof phrase_pos);
+    __builtin_memset(phrase_on, 0, sizeof phrase_on);
     for (v = 0; v < EN_NVOX; v++) {
         vc[v].rest = 0;
         if (vc[v].role == ROLE_LOOPS)
@@ -3284,6 +3849,7 @@ static void regrow(void)                        /* a new piece: fresh loops, hom
             }
     }
     deg = 0;
+    since_home = 0;
     key_moved();
     drift_reset();
     change_pending = 0;
@@ -3323,6 +3889,29 @@ void en_init(void)
     __builtin_memset(en_score, 0, sizeof en_score);   /* (the score and the keys' notes: none of before) */
     en_score_w = 0;
     kb_reset();
+    __builtin_memset(phrase_pos, 0, sizeof phrase_pos);
+    __builtin_memset(phrase_on, 0, sizeof phrase_on);
+    __builtin_memset(xseq, 0, sizeof xseq);
+    __builtin_memset(xrendered, 0, sizeof xrendered);
+    __builtin_memset(xduration_sum, 0, sizeof xduration_sum);
+    __builtin_memset(xdensity, 0, sizeof xdensity);
+    __builtin_memset(xduration, 0, sizeof xduration);
+    __builtin_memset(xsm, 0, sizeof xsm);        /* (interpretation: no memory of before, no morph B) */
+    __builtin_memset(xhold, 0, sizeof xhold);
+    __builtin_memset(xtarget, 0, sizeof xtarget);
+    __builtin_memset(xshown, 0, sizeof xshown);
+    __builtin_memset(xvalid, 0, sizeof xvalid);
+    __builtin_memset(xvel, 0, sizeof xvel);
+    __builtin_memset(xleap, 0, sizeof xleap);
+    __builtin_memset((void *)en_expr_route, 0, sizeof en_expr_route);
+    __builtin_memset((void *)en_expr_phase, 0, sizeof en_expr_phase);
+    expr_rng = 0xA511E9B3u;
+    __builtin_memset(xmem, 0, sizeof xmem);
+    __builtin_memset(xpos, 0, sizeof xpos);
+    __builtin_memset(xlast, 0, sizeof xlast);
+    __builtin_memset(mvalid, 0, sizeof mvalid);
+    __builtin_memset((void *)mstaged, 0, sizeof mstaged);
+    __builtin_memset((void *)en_expression, 0, sizeof en_expression);
     for (v = 0; v < EN_NVOX; v++) {             /* (an init again: no note of before rings on) */
         __builtin_memset(&vc[v], 0, sizeof vc[v]);
         vc[v].role = (uint8_t)v;
@@ -3331,7 +3920,7 @@ void en_init(void)
     }
     rng = 0x9E3779B9u;                           /* the same garden from every init (PLAY stirs it: en_seed), so a */
     mod_rng = 0x2545F491u;                       /* test can hear one setting against another on the same notes */
-    en_playing = en_frozen = 0;                  /* (resting: PLAY starts it from the top) */
+    en_playing = en_frozen = en_tape_playing = 0;   /* (resting: PLAY starts it from the top) */
     en_ext = 0;                                  /* (no external clock until its pulses come) */
     ext_bpm = 0.0f;
     ext_n = 0;
@@ -3352,6 +3941,7 @@ void en_init(void)
     tape_w = plex_w = tape_ph = 0;
     head2 = head2_t = 0.75f;
     head2_v = 0.0f;
+    head_left = 0;                               /* (its next draw: now, not after whatever was left of the last) */
     echo_len = 0.0f;
     q_r = q_w = 0;
     for (i = 0; i < NMOD; i++) {
@@ -3361,6 +3951,8 @@ void en_init(void)
     arcm = 0.0f;
     for (i = 0; i < P_NPARAMS; i++)              /* (the patches built as their parameters arrive) */
         apply(i, PARAMS[i].def);
+    deg = 0;                                     /* (a new init: the home chord, whatever was playing) */
+    since_home = 0;
     pool_set(EN_MODE_POOL[par[P_MODE]]);
     for (v = 0; v < EN_NVOX; v++) {             /* each voice its role, from silence */
         vc[v].role = (uint8_t)PL(v, ROLE);
@@ -3452,10 +4044,17 @@ static void drain(void)
 {
     while (q_r != q_w) {
         uint32_t c = q[q_r % QN];
-        int a = (int)(c >> 16 & 0x1FFu), b = (int)(int16_t)(c & 0xFFFFu);
+        int a = (int)(c >> 16 & 0x3FFu), b = (int)(int16_t)(c & 0xFFFFu);
         BARRIER();
         q_r++;
-        switch (c >> 25) {
+        switch (c >> 26) {
+        case C_MLOAD:
+            if (a < EN_NVOX) {
+                mvalid[a] = (uint8_t)(b && mstaged[a]);
+                if (mvalid[a])
+                    __builtin_memcpy(mpatch[a], mstage[a], EN_PATCH);
+            }
+            break;
         case C_SET:
             if (a < P_NPARAMS)
                 apply(a, b);
@@ -3500,6 +4099,8 @@ static void drain(void)
             break;
         case C_FREEZE: en_frozen = (uint8_t)(a != 0); break;
         case C_SEED:
+            expr_rng ^= (uint32_t)(b & 0xFFFF) * 2246822519u;
+            if (!expr_rng) expr_rng = 1u;
             rng ^= (uint32_t)(b & 0xFFFF) * 2654435761u;
             if (!rng)
                 rng = 1u;
@@ -3532,8 +4133,11 @@ static void drain(void)
                 reel_erase();
             else if (a == EN_REEL_TAKE)
                 reel_take();
+            else if (a == EN_REEL_CHOP)
+                reel_chop_apply();
             break;
         case C_REGROW: regrow(); break;
+        case C_TAPE: en_tape_playing = (uint8_t)(a != 0); break;
         case C_KEY: kb_key(a, b & 0x7F, b >> 8 & 1); break;
         case C_SONG: song_take(song_req); break;
         case C_DETUNE: kcents = (float)a * 0.001f; break;
@@ -3596,7 +4200,7 @@ static void chord_block(int v)                  /* a Chord voice's block: its br
              fm_minf((float)FM6_N / ((pad_gate <= 0.0f ? 5.0f : amb ? 2.0f : 0.01f) * EN_SR), 1.0f);
     for (i = 0; i < NPOLY; i++) {
         vnote_t *n = &c->n[i];
-        float amp = n->amp, g, gl, gr, pn;
+        float amp = n->amp, g, gl, gr, pn, cut;
         int32_t lv, ld;
         if (amp < 1e-5f && (c->tg < 1e-4f || i >= nn)) {
             n->amp = 0.0f;
@@ -3610,13 +4214,15 @@ static void chord_block(int v)                  /* a Chord voice's block: its br
         lv = fm6_lfo_sample(&n->lfo);
         ld = fm6_lfo_delay(&n->lfo);
         mod_of(GEN(v, i), n->vp, &m, dtb, olb);
+        cut = expr_mod(v, &n->ex, &n->fm, n->vp, olb);
         g = c->vol * 0.5f * c->gain * c->fo * m.lvl;   /* (LEVEL ramped with the place, below) */
         pn = fm_clampf(n->pan + 0.35f * motion * mod[(i + 3) % NMOD_PAD].v + m.pan, -1.0f, 1.0f);
         gl = fm_cosf((pn + 1.0f) * (FM_PI / 4.0f)) * g;
         gr = fm_sinf((pn + 1.0f) * (FM_PI / 4.0f)) * g;
         if (fm_voice(&n->fm, n->vp, n->note + 0.08f * motion * mod[i].v + m.pitch + lfo_pm(lv, m.lfopm), lv, ld,
                      n->bloom + m.bloom, m.fb, dtb, olb, x)) {
-            vcf(v, n->vf, n->note, &n->fm, n->vp, x);
+            expr_observe(v, &n->ex);
+            vcf(v, n->vf, n->note, &n->fm, n->vp, cut, x);
             const float dl = (gl - n->gl) * (1.0f / FM6_N), dr = (gr - n->gr) * (1.0f / FM6_N);
             float pl = n->gl, pr = n->gr;         /* the place ramped across the block (no zipper as it moves) */
             for (j = 0; j < FM6_N; j++) {        /* a slow drift of pitch above, as tape */
@@ -3656,6 +4262,7 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
         vnote_t *n = &c->n[i];
         const uint8_t *p = n->vp;
         int32_t lv, ld;
+        float cut;
         if (!n->on)
             continue;
         if (n->wait > 0) {                      /* (to the block: up to 0.7 ms off a hand's 0..60 ms) */
@@ -3679,6 +4286,7 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
                     sus |= (car >> j2 & 1u) && p[j2 * FP_OP + FP_L1 + 2] && p[j2 * FP_OP + FP_OL];
                 n->held = sus ? (int32_t)(step_len * 4.0f) : 0;
             }
+            n->held = expr_hold(&n->ex, n->held);
             n->rung = 1;
         } else if (n->held > 0) {
             n->held -= FM6_N;
@@ -3692,11 +4300,13 @@ static void loops_block(int v)                  /* a Loops voice's block: its st
         lv = fm6_lfo_sample(&n->lfo);
         ld = fm6_lfo_delay(&n->lfo);
         mod_of(GEN(v, i), p, &m, dtb, olb);
+        cut = expr_mod(v, &n->ex, &n->fm, n->vp, olb);
         if (n->fade)                             /* shed: down to silence over its blocks (no click) */
             m.lvl = n->lv * (float)(n->fade - 1) / (float)n->fade;
         if (fm_voice(&n->fm, p, (float)n->midi_note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb, olb,
                      x)) {
-            vcf(v, n->vf, (float)n->midi_note, &n->fm, p, x);
+            expr_observe(v, &n->ex);
+            vcf(v, n->vf, (float)n->midi_note, &n->fm, p, cut, x);
             const float g = c->vol * 0.53f * n->vel * n->out * c->fo;   /* (AMB-1's bells' level, measured) */
             float gl = n->gl, gr = n->gr;
             if (m.pan != 0.0f) {                 /* SPACE: the note wanders from its loop's place */
@@ -3736,21 +4346,29 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
 {
     voice_t *c = &vc[v];
     vnote_t *n = &c->n[0];
-    const int env = PL(v, ENV) != ENV_AMB || c->decays;   /* (the patch's envelopes, or a patch that dies away: the
+    const int env = PL(v, ENV) != ENV_AMB || c->decays || n->ex.gate != 1.0f;   /* (the patch's envelopes, or a patch that dies away: the
                                                  * level steady, the patch shapes it, struck each chord) */
     float x[FM6_N];
     int32_t dtb[6], olb[6];
     mod_t m;
     uint32_t j;
+    int waiting = 0;
     if (c->rs > 0 && --c->rs == 0)               /* a new patch, the knob at rest: out, struck, in */
         c->xs = 1;
     if (c->xs && (c->xf <= 0.0f || n->amp < 1e-4f)) {
         note_strike(v, 0, vpat[v], (int32_t)n->note, 100, 1);
         c->xs = 0;
-        c->held = (int32_t)(GATE_NAT(v) ? step_len : drift_left * GATE_F(v));
+        c->held = expr_hold(&n->ex, (int32_t)(GATE_NAT(v) ? step_len : drift_left * GATE_F(v)));
+    }
+    if (c->swait > 0) {                          /* Swing: the odd step arrives a little late */
+        c->swait -= FM6_N;
+        if (c->swait > 0)
+            waiting = 1;
+        else
+            c->swait = 0;
     }
     if (env) {                                   /* each chord (or PACE's step) struck, let go at GATE of it */
-        if (c->strike && en_playing) {
+        if (c->strike && en_playing && !waiting) {
             if (c->rest) {                       /* (sitting this chord out: let go now) */
                 fm6_note_key(&n->fm, n->vp, 0);
                 c->held = 0;
@@ -3759,6 +4377,7 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
                 note_strike(v, 0, vpat[v], (int32_t)n->target, 100, n->amp < 1e-4f);
                 c->held = c->slen > 0 ? c->slen         /* (a song's note: its own length) */
                           : (int32_t)(GATE_NAT(v) ? step_len : (st ? (float)st * step_len : drift_total) * GATE_F(v));
+                c->held = expr_hold(&n->ex, c->held);
             }
         }
         if (c->held > 0 && (c->held -= FM6_N) <= 0) {
@@ -3768,8 +4387,10 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
             c->mon = 0;
         }
     }
-    c->strike = 0;
-    c->slen = 0;
+    if (!waiting) {
+        c->strike = 0;
+        c->slen = 0;
+    }
     if (n->amp < 1e-5f && !en_playing) {
         n->amp = 0.0f;
     } else {
@@ -3777,14 +4398,16 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
                     tgt = en_playing && (env || !c->rest) ? 1.0f : 0.0f,
                     rate = tgt > 0.0f ? 1.0f / ((env ? 0.003f : 2.5f) * EN_SR) : 1.0f / (4.0f * EN_SR),
                     xt = c->xs ? 0.0f : 1.0f;
-        float amp = n->amp, gl, gr, xf = c->xf;
+        float amp = n->amp, gl, gr, xf = c->xf, cut;
         int32_t lv = fm6_lfo_sample(&n->lfo), ld = fm6_lfo_delay(&n->lfo);
         n->note += (n->target - n->note) * fm_minf((float)FM6_N * fm_maxf(c->glide_k, c->sglide), 1.0f);   /* GLIDE */
         mod_of(GEN(v, 0), n->vp, &m, dtb, olb);
+        cut = expr_mod(v, &n->ex, &n->fm, n->vp, olb);
         gl = (1.0f - fm_maxf(m.pan, 0.0f) * 0.5f) * m.lvl;   /* SPACE: the bass leans a little, never far */
         gr = (1.0f + fm_minf(m.pan, 0.0f) * 0.5f) * m.lvl;
         if (fm_voice(&n->fm, n->vp, n->note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb, olb, x)) {
-            vcf(v, n->vf, n->note, &n->fm, n->vp, x);
+            expr_observe(v, &n->ex);
+            vcf(v, n->vf, n->note, &n->fm, n->vp, cut, x);
             const float dl = (gl - n->gl) * (1.0f / FM6_N), dr = (gr - n->gr) * (1.0f / FM6_N);
             float pl = n->gl, pr = n->gr;
             for (j = 0; j < FM6_N; j++) {
@@ -3818,6 +4441,7 @@ static void bass_block(int v)                   /* a Bass voice's block: its not
 static struct {
     fm6_note_t fm;
     fm6_lfo_t lfo;
+    expr_note_t ex;
     uint8_t vp[FP_SIZE + 1];
     uint8_t on, voice, note, key;               /* key: the key's note as pressed (released by it) */
     uint16_t rel;                               /* blocks since it was let go (1.5.17: at most 6 s, then gone) */
@@ -3869,6 +4493,7 @@ static void kb_key(int v, int note, int on)
     mod_patch(VOX_GEN0[v], vpat[v], kb[k].vp);  /* (1.5.11: MOD's DECAY and an operator's envelope, as the voice's) */
     if (PL(v, ENV) == ENV_ADSR)
         adsr_patch(v, kb[k].vp);
+    expr_strike(v, -1, &kb[k].ex, kb[k].vp, kb[k].note, 100);
     fm_note_on(&kb[k].fm, kb[k].vp, kb[k].note, 100, 1);
     fm6_lfo_reset(&kb[k].lfo, kb[k].vp);
     fm6_lfo_key(&kb[k].lfo);
@@ -3886,6 +4511,7 @@ static void kb_block(void)                       /* (1.5.11: each key moved by i
         const uint8_t *p = kb[i].vp;
         const int v = kb[i].voice;
         int32_t lv, ld;
+        float cut;
         if (!kb[i].on)
             continue;
         mod_t m;
@@ -3893,8 +4519,10 @@ static void kb_block(void)                       /* (1.5.11: each key moved by i
         lv = fm6_lfo_sample(&kb[i].lfo);
         ld = fm6_lfo_delay(&kb[i].lfo);
         mod_of(VOX_GEN0[v], p, &m, dtb, olb);
+        cut = expr_mod(v, &kb[i].ex, &kb[i].fm, kb[i].vp, olb);
         if (fm_voice(&kb[i].fm, p, (float)kb[i].note + m.pitch + lfo_pm(lv, m.lfopm), lv, ld, m.bloom, m.fb, dtb, olb, x)) {
-            vcf(v, kb[i].vf, (float)kb[i].note, &kb[i].fm, p, x);
+            expr_observe(v, &kb[i].ex);
+            vcf(v, kb[i].vf, (float)kb[i].note, &kb[i].fm, p, cut, x);
             const float rf = kb[i].on == 2 && kb[i].rel > KB_REL_FREE   /* (let go 3 s ago: fading, 3 s) */
                                  ? 1.0f - (float)(kb[i].rel - KB_REL_FREE) / (float)KB_REL_FREE : 1.0f,
                         g = vc[v].vol * vc[v].gain * 0.45f * m.lvl * fm_maxf(rf, 0.0f),
@@ -3914,6 +4542,7 @@ static void kb_block(void)                       /* (1.5.11: each key moved by i
 
 static void fm_block(void)
 {
+    expr_observation_block();
     int v, i;
     uint32_t j;
     for (i = 0; i < FB_N; i++)
@@ -3930,6 +4559,7 @@ static void fm_block(void)
     for (v = 0; v < EN_NVOX; v++) {
         voice_t *c = &vc[v];
         const int want = PL(v, ROLE);
+        expr_block(v);
         if (want != c->role) {
             c->fo -= (float)FM6_N / (0.02f * EN_SR);
             if (c->fo <= 0.0f) {
@@ -4190,7 +4820,7 @@ static void control(uint32_t n)                 /* once a chunk: the slow things
         if (!fifth_done && drift_left < 0.5f * drift_total) {
             fifth_done = 1;                      /* halfway: a bass may lean on the fifth (its DENSITY) */
             for (i = 0; i < EN_NVOX; i++)
-                if (vc[i].role == ROLE_BASS && frand() < (float)PL(i, DENS) * 0.01f && chord_nt >= 3)
+                if (vc[i].role == ROLE_BASS && frand() < (float)xdens(i) * 0.01f && chord_nt >= 3)
                     bass_to(i, chord_pcs[2]);
         }
         if (drift_left <= 0.0f)

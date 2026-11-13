@@ -32,6 +32,8 @@ tap ENV
 tap ENV
 tap ENV
 tap ENV
+tap ENV
+tap ENV
 wait 100
 tap SEL
 wait 200

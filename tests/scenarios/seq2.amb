@@ -1,0 +1,32 @@
+# 1.5.26: the sequencer second page (Sequence, HOME again): Swing
+wait 300
+turn SELECT 1 100
+expect view 105
+tap HOME
+expect view 106
+wait 100
+expect par26 0
+turn K1 4 100
+expect par26 4
+turn K1 -2 100
+expect par26 2
+tap HOME
+expect view 107
+listen
+where
+said Dialogue
+where
+said Tension
+spin K1 -100
+wait 600
+turn K1 80 150
+expect par537 80
+tap SAVE
+wait 300
+reboot
+wait 300
+expect par537 80
+turn SELECT 1 100
+expect view 105
+turn SELECT 1 100
+expect view 1

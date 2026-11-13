@@ -8,7 +8,9 @@
  * way). What is recorded is SOURCE's: the whole mix (the tape's own sound left out) or one voice (before the space) or
  * the pulse, a little saturated, as onto tape. Recording makes SPLICES (up to 8, one after another on the reel): a
  * new one at the end (EDIT on the tape's pages), or the one ORGANIZE picks overdubbed, looping (REC), sound on sound
- * (SOS: how much of what was there stays, 0 replaced .. 100 all of it, the new on top).
+ * (SOS: how much of what was there stays, 0 replaced .. 100 all of it, the new on top). EDIT held on the tape's pages
+ * cuts the splice ORGANIZE picks, in its place, at its attacks (the auto-chop: up to eight splices, the audio left as
+ * it is, and four alike if it has no clear attack).
  *
  * The reel plays the splice ORGANIZE picks, as genes (grains): each a window of the splice (GENE: the whole splice ..
  * 1/256 of it, 20 ms at least), started where the tape's cursor is, past it by SLIDE, at SPEED (-2x .. stopped ..
@@ -113,7 +115,17 @@ static int rl_spl;                               /* the splice recorded */
 static int rl_ep, rl_ei;                         /* the coder's state */
 static int16_t rl_old[RL_BLK];                   /* the block being written, as it was (sound on sound) */
 static int16_t rl_new[RL_BLK];                   /* and as it is written so far (what the genes read of it) */
-static float rl_d1, rl_d2;                       /* the 2:1 decimator's last two in */
+static float rl_d1, rl_d2;                       /* (format-free: the old decimator's state, kept for its reset) */
+/* (1.5.22) the 2:1 decimator onto the tape: a 31-tap halfband (sinc under a Blackman window), not [1 2 1] / 4, which
+ * let what is over 11 kHz fold back 13 dB down (bright FM: a hiss-like grit at 7 .. 11 kHz). A model on a recording
+ * of the FM-1: its error against an ideal low-pass -29.5 dB -> -62.7 dB */
+#define RL_HB 31
+static const float RL_HBK[RL_HB] = {0.000000000f, 0.000000000f, 0.000410323f, -0.000000000f, -0.002230286f, 0.000000000f, 0.007100857f, -0.000000000f, -0.017917030f, 0.000000000f, 0.040107418f, -0.000000000f, -0.090106922f, 0.000000000f, 0.312633322f, 0.500004637f, 0.312633322f, 0.000000000f, -0.090106922f, -0.000000000f, 0.040107418f, 0.000000000f, -0.017917030f, -0.000000000f, 0.007100857f, 0.000000000f, -0.002230286f, -0.000000000f, 0.000410323f, 0.000000000f, 0.000000000f};
+static float rl_hb[RL_HB];
+static uint32_t rl_hbw;
+/* (1.5.22) noise shaping: the coder's last error fed back (its noise 1 + 0.5 z^-1: out of the top, where it is heard
+ * as hiss, into the lows, where the music covers it): 6 .. 11 kHz -48.1 -> -50.8 dB (the decoder is the same) */
+static float rl_ns;
 static uint8_t rl_half;
 
 static void rl_publish(void)
@@ -171,6 +183,7 @@ static void reel_new(void)                       /* a new splice at the reel's e
     rl_w = s;
     rl_ep = 0;
     rl_ei = 0;
+    rl_ns = 0.0f;
     rl_rec = 1;
     rl_block_start();
     rl_publish();
@@ -194,6 +207,7 @@ static void reel_dub(void)                       /* the splice picked, overdubbe
     rl_w = rl_meta.s0[rl_spl];
     rl_ep = rl_hdr[rl_w / RL_BLK].pred;
     rl_ei = rl_hdr[rl_w / RL_BLK].idx;
+    rl_ns = 0.0f;
     rl_rec = 2;
     rl_block_start();
     rl_publish();
@@ -224,8 +238,11 @@ static void rl_put(float x)
         y = rl_drive(x) + o * rl_pf(TP_SOS) * 0.01f;
     else
         y = rl_drive(x);
-    q = (int)(fm_clampf(y, -1.99f, 1.99f) * 16384.0f);
-    q = rl_code(&rl_ep, &rl_ei, q);
+    {
+        const float t = fm_clampf(y, -1.99f, 1.99f) * 16384.0f + 0.5f * rl_ns;   /* (shaped) */
+        q = rl_code(&rl_ep, &rl_ei, (int)fm_clampf(t, -32768.0f, 32767.0f));
+        rl_ns = fm_clampf((float)rl_ep - t, -4000.0f, 4000.0f);
+    }
     rl_new[k] = (int16_t)rl_ep;
     if (rl_w & 1u)
         rl_nib[rl_w >> 1] = (uint8_t)((rl_nib[rl_w >> 1] & 15) | q << 4);
@@ -256,7 +273,7 @@ static void rl_put(float x)
     }
 }
 
-/* n samples at 44.1 kHz of SOURCE's, to the reel (2:1, a [1 2 1] / 4 low-pass) */
+/* n samples at 44.1 kHz of SOURCE's, to the reel (2:1, through the halfband) */
 static void reel_record(const float *in, uint32_t n)
 {
     uint32_t j;
@@ -264,8 +281,15 @@ static void reel_record(const float *in, uint32_t n)
         return;
     for (j = 0; j < n && rl_rec; j++) {
         const float x = in[j];
-        if (rl_half)
-            rl_put(0.25f * rl_d2 + 0.5f * rl_d1 + 0.25f * x);
+        rl_hb[rl_hbw] = x;
+        rl_hbw = rl_hbw + 1u >= RL_HB ? 0u : rl_hbw + 1u;
+        if (rl_half) {                           /* (the halfband: its every other tap is 0, skipped) */
+            float acc = RL_HBK[(RL_HB - 1) / 2] * rl_hb[(rl_hbw + (RL_HB - 1) / 2) % RL_HB];
+            uint32_t k;
+            for (k = 0; k < RL_HB; k += 2)
+                acc += RL_HBK[k] * rl_hb[(rl_hbw + k) % RL_HB];
+            rl_put(acc);
+        }
         rl_d2 = rl_d1;
         rl_d1 = x;
         rl_half ^= 1u;
@@ -404,15 +428,16 @@ static float rl_speed(void)                      /* SPEED: -2x .. 0 .. +2x, 1x a
 #define RL_KOK 0x5A                              /* a splice's key known (its chroma studied) */
 #define ST_FRAME 4096u
 #define ST_NF 48u
+static volatile uint32_t rl_gen;                 /* (a cut: the splices are not the ones being studied) */
 static const float KK_MAJ[12] = {6.35f, 2.23f, 3.48f, 2.33f, 4.38f, 4.09f, 2.52f, 5.19f, 2.39f, 3.66f, 2.29f, 2.88f};
 static const float KK_MIN[12] = {6.33f, 2.68f, 3.52f, 5.38f, 2.60f, 3.53f, 2.54f, 4.75f, 3.98f, 2.69f, 3.34f, 3.17f};
 static struct {
     int8_t spl;                                  /* the splice being studied, -1 none */
     uint8_t nf, f;                               /* its frames, the next */
-    uint32_t stride;
+    uint32_t stride, gen;                        /* (gen: the reel's, so a cut meanwhile is seen) */
     float acc[12];
     float coef[36];
-} st = {-1, 0, 0, 0, {0}, {0}};
+} st = {-1, 0, 0, 0, 0, {0}, {0}};
 
 int en_reel_keyvec(int spl, float *v)            /* splice spl's 12 pitch classes' weights; 0: not known yet, or silent */
 {
@@ -471,6 +496,7 @@ int en_reel_study(void)
         if (k >= (int)rl_meta.nspl)
             return -1;
         st.spl = (int8_t)k;
+        st.gen = rl_gen;
         len = rl_meta.s1[k] - rl_meta.s0[k];
         st.nf = (uint8_t)(len < ST_FRAME ? 1u : (len - ST_FRAME) / ST_FRAME + 1u > ST_NF ? ST_NF
                                                                                         : (len - ST_FRAME) / ST_FRAME + 1u);
@@ -519,14 +545,214 @@ int en_reel_study(void)
             st.acc[b % 12] += e[b] / tot;
     if (++st.f >= st.nf) {                       /* done: its chroma, 0..255 */
         float mx = 0.0f;
-        for (b = 0; b < 12; b++)
-            mx = fm_maxf(mx, st.acc[b]);
-        for (b = 0; b < 12; b++)
-            rl_meta.chroma[k][b] = (uint8_t)(mx > 0.0f ? st.acc[b] / mx * 255.0f + 0.5f : 0.0f);
-        rl_meta.kok[k] = RL_KOK;
+        if (st.gen == rl_gen) {                  /* (cut meanwhile: its chroma would be of another splice) */
+            for (b = 0; b < 12; b++)
+                mx = fm_maxf(mx, st.acc[b]);
+            for (b = 0; b < 12; b++)
+                rl_meta.chroma[k][b] = (uint8_t)(mx > 0.0f ? st.acc[b] / mx * 255.0f + 0.5f : 0.0f);
+            rl_meta.kok[k] = RL_KOK;
+        }
         st.spl = -1;
     }
     return k;
+}
+
+/* ------------------------------------------------------------ the auto-chop --- */
+/* EDIT held on the tape's pages: the splice ORGANIZE picks is studied a frame at a time (a block of tape a step, as its
+ * key is) and cut, where it lies, at its attacks: up to eight splices, as many as the reel has room for. The audio stays
+ * where it is; only the splices' first and last samples change. A splice with no clear attack is cut into four alike
+ * (or as many as fit). The new splices are studied again (en_reel_study). */
+#define CH_MAX 24                                /* the attacks kept: the strongest, then in the order they are */
+#define CH_BLOCKS 16u                            /* a step: 4096 samples */
+typedef struct {
+    uint32_t pos;
+    float s;
+} ch_on_t;
+static struct {
+    uint8_t on, started, nc;
+    int8_t spl;
+    uint32_t first, a, a1, last;
+    float prev;
+    ch_on_t cand[CH_MAX];
+} ch;
+static struct {
+    uint8_t spl, n;
+    uint32_t b[RL_NSPL + 1];                     /* each piece's first sample, and the last's end */
+} ch_req;
+
+int en_reel_chop(int spl)                        /* the splice the UI's ORGANIZE picks */
+{
+    uint32_t s0, s1;
+    if (ch.on)
+        return -4;
+    if (en_reel_state)
+        return -3;
+    if (!rl_meta.nspl || (unsigned)spl >= rl_meta.nspl)
+        return -1;
+    s0 = rl_meta.s0[spl];
+    s1 = rl_meta.s1[spl];
+    if (s0 % RL_BLK || s1 <= s0 || s1 > rl_meta.len)
+        return -1;
+    if (s1 - s0 < 2u * RL_MIN + RL_BLK)          /* (two pieces at least, each from a block's start) */
+        return -2;
+    if (rl_meta.nspl >= RL_NSPL)
+        return -5;
+    ch.on = 1;
+    ch.started = 0;
+    ch.nc = 0;
+    ch.spl = (int8_t)spl;
+    ch.first = ch.a = ch.last = s0;
+    ch.a1 = s1;
+    ch.prev = 0.0f;
+    return 0;
+}
+static void ch_put(uint32_t pos, float s)        /* an attack: kept with the strongest (CH_MAX of them) */
+{
+    int i, w = -1;
+    float ws = 1e30f;
+    if (ch.nc < CH_MAX)
+        w = ch.nc++;
+    else {
+        for (i = 0; i < CH_MAX; i++)
+            if (ch.cand[i].s < ws) {
+                ws = ch.cand[i].s;
+                w = i;
+            }
+        if (s <= ws)
+            return;
+    }
+    ch.cand[w].pos = pos;
+    ch.cand[w].s = s;
+}
+static int ch_make(void)                         /* the request: 0 made, -1 no piece */
+{
+    const uint32_t len = ch.a1 - ch.first;
+    uint32_t b[RL_NSPL + 1];
+    int avail = RL_NSPL - ((int)rl_meta.nspl - 1), i, j, nb = 1;
+    ch_on_t t;
+    if (avail > (int)(len / RL_MIN))
+        avail = (int)(len / RL_MIN);
+    if (avail < 2)
+        return -1;
+    for (i = 0; i < ch.nc; i++)                  /* the strongest first */
+        for (j = i + 1; j < ch.nc; j++)
+            if (ch.cand[j].s > ch.cand[i].s) {
+                t = ch.cand[i];
+                ch.cand[i] = ch.cand[j];
+                ch.cand[j] = t;
+            }
+    if (ch.nc > avail - 1)
+        ch.nc = (uint8_t)(avail - 1);
+    for (i = 0; i < ch.nc; i++)                  /* then as they lie on the tape */
+        for (j = i + 1; j < ch.nc; j++)
+            if (ch.cand[j].pos < ch.cand[i].pos) {
+                t = ch.cand[i];
+                ch.cand[i] = ch.cand[j];
+                ch.cand[j] = t;
+            }
+    b[0] = ch.first;
+    for (i = 0; i < ch.nc; i++)
+        if (ch.cand[i].pos - b[nb - 1] >= RL_MIN && ch.a1 - ch.cand[i].pos >= RL_MIN)
+            b[nb++] = ch.cand[i].pos;
+    if (nb < 2) {                                /* no attack: four alike, or as many as fit */
+        int want = (int)(len / (2u * RL_MIN));
+        if (want > avail)
+            want = avail;
+        if (want > 4)
+            want = 4;
+        if (want < 2)
+            want = 2;
+        for (i = 1; i < want; i++) {
+            const uint32_t p =
+                (ch.first + len * (uint32_t)i / (uint32_t)want) / RL_BLK * RL_BLK;
+            if (p - b[nb - 1] >= RL_MIN && ch.a1 - p >= RL_MIN)
+                b[nb++] = p;
+        }
+        if (nb < 2)
+            return -1;
+    }
+    b[nb] = ch.a1;
+    ch_req.spl = (uint8_t)ch.spl;
+    ch_req.n = (uint8_t)nb;
+    for (i = 0; i <= nb; i++)
+        ch_req.b[i] = b[i];
+    return 0;
+}
+int en_reel_chop_step(void)                      /* a step of it (the UI's tick): a frame of the splice */
+{
+    uint32_t end;
+    int i;
+    if (!ch.on)
+        return -1;
+    end = ch.a + CH_BLOCKS * RL_BLK;
+    if (end > ch.a1)
+        end = ch.a1;
+    while (ch.a < end) {
+        const uint32_t blk = ch.a / RL_BLK;
+        int pred = rl_hdr[blk].pred, idx = rl_hdr[blk].idx;
+        float acc = 0.0f;
+        float e;
+        for (i = 0; i < RL_BLK; i++) {
+            rl_step(&pred, &idx, rl_nibble(ch.a + (uint32_t)i));
+            acc += (float)(pred * pred);
+        }
+        e = acc * (1.0f / (RL_BLK * 32768.0f * 32768.0f));
+        if (!ch.started) {
+            ch.started = 1;
+            ch.prev = e;
+        } else {
+            /* an attack: the block's energy nearly twice the one before's (a click, a note's start), well over the
+             * tape's noise, and a splice's worth of tape after the last one */
+            if (e > ch.prev * 1.8f && e > 4e-6f && ch.a - ch.last >= 2u * RL_MIN && ch.a1 - ch.a >= RL_MIN) {
+                ch_put(ch.a, e / (ch.prev + 1e-9f));
+                ch.last = ch.a;
+            }
+            ch.prev = e;
+        }
+        ch.a += RL_BLK;
+    }
+    if (ch.a < ch.a1)
+        return 1;
+    ch.on = 0;
+    if (ch_make() != 0)
+        return -2;
+    st.spl = -1;                                 /* (a study of the old splice: it is not one any more) */
+    BARRIER();
+    post(C_REEL, EN_REEL_CHOP, 0);
+    return 0;
+}
+static void reel_chop_apply(void)                /* (the engine's: the pieces in the splice's place) */
+{
+    const int k = ch_req.spl, m = ch_req.n, n = (int)rl_meta.nspl;
+    int i, j;
+    if (rl_rec || m < 2 || k < 0 || k >= n || n - 1 + m > RL_NSPL)
+        return;
+    if (rl_meta.s0[k] != ch_req.b[0] || rl_meta.s1[k] != ch_req.b[m])
+        return;                                  /* (another splice, or another reel: not this one) */
+    for (i = 1; i < m; i++)
+        if (ch_req.b[i] % RL_BLK || ch_req.b[i] <= ch_req.b[i - 1] || ch_req.b[i] - ch_req.b[i - 1] < RL_MIN ||
+            ch_req.b[m] - ch_req.b[i] < RL_MIN)
+            return;
+    for (i = n - 1; i > k; i--) {                /* the splices after it, moved along */
+        rl_meta.s0[i + m - 1] = rl_meta.s0[i];
+        rl_meta.s1[i + m - 1] = rl_meta.s1[i];
+        rl_meta.kok[i + m - 1] = rl_meta.kok[i];
+        rl_meta.kman[i + m - 1] = rl_meta.kman[i];
+        for (j = 0; j < 12; j++)
+            rl_meta.chroma[i + m - 1][j] = rl_meta.chroma[i][j];
+    }
+    for (i = 0; i < m; i++) {                    /* its pieces, in its place */
+        rl_meta.s0[k + i] = ch_req.b[i];
+        rl_meta.s1[k + i] = ch_req.b[i + 1];
+        rl_meta.kok[k + i] = rl_meta.kman[k + i] = 0;
+        for (j = 0; j < 12; j++)
+            rl_meta.chroma[k + i][j] = 0;
+    }
+    rl_meta.nspl = (uint32_t)(n - 1 + m);
+    if (rl_spl > k)
+        rl_spl += m - 1;
+    rl_gen++;
+    rl_publish();
 }
 
 /* how well the splice's pitch classes (v), transposed by t semitones, sit on the garden's scale; the strongest on the
@@ -603,7 +829,7 @@ static void reel_play(float *l, float *r, uint32_t n)
                 tc = rl_pf(TP_TONE) >= 99.5f ? 1.0f
                                              : 1.0f - fm_expf(-FM_TWO_PI * 1500.0f *
                                                               fm_exp2f(rl_pf(TP_TONE) * 0.03f) / EN_SR),
-                tgt = en_playing && rl_meta.nspl && lvl > 0.0f ? 1.0f : 0.0f, rate0 = rl_speed();
+                tgt = en_tape_playing && rl_meta.nspl && lvl > 0.0f ? 1.0f : 0.0f, rate0 = rl_speed();
     uint32_t j, s0, s1;
     float L, glen, iv, pk = 0.0f;
     int i, spp = 0;
@@ -807,6 +1033,8 @@ static void reel_init(void)                      /* (the reel itself stays: a re
     for (i = 0; i < TP_N; i++)
         tm_off[i] = 0.0f;
     rl_d1 = rl_d2 = 0.0f;
+    __builtin_memset(rl_hb, 0, sizeof rl_hb);
+    rl_ns = 0.0f;
     rl_half = 0;
     for (i = 0; i < RL_NG; i++) {
         gn[i].on = 0;

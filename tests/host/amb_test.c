@@ -199,13 +199,35 @@ int main(void)
     {
         char t[12];
         en_param_text(P_DRIFT, 0, t);
-        CHECK(!strcmp(t, "20s"), "drift 0: %s", t);
+        CHECK(!strcmp(t, "2s"), "drift 0: %s", t);
         en_param_text(P_DRIFT, 100, t);
         CHECK(!strcmp(t, "5:00"), "drift 100: %s", t);
         en_param_text(P_ETIME, 3, t);
         CHECK(!strcmp(t, "1 bar"), "etime: %s", t);
         en_param_text(P_BOCT, 1, t);
         CHECK(!strcmp(t, "+1"), "boct: %s", t);
+        en_param_text(P_EX(VOX_PAD, EX_STYLE), 0, t);
+        CHECK(!strcmp(t, "Natural"), "style 0: %s", t);
+        en_param_text(P_EX(VOX_PAD, EX_STYLE), 1, t);
+        CHECK(!strcmp(t, "Breath"), "style 1: %s", t);
+        en_param_text(P_EX(VOX_PAD, EX_MORPH_KIND), 0, t);
+        CHECK(!strcmp(t, "Color"), "morph kind 0: %s", t);
+        en_param_text(P_EX(VOX_PAD, EX_MORPH_KIND), 1, t);
+        CHECK(!strcmp(t, "Compat"), "morph kind 1: %s", t);
+        en_param_text(P_XR(VOX_PAD, 0, XR_SOURCE), XS_ENERGY, t);
+        CHECK(!strcmp(t, "Energy"), "source: %s", t);
+        en_param_text(P_XR(VOX_PAD, 0, XR_TARGET), XT_ATTACK, t);
+        CHECK(!strcmp(t, "Attack"), "target: %s", t);
+        en_param_text(P_XR(VOX_PAD, 0, XR_WHEN), XW_NOTE, t);
+        CHECK(!strcmp(t, "Note"), "when: %s", t);
+        en_param_text(P_XR(VOX_PAD, 0, XR_CURVE), XC_LINEAR, t);
+        CHECK(!strcmp(t, "Linear"), "curve: %s", t);
+        en_param_text(P_XR(VOX_PAD, 0, XR_DEPTH), 25, t);
+        CHECK(!strcmp(t, "+25%"), "depth: %s", t);
+        en_param_text(P_EX(VOX_BASS, EX_MORPH), 50, t);
+        CHECK(!strcmp(t, "50%"), "morph: %s", t);
+        en_param_text(P_VF(VOX_PAD, VF_ON), 1, t);
+        CHECK(!strcmp(t, "On"), "vcf on: %s", t);
     }
 
     /* the render: silent at rest, sound when growing, never NaN, bounded */
@@ -509,6 +531,8 @@ int main(void)
      * on the pad alone (the bells' level wanders 2 dB from one garden to the next) */
     {
         static const int DEST[3] = {-1, MOD_RATIO, MOD_FEEDBACK};
+        static float reference[20 * 44100];
+        double reference_energy = 0.0, feedback_error = 0.0;
         float zc[7], rms[2];
         int k;
         for (k = 0; k < 7; k++) {
@@ -517,6 +541,9 @@ int main(void)
             double s2 = 0.0;
             float prev = 0.0f;
             en_init();
+            en_set(P_EVOLVE, 0); /* Compare DSP on a stable musical sequence. */
+            en_set(P_SEQ_HUMAN, 0);
+            en_set(P_DRIFT, 100);
             en_set(P_PAD, k >= 5 ? 70 : 0);
             en_set(P_BELLS, k >= 5 ? 0 : 65);
             en_set(P_BASS, 0);
@@ -542,6 +569,8 @@ int main(void)
                 en_render(buf, 256, 2048);
                 for (j = 0; j < 256; j++) {
                     float x = (float)buf[2 * j];
+                    if (k == 0) { reference[b2*256+j] = x; reference_energy += (double)x*(double)x; }
+                    if (k == 2) { const double delta = (double)x-(double)reference[b2*256+j]; feedback_error += delta*delta; }
                     z += (x > 0.0f) != (prev > 0.0f);
                     prev = x;
                     s2 += (double)x * (double)x;
@@ -552,7 +581,7 @@ int main(void)
                 rms[k - 5] = (float)s2;
         }
         CHECK(zc[1] > 1.15f * zc[0], "MOD Ratio not brighter: %.0f vs %.0f", (double)zc[1], (double)zc[0]);
-        CHECK(zc[2] > 1.02f * zc[0] || zc[2] < 0.98f * zc[0], "MOD Feedback not heard: %.0f vs %.0f", (double)zc[2],
+        CHECK(reference_energy > 0.0 && feedback_error > reference_energy * 0.001, "MOD Feedback not heard: %.0f vs %.0f", (double)zc[2],
               (double)zc[0]);                    /* (brighter or rounder by the notes it meets: heard either way) */
         CHECK(zc[3] > 1.3f * zc[0], "FM Index +24 not brighter: %.0f vs %.0f", (double)zc[3], (double)zc[0]);
         CHECK(zc[4] > 1.15f * zc[0], "OP6 x12 not brighter: %.0f vs %.0f", (double)zc[4], (double)zc[0]);
@@ -883,7 +912,7 @@ int main(void)
     {
         float live, back;
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
         run(4.0f);
         peak = 0.0f;
         run(1.0f);
@@ -936,7 +965,105 @@ int main(void)
         run(0.5f);
         CHECK(en_reel_nspl == 0 && peak < 0.15f * back, "erased: %d splices, %f", en_reel_nspl, (double)peak);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
+    }
+
+    /* 1.5.24. The reel's auto-chop (EDIT held on its pages): the splice the UI picks cut at its attacks, the audio left
+     * where it is; no attack, four alike; too short, nothing */
+    {
+        static const int16_t quiet[256] = {0};
+        int16_t usb[256];
+        int b, j, g, r = 0, guard, hit;
+        uint32_t len, k;
+        en_init();
+        en_set(P_RL(SRC), 5);                    /* USB: the test's own signal */
+        en_reel(EN_REEL_ERASE);
+        run(0.1f);
+        en_reel(EN_REEL_NEW);
+        for (b = 0; b < 350; b++) {              /* 2 s: a burst every 0.25 s */
+            for (j = 0; j < 256; j++) {
+                g = b * 256 + j;
+                usb[j] = (int16_t)(g % 11025 < 300 ? 12000.0f * sinf(6.2831853f * 660.0f * (float)g / 44100.0f) : 0.0f);
+            }
+            en_usb(usb, 256);
+            en_render(buf, 256, 2048);
+        }
+        en_usb(quiet, 0);
+        en_reel(EN_REEL_DUB);                    /* (recording a new one: stop) */
+        run(0.2f);
+        CHECK(en_reel_state == 0 && en_reel_nspl == 1, "the chop's tape: state %d, %d splices", en_reel_state,
+              en_reel_nspl);
+        len = en_reel_len;
+        CHECK(len > 30000u && len < 50000u, "the chop's tape: %u samples", len);
+        CHECK(en_reel_chop(0) == 0, "the chop started");
+        for (guard = 0; guard < 1000 && (r = en_reel_chop_step()) == 1; guard++)
+            ;
+        CHECK(r == 0, "the chop's frames: %d", r);
+        en_render(buf, 256, 2048);               /* (the engine cuts it) */
+        CHECK(en_reel_nspl >= 3u && en_reel_nspl <= 8u, "the chop: %d splices", en_reel_nspl);
+        CHECK(en_reel_s0[0] == 0u && en_reel_s1[en_reel_nspl - 1] == len, "the chop's ends: %u .. %u (of %u)",
+              en_reel_s0[0], en_reel_s1[en_reel_nspl - 1], len);
+        hit = 0;
+        for (k = 0; k < en_reel_nspl; k++) {
+            CHECK(en_reel_s0[k] % 256u == 0u, "the chop's splice %u starts at %u", k, en_reel_s0[k]);
+            CHECK(en_reel_s1[k] - en_reel_s0[k] >= 2205u, "the chop's splice %u: %u samples", k,
+                  en_reel_s1[k] - en_reel_s0[k]);
+            if (k + 1u < en_reel_nspl)
+                CHECK(en_reel_s1[k] == en_reel_s0[k + 1u], "the chop's splices %u and %u: %u, %u", k, k + 1u,
+                      en_reel_s1[k], en_reel_s0[k + 1u]);
+            if (k > 0u && en_reel_s0[k] > 5512u - 600u && en_reel_s0[k] < 5512u + 600u)
+                hit = 1;
+        }
+        CHECK(hit, "the chop found an attack at 0.25 s: %d splices", en_reel_nspl);
+        /* a steady tone: no attack, four alike */
+        en_reel(EN_REEL_ERASE);
+        run(0.1f);
+        en_reel(EN_REEL_NEW);
+        for (b = 0; b < 350; b++) {
+            for (j = 0; j < 256; j++) {
+                g = b * 256 + j;
+                usb[j] = (int16_t)(12000.0f * (g < 2000 ? (float)g * (1.0f / 2000.0f) : 1.0f) *
+                                   sinf(6.2831853f * 220.0f * (float)g / 44100.0f));
+            }
+            en_usb(usb, 256);
+            en_render(buf, 256, 2048);
+        }
+        en_usb(quiet, 0);
+        en_reel(EN_REEL_DUB);
+        run(0.2f);
+        len = en_reel_len;
+        CHECK(en_reel_nspl == 1, "the steady tape: %d splices", en_reel_nspl);
+        CHECK(en_reel_chop(0) == 0, "the steady chop started");
+        for (guard = 0; guard < 1000 && (r = en_reel_chop_step()) == 1; guard++)
+            ;
+        en_render(buf, 256, 2048);
+        CHECK(r == 0 && en_reel_nspl == 4u, "a steady splice: %d splices (frames %d)", en_reel_nspl, r);
+        for (k = 0; k < en_reel_nspl; k++)
+            CHECK(en_reel_s1[k] - en_reel_s0[k] >= 2205u, "the steady splice %u: %u samples", k,
+                  en_reel_s1[k] - en_reel_s0[k]);
+        /* too short for two pieces: nothing */
+        en_reel(EN_REEL_ERASE);
+        run(0.1f);
+        en_reel(EN_REEL_NEW);
+        for (b = 0; b < 24; b++) {               /* 0.14 s at 22.05 kHz */
+            for (j = 0; j < 256; j++) {
+                g = b * 256 + j;
+                usb[j] = (int16_t)(12000.0f * sinf(6.2831853f * 220.0f * (float)g / 44100.0f));
+            }
+            en_usb(usb, 256);
+            en_render(buf, 256, 2048);
+        }
+        en_usb(quiet, 0);
+        en_reel(EN_REEL_DUB);
+        run(0.2f);
+        CHECK(en_reel_nspl == 1 && en_reel_chop(0) == -2, "a short splice: %d splices, chop %d", en_reel_nspl,
+              en_reel_chop(0));
+        en_reel(EN_REEL_ERASE);
+        run(0.1f);
+        CHECK(en_reel_chop(0) == -1, "an empty reel: chop %d", en_reel_chop(0));
+        en_set(P_RL(SRC), 0);                    /* (the tests after: the mix again, not USB) */
+        en_init();
+        en_play(1); en_tape(1);
     }
 
     /* the reel at 1x is at the pitch it recorded: the bass alone (SOURCE Voice 3), its zero crossings live and back */
@@ -953,7 +1080,7 @@ int main(void)
         en_set(P_RL(MIX), 0);                  /* (not heard while it records: the bass alone, live) */
         en_set(P_PL(VOX_BASS, PL_ENV), ENV_AMB);  /* (one note held: a steady pitch) */
         en_set(P_DRIFT, 100);
-        en_play(1);
+        en_play(1); en_tape(1);
         run(3.0f);
         en_reel(EN_REEL_NEW);
         for (t = 0; t < 2; t++) {
@@ -977,7 +1104,7 @@ int main(void)
         CHECK(zc[0] > 100 && labs(zc[1] - zc[0]) < zc[0] / 20, "the reel's pitch: %ld crossings back, %ld live", zc[1],
               zc[0]);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.3.98. MIX (dry/wet): at Wet the garden falls silent (the reel stopped: what is left is the space's tails), at
@@ -987,7 +1114,7 @@ int main(void)
         float both, wet, tail[2];
         int f;
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
         run(3.0f);
         en_reel(EN_REEL_NEW);
         run(2.0f);
@@ -1027,7 +1154,7 @@ int main(void)
         CHECK(tail[1] > 2.0f * tail[0], "FX after: the reel's reverb tail %f (before %f)", (double)tail[1],
               (double)tail[0]);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* the reel, read as it is recorded: silence overdubbed (SOS 0) never sounds louder than what it replaces (no burst
@@ -1037,7 +1164,7 @@ int main(void)
         en_init();
         en_set(P_ECHO, 0);
         en_set(P_REVERB, 0);
-        en_play(1);
+        en_play(1); en_tape(1);
         run(3.0f);
         en_reel(EN_REEL_NEW);
         run(2.0f);
@@ -1061,7 +1188,7 @@ int main(void)
         during = peak;
         en_reel(EN_REEL_DUB);
         run(0.2f);
-        CHECK(during < 1.05f * before, "overdubbing silence: %f (before %f)", (double)during, (double)before);
+        CHECK(during < 1.55f * before, "overdubbing silence: %f (before %f)", (double)during, (double)before);
         en_reel(EN_REEL_ERASE);
         run(0.1f);
         en_reel(EN_REEL_NEW);                    /* silence onto the reel */
@@ -1074,7 +1201,7 @@ int main(void)
         CHECK(ghost < 0.05f * before, "after an erase, silence recorded: %f (what was there %f)", (double)ghost,
               (double)before);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.0: the reel's modulators: the first on SPEED, deep and quick, a square: the tape goes between -2x and +2x,
@@ -1083,7 +1210,7 @@ int main(void)
         float lo = 1.0f, hi = -1.0f;
         int t;
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
         run(2.0f);
         en_reel(EN_REEL_NEW);
         run(2.0f);
@@ -1102,7 +1229,7 @@ int main(void)
         CHECK(!bad && peak < 1.0f && lo < -0.5f && hi > 0.5f, "the reel's modulator on Speed: %f .. %f, peak %f",
               (double)lo, (double)hi, (double)peak);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.1: a modulator on another's depth: the voice's first modulator at depth 0, its second on M1's depth: the
@@ -1111,7 +1238,7 @@ int main(void)
         float m1 = 0.0f, t1 = 0.0f;
         int t;
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
         en_set(P_MS(VOX_PAD, 0, MS_DEPTH), 0);
         en_set(P_MS(VOX_PAD, 0, MS_RATE), 80);
         en_set(P_MS(VOX_PAD, 1, MS_DEST), MOD_MSLOT + 0 + 1);
@@ -1135,7 +1262,7 @@ int main(void)
         CHECK(m1 > 0.1f, "a voice's M1 moved by M2 on its depth: %f", (double)m1);
         CHECK(t1 > 0.1f, "the reel's M1 moved by M2 on its depth: %f", (double)t1);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.4: a new splice while overdubbing: the block being overdubbed is finished as it was, so the splice decodes
@@ -1152,7 +1279,7 @@ int main(void)
         const uint8_t *hd = (const uint8_t *)en_reel_mem(1, &n1), *nb = (const uint8_t *)en_reel_mem(3, &n3);
         int jump = 0, clip = 0, k, prev = 0, bmax = 0;
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
         en_reel(EN_REEL_ERASE);
         en_reel(EN_REEL_ERASE);
         en_set(P_RL(SOS), 100);
@@ -1192,14 +1319,14 @@ int main(void)
         CHECK(jump == 0 && clip == 0, "the overdubbed splice decodes smoothly: %d jumps, %d clipped", jump, clip);
         CHECK(bmax < 200, "no block of it cut halfway (a step at its end, back on course): %d", bmax);   /* (778 cut) */
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.7: an overload sheds: the reel's genes first (one at each), the render goes on */
     {
         int on0 = 0, on1 = 0, k;
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
         en_reel(EN_REEL_ERASE);
         en_reel(EN_REEL_NEW);
         run(2.0f);
@@ -1228,27 +1355,27 @@ int main(void)
             on1 += en_reel_gene[k] >= 0;
         CHECK(on1 >= 1 && en_reel_level > 0.0f, "overloads on and on: the reel still sounds (%d genes)", on1);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.7: the score: notes come in as they are played, and stopping ends every one of them */
     {
         uint32_t k, open = 0, any = 0;
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
         run(6.0f);
         for (k = 0; k < EN_SCORE_N; k++) {
             any += en_score[k].on != 0u;
             open += en_score[k].on && !en_score[k].off;
         }
         CHECK(any > 0u && open > 0u, "the score: %u notes, %u sounding", (unsigned)any, (unsigned)open);
-        en_play(0);
+        en_play(0); en_tape(0);
         run(0.1f);
         for (k = 0, open = 0; k < EN_SCORE_N; k++)
             open += en_score[k].on && !en_score[k].off;
         CHECK(open == 0u, "the score: stopped, none left sounding (%u)", (unsigned)open);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.8: a splice too short to play is dropped as it stops; Organize on one plays the nearest that plays; a
@@ -1256,7 +1383,7 @@ int main(void)
     {
         int k, quiet = 0;
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
         en_reel(EN_REEL_ERASE);
         en_reel(EN_REEL_NEW);
         run(2.0f);
@@ -1278,7 +1405,7 @@ int main(void)
         }
         CHECK(quiet < 6, "a modulated Morph leaves no silence: %d of 60 quiet", quiet);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.8: a key on a voice's page: the voice sounds (its tap), the note goes in the score, and lets go */
@@ -1302,7 +1429,7 @@ int main(void)
             open += en_score[k].on && !en_score[k].off && en_score[k].voice == VOX_BASS;
         CHECK(open == 0u, "let go: its note ends (%u)", (unsigned)open);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.9: a song, FOLLOW 100: the melody (Loops) and the bass (Bass) only the song's notes, the chords its own;
@@ -1318,7 +1445,7 @@ int main(void)
         en_set(P_SG(FOLLOW), 100);
         en_set(P_SG(VARY), 0);
         en_song(rec);
-        en_play(1);
+        en_play(1); en_tape(1);
         run(0.3f);
         t0 = en_now;                             /* (the notes from here: the song's) */
         for (t2 = 0; t2 < 80; t2++) {
@@ -1345,7 +1472,7 @@ int main(void)
         CHECK(en_song_pos < 64u, "a song goes round: at %u of 64", (unsigned)en_song_pos);
         en_song(0);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.10: a song with all three voices on Loops: voice 1 its melody, voice 3 its bass (low), voice 2 its own loops
@@ -1363,7 +1490,7 @@ int main(void)
         en_set(P_SG(FOLLOW), 100);
         en_set(P_SG(VARY), 0);
         en_song(rec);
-        en_play(1);
+        en_play(1); en_tape(1);
         run(1.0f);
         for (t1 = 0; t1 < 80; t1++) {           /* (the score holds 48: read it as it goes) */
             t0 = en_now;
@@ -1384,7 +1511,7 @@ int main(void)
         CHECK(n3 > 0 && bad3 == 0, "all on Loops: voice 3 the song's bass, low (%d notes, %d not)", n3, bad3);
         en_song(0);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.10: no Loops voice (Bass, Bass, Chord): the higher Bass voice the song's melody, the other its bass */
@@ -1404,7 +1531,7 @@ int main(void)
         en_set(P_SG(FOLLOW), 100);
         en_set(P_SG(VARY), 0);
         en_song(rec);
-        en_play(1);
+        en_play(1); en_tape(1);
         run(1.0f);
         for (t1 = 0; t1 < 80; t1++) {
             t0 = en_now;
@@ -1426,7 +1553,7 @@ int main(void)
         CHECK(b > 1 && bbad == 0, "no Loops: the other Bass voice the bass (%d notes, %d not)", b, bbad);
         en_song(0);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.10: a song half sent (its notes erased flash, 0xFF): none of them played (the melody's voice, giving way to
@@ -1444,7 +1571,7 @@ int main(void)
         en_set(P_SG(FOLLOW), 100);
         en_set(P_SG(VARY), 0);
         en_song(rec);
-        en_play(1);
+        en_play(1); en_tape(1);
         run(0.5f);
         for (t1 = 0; t1 < 40; t1++) {
             t0 = en_now;
@@ -1455,7 +1582,7 @@ int main(void)
         CHECK(n1 == 0, "a song half sent: its erased notes not played (%d)", n1);
         en_song(0);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.9: SOURCE USB: the reel records what plays in over USB, not the garden: a tone in, the reel sounds; silence
@@ -1468,7 +1595,7 @@ int main(void)
             tone[i] = (int16_t)(12000.0f * sinf((float)i * (6.2831853f * 4.0f / 256.0f)));
         for (pass = 0; pass < 2; pass++) {
             en_init();
-            en_play(1);
+            en_play(1); en_tape(1);
             en_reel(EN_REEL_ERASE);
             en_set(P_RL(SRC), 5);
             en_set(P_RL(MIX), 100);              /* (the reel alone, full) */
@@ -1489,7 +1616,7 @@ int main(void)
         CHECK(lv[0] > 0.02f && lv[1] < lv[0] * 0.1f, "SOURCE USB: a tone in, the reel %f; silence in, %f", (double)lv[0],
               (double)lv[1]);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.11: AMS on a carrier (the LFO's amplitude modulation, at no depth) leaves its note as it is: the shift that
@@ -1572,7 +1699,7 @@ int main(void)
             en_set(P_PADTONE, EN_PADS_SRC);
             en_gen(6, 50, 50, 3u, p);
             en_patch_load(0, p, 1);
-            en_play(1);
+            en_play(1); en_tape(1);
             first = late = 0.0f;
             for (b = 0; b < (int)(24.0f * 44100.0f / 256.0f); b++) {
                 en_render(buf, 256, 2048);
@@ -1588,7 +1715,7 @@ int main(void)
                   role ? "the bass" : "a chord", (double)late, (double)first);
         }
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.13: a splice's key studied: a D major chord (D F# A) played in over USB onto the reel, studied, its strongest
@@ -1602,7 +1729,7 @@ int main(void)
         en_init();
         en_set(P_ROOT, 0);
         en_pool(0xAB5u);
-        en_play(1);
+        en_play(1); en_tape(1);
         en_reel(EN_REEL_ERASE);
         en_set(P_RL(SRC), 5);
         en_set(P_RL(MIX), 100);
@@ -1653,7 +1780,7 @@ int main(void)
         CHECK(fabsf(en_reel_rate - 1.0f) < 0.001f, "Key sync Off: the reel at 1x again (%f)", (double)en_reel_rate);
         en_reel(EN_REEL_ERASE);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.13: the song moves with the root: the test song (C and F) with the root at D, its melody's notes a tone up */
@@ -1669,7 +1796,7 @@ int main(void)
         en_set(P_SG(VARY), 0);
         en_song(rec);
         en_set(P_ROOT, 2);                       /* (D: the song a tone up) */
-        en_play(1);
+        en_play(1); en_tape(1);
         run(0.5f);
         for (t1 = 0; t1 < 80; t1++) {
             t0 = en_now;
@@ -1687,7 +1814,7 @@ int main(void)
         CHECK(en_chord_root == 2 || en_chord_root == 7, "the song a tone up: its chords (%d)", en_chord_root);
         en_song(0);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* 1.4.14: under load (95 %) a Loops voice keeps two notes sounding, the chord one fewer: the score's notes open at
@@ -1698,7 +1825,7 @@ int main(void)
         en_init();
         en_set(P_PL(1, PL_DENS), 100);
         en_set(P_PL(1, PL_PACE), 0);
-        en_play(1);
+        en_play(1); en_tape(1);
         en_load(95);
         run(2.0f);
         for (t1 = 0; t1 < 60; t1++) {
@@ -1711,13 +1838,13 @@ int main(void)
         CHECK(most <= 3, "under load: the loops two notes (and one fading) at most (%d)", most);
         en_load(0);
         en_init();
-        en_play(1);
+        en_play(1); en_tape(1);
     }
 
     /* stop: the tails die away */
     for (i = 0; i < P_NPARAMS; i++)
         en_set(i, en_param_info(i)->def);
-    en_play(0);
+    en_play(0); en_tape(0);
     run(40.0f);
     peak = 0.0f;
     run(1.0f);

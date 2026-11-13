@@ -11,7 +11,7 @@ said Scale D, E, F#, Ab and A, B, C#
 # a page settles before it is said
 tap ENV
 wait 300
-said Voice 1 page: Level 60, Role Chord, Octave 0, Density 100
+said Voice 1 page: Level 60, Role Chord, Preset Halo, Density 100
 tap GLO
 wait 300
 said Setup page: Root D, Tune 0, MIDI out On, Lights On
@@ -94,7 +94,7 @@ tap SAVE
 said SAVED
 press REC
 wait 1000
-said REC button. FREEZE: THE CHORD HOLDS AND THE REVERB RINGS ON. TAPE: OVERDUB, HELD: ERASE
+said REC button. EXPRESSION: PREV PRESET. FREEZE: THE CHORD HOLDS AND THE REVERB RINGS ON. TAPE: OVERDUB, HELD: ERASE
 release REC
 wait 100
 # the chord moving by itself: queued (said after what is being said)

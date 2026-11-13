@@ -270,7 +270,8 @@ OLD_PROJECT(project_v12, V12_NPARAMS, P_TMOD, fix_v12, 12u)
 OLD_PROJECT(projstore, P_SPLIT, P_SPLIT, fix_none, 13u)
 typedef struct {
     uint32_t magic, format;
-    int16_t par[NPIECES + 1][P_NPARAMS - P_SPLIT];   /* each piece's, then the one playing's */
+    int16_t par[NPIECES + 1][P_EXPR - P_SPLIT];   /* format 29 prefix; keep this stride forever */
+    uint8_t expression[PLAT_STORE_MAX - 8u - (NPIECES + 1u) * (P_EXPR - P_SPLIT) * 2u];
 } tapestore_t;
 typedef struct {
     uint32_t magic, format;
@@ -279,13 +280,99 @@ typedef struct {
 _Static_assert(sizeof(projstore_t) <= PLAT_STORE_MAX && sizeof(tapestore_t) <= PLAT_STORE_MAX, "a store object");
 static projstore_t pst PLAT_POOL;
 static tapestore_t tst PLAT_POOL;
+/* Format 30 adds a bounded bit-packed extension after the exact format 29
+ * header/parameter prefix. No extra flash sectors and no changes to old objects.
+ * A corrupt or absent extension defaults only expression, preserving old settings. */
+static unsigned expression_width(int p)
+{
+    const en_param_t *q = en_param_info(p);
+    unsigned n = (unsigned)(q->hi - q->lo), bits = 0;
+    while (n) {
+        bits++;
+        n >>= 1;
+    }
+    return bits;
+}
+static unsigned stored_expression_width(int p, uint32_t format)
+{
+    if (format <= 31u && p < P_SEQ && (p - P_EXPR) % EN_XSTRIDE >= EX_N &&
+        ((p - P_EXPR) % EN_XSTRIDE - EX_N) % XR_N == XR_TARGET) return 4;
+    return expression_width(p);
+}
+static uint32_t expression_size(int end, uint32_t format)
+{
+    uint32_t bits = 0;
+    int p;
+    for (p = P_EXPR; p < end; p++)
+        bits += stored_expression_width(p, format);
+    return (bits * (NPIECES + 1u) + 7u) / 8u;
+}
+static void expression_defaults(void)
+{
+    slot_t r;
+    int i, p;
+    for (i = 0; i <= NPIECES; i++) {
+        int16_t *par = i < NPIECES ? proj.slot[i].par : proj.par;
+        recipe(i < NPIECES ? i : proj.piece, &r);
+        for (p = P_EXPR; p < P_NPARAMS; p++)
+            par[p] = r.par[p];
+    }
+}
+static int expression_to_store(void)
+{
+    uint32_t bit = 0;
+    int i, p;
+    if (expression_size(P_NPARAMS, PROJ_FORMAT) > sizeof tst.expression)
+        return -1;                              /* reject before any flash writes */
+    memset(tst.expression, 0, sizeof tst.expression);
+    for (i = 0; i <= NPIECES; i++) {
+        const int16_t *par = i < NPIECES ? proj.slot[i].par : proj.par;
+        for (p = P_EXPR; p < P_NPARAMS; p++) {
+            const en_param_t *q = en_param_info(p);
+            const unsigned width = expression_width(p);
+            unsigned k, value;
+            if (par[p] < q->lo || par[p] > q->hi)
+                return -1;
+            value = (unsigned)(par[p] - q->lo);
+            for (k = 0; k < width; k++, bit++)
+                tst.expression[bit >> 3] |= (uint8_t)(((value >> k) & 1u) << (bit & 7u));
+        }
+    }
+    return 0;
+}
+static int expression_from_store(int loaded)
+{
+    const int end = tst.format == 30u ? P_SEQ : tst.format <= 32u ? P_SEQ + 4 : P_NPARAMS;
+    uint32_t bit = 0, bytes = expression_size(end, tst.format);
+    const uint32_t prefix = 8u + (NPIECES + 1u) * (P_EXPR - P_SPLIT) * 2u;
+    int i, p;
+    if (bytes > sizeof tst.expression || loaded < 0 || (uint32_t)loaded < prefix + bytes)
+        return -1;
+    for (i = 0; i <= NPIECES; i++) {
+        int16_t *par = i < NPIECES ? proj.slot[i].par : proj.par;
+        for (p = P_EXPR; p < end; p++) {
+            const en_param_t *q = en_param_info(p);
+            const unsigned width = stored_expression_width(p, tst.format);
+            unsigned k, value = 0;
+            for (k = 0; k < width; k++, bit++)
+                value |= (unsigned)((tst.expression[bit >> 3] >> (bit & 7u)) & 1u) << k;
+            if (value > (unsigned)(q->hi - q->lo))
+                return -1;
+            par[p] = (int16_t)((int)value + q->lo);
+        }
+    }
+    return 0;
+}
+
 static void tape_from_store(void)               /* the reel's settings from OBJ_TAPE, or the pieces' recipes */
 {
-    int i, p;
+    int i, p, loaded;
     slot_t r;
+    expression_defaults();
     memset(&tst, 0, sizeof tst);
-    if (plat_store_load(OBJ_TAPE, &tst, sizeof tst) < 8 || tst.magic != PROJ_MAGIC ||
-        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 28u))) {
+    loaded = plat_store_load(OBJ_TAPE, &tst, sizeof tst);
+    if (loaded < 8 || tst.magic != PROJ_MAGIC ||
+        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 32u))) {
         for (i = 0; i < NPIECES; i++) {
             recipe(i, &r);
             for (p = P_SPLIT; p < P_NPARAMS; p++)
@@ -317,7 +404,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
                 if (par[P_ST(AR1T) + 3 * s] == all)
                     par[P_ST(AR1T) + 3 * s] = EN_AR_NTGT;
         }
-    } else if (tst.format != PROJ_FORMAT) {      /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to
+    } else if (tst.format != PROJ_FORMAT && tst.format != 32u && tst.format != 31u && tst.format != 30u && tst.format != 29u) {      /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to
                                                   * the visual's): the
                                                   * rest from the recipes */
         const int upto = tst.format == 28u ? P_VCF : tst.format == 23u ? P_ST(VOFREQ) : tst.format == 22u ? P_ST(VFOLD) : tst.format == 21u ? P_ST(VMOSH) : tst.format == 20u ? P_ST(VMORPH) : tst.format == 19u ? P_ST(VLAYER) : tst.format == 18u ? P_ST(VGEO) : tst.format == 17u ? P_ST(VFEED) : tst.format == 16u ? P_ST(VMODE)
@@ -337,11 +424,13 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
         }
     } else {
         for (i = 0; i < NPIECES; i++)
-            for (p = P_SPLIT; p < P_NPARAMS; p++)
+            for (p = P_SPLIT; p < P_EXPR; p++)
                 proj.slot[i].par[p] = tst.par[i][p - P_SPLIT];
-        for (p = P_SPLIT; p < P_NPARAMS; p++)
+        for (p = P_SPLIT; p < P_EXPR; p++)
             proj.par[p] = tst.par[NPIECES][p - P_SPLIT];
     }
+    if ((tst.format == PROJ_FORMAT || tst.format == 32u || tst.format == 31u || tst.format == 30u) && expression_from_store(loaded))
+        expression_defaults();
     if (tst.format == 26u) {                     /* (26: SHIFT Y's place is TARGET now: Feedback, as before) */
         for (i = 0; i < NPIECES; i++)
             proj.slot[i].par[P_ST(VXTGT)] = 0;
@@ -405,7 +494,7 @@ int project_load(void)
         keep_fmt = 12u;
         from_project_v12(&buf.v12);
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC &&
-               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 28u))) {
+               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 32u))) {
         if (buf.now.format != PROJ_FORMAT)
             keep_fmt = buf.now.format;           /* (its patches as they are) */
         from_projstore(&buf.now);                /* (its settings to P_SPLIT; then the reel's from OBJ_TAPE) */
@@ -480,7 +569,7 @@ int project_save(void)                          /* the settings in two objects (
     pst.piece = proj.piece;
     tst.magic = PROJ_MAGIC;
     tst.format = PROJ_FORMAT;
-    for (p = 0; p < P_NPARAMS; p++) {
+    for (p = 0; p < P_EXPR; p++) {
         if (p < P_SPLIT)
             pst.par[p] = proj.par[p];
         else
@@ -494,6 +583,8 @@ int project_save(void)                          /* the settings in two objects (
     }
     for (i = 0; i < NPIECES; i++)
         pst.slot[i].pool = proj.slot[i].pool;
+    if (expression_to_store())
+        return -1;
     r = plat_store_save(OBJ_PROJ, &pst, sizeof pst);
     r = r ? r : plat_store_save(OBJ_TAPE, &tst, sizeof tst);
     return r ? r : plat_store_save(OBJ_PATCH, &pstore, sizeof pstore);
@@ -533,6 +624,27 @@ void project_source(int voice, int src)
         project_patch_send(voice, 1);
 }
 
+void project_morph_source(int voice, int src)
+{
+    uint8_t p[EN_PATCH + 1];
+    if ((unsigned)voice >= EN_NVOX || (unsigned)src >= EN_NSRC || !bank_voice(voice, src, p))
+        return;
+    proj.par[P_EX(voice, EX_MORPH_SRC)] = (int16_t)src;
+    en_set(P_EX(voice, EX_MORPH_SRC), src);
+    en_morph_load(voice, p);
+}
+int project_morph_compatible(int voice)
+{
+    uint8_t p[EN_PATCH + 1];
+    return (unsigned)voice < EN_NVOX &&
+           bank_voice(voice, proj.par[P_EX(voice, EX_MORPH_SRC)], p) &&
+           en_morph_compatible(vpatch[voice], p);
+}
+int project_morph_name(int voice, char *name)
+{
+    return (unsigned)voice < EN_NVOX && bank_name(proj.par[P_EX(voice, EX_MORPH_SRC)], name);
+}
+
 void project_patch_set(int voice, int off, int v)
 {
     if ((unsigned)off >= EN_PATCH)
@@ -570,6 +682,8 @@ void project_apply(void)
     for (i = 0; i < EN_NVOX; i++)                /* (the voice's own six, as loaded: made by the engine) */
         if (proj.par[P_VX(i, VX_OWN)] || proj.par[EN_VOX_PATCH[i]] >= EN_NFACT)
             project_patch_send(i, 1);
+    for (i = 0; i < EN_NVOX; i++)
+        project_morph_source(i, proj.par[P_EX(i, EX_MORPH_SRC)]);
     song_attach(0);
 }
 

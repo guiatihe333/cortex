@@ -6,6 +6,10 @@ wait 300
 tap ENV
 wait 100
 expect view 1
+# Preset is now on the main voice page, knob 3.
+expect par22 5
+turn K3 1 10
+expect par22 6
 tap ENV
 wait 100
 expect view 27
@@ -14,8 +18,10 @@ wait 100
 expect view 28
 shot pad_voice.png
 # the patch: the next of the pad's own (Voices), as loaded
-expect par22 5
+expect par22 6
+# Octave now occupies knob 1 on this page.
 turn K1 1 10
+turn K1 -1 10
 expect par22 6
 expect par30 0
 # the algorithm: 5 -> 7 (an edit: the patch the voice's own, OWN)
@@ -39,9 +45,11 @@ expect pat0_64 44
 shot pad_openv.png
 # MOD: the first modulator's depth, Garden's 20 -> 23 (the bells' and the bass's untouched); the second's target
 # (Garden's recipe: Pitch, 5, to 14)
-tap ENV
+tap HOME
+turn SELECT 5 100
+turn SELECT 6 100
 wait 100
-expect view 41
+expect view 102
 shot mod.png
 turn K3 3 10
 expect par32 33
@@ -51,8 +59,9 @@ turn K1 1 10
 turn K2 9 100
 expect par43 15
 turn SELECT 1 100
-expect view 42
+expect view 103
 # back to the pad's page
+tap HOME
 tap ENV
 wait 100
 expect view 1
@@ -61,18 +70,28 @@ tap ARP
 wait 100
 tap ARP
 wait 100
+expect view 50
 tap ARP
 wait 100
-expect view 45
-turn K1 1 10
+expect view 51
+tap ARP
+tap ARP
+wait 100
+expect view 2
+turn K3 1 10
 expect par28 7
+tap ARP
+tap ARP
+wait 100
+expect view 51
 tap LFO
 wait 100
 tap LFO
 wait 100
+expect view 73
 tap LFO
 wait 100
-expect view 62
+expect view 74
 turn K4 2 10
 expect par115 2
 # another voice's button from a voice's page: that voice's own first page
@@ -107,7 +126,7 @@ expect view 0
 # SELECT walks the layers' pages only, in PAGE_ORDER (Setup, MIDI, Song, then the reel's: Tape Mod the sixth)
 tap GLO
 wait 100
-turn SELECT 6 100
+turn SELECT -4 100
 expect view 9
 wav mod.wav
 wait 20000
@@ -135,19 +154,28 @@ tap ARP
 wait 100
 tap ARP
 wait 100
+expect view 50
 tap ARP
 wait 100
-expect view 45
-turn K1 11 10
+expect view 51
+tap ARP
+tap ARP
+wait 100
+expect view 2
+turn K3 11 10
 expect par28 530
 expect pat1_145 87
-spin K1 32
+spin K3 32
 expect par28 18
 expect pat1_145 66
-spin K1 64
+spin K3 64
 expect par28 82
 expect par72 0
 expect pat1_145 84
+tap ARP
+tap ARP
+wait 100
+expect view 51
 shot bank_voice.png
 # a DX7 single voice (Dexed's send) into the voice on the screen, the bells: edited (OWN), named DX7 VOICE
 dx7voice
@@ -166,7 +194,7 @@ midi B0 06 32
 wait 50
 expect pat0_121 50
 # MIDI CC out: a knob turned (the bells' INDEX, CC 20 on channel 2)
-expect view 45
+expect view 51
 out
 turn K4 24 100
 expect par73 24

@@ -8,6 +8,7 @@ wait 4000
 tap REC
 wait 200
 expect reelspl 1
+tap PLAY
 spin K2 100
 spin K4 -50
 expect par192 25

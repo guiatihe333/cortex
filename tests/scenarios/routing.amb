@@ -1,0 +1,78 @@
+# 1.5.26: the routing recipes on the Expression page: PRESET rounds every one of them, and each
+# leaves its own modulator 5 target, read back from the Mod page.
+wait 300
+turn SELECT 5 100
+expect view 96
+listen
+wait 200
+turn PRESET 1 150
+wait 300
+expect xpar0_0 55
+where
+said Preset Flow
+turn PRESET 1 150
+wait 300
+expect xpar0_0 45
+where
+said Preset Slow Orbit
+turn PRESET 1 150
+wait 300
+expect xpar0_0 45
+where
+said Preset Living Touch
+turn PRESET 1 150
+wait 300
+expect xpar0_0 58
+where
+said Preset Ratchet
+turn PRESET 1 150
+wait 300
+expect xpar0_0 40
+where
+said Preset Swing Tide
+turn PRESET 1 150
+wait 300
+expect xpar0_0 50
+where
+said Preset Bicker
+turn PRESET 1 150
+wait 300
+expect xpar0_0 44
+where
+said Preset Compass
+turn PRESET 1 150
+wait 300
+where
+said Preset Flow
+# Slow Orbit: the fifth modulator aimed at the sequencer's Rotation
+turn PRESET 1 150
+wait 300
+expect xpar0_0 45
+expect view 96
+turn SELECT 6 100
+wait 300
+expect view 102
+turn K1 4 100                  # the Mod page's Slot knob: M5
+wait 300
+where
+said Expr 1 Mod page: Mod 5, Target Rotation, Depth 20, Rate 8 bars
+turn PRESET 1 150
+wait 300
+where
+said Expr 1 Mod page: Mod 5, Target ExprVar, Depth 15, Rate 4 bars
+turn PRESET 1 150
+wait 300
+where
+said Expr 1 Mod page: Mod 5, Target Accent, Depth 35, Rate 1/16
+turn PRESET 1 150
+wait 300
+where
+said Expr 1 Mod page: Mod 5, Target Swing, Depth 40, Rate 4 bars
+turn PRESET 1 150
+wait 300
+where
+said Expr 1 Mod page: Mod 5, Target Length, Depth 45, Rate 2 bars
+turn PRESET 1 150
+wait 300
+where
+said Expr 1 Mod page: Mod 5, Target Range, Depth 50, Rate 2 bars

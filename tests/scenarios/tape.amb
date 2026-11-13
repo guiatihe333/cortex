@@ -54,3 +54,20 @@ wait 1700
 release REC
 wait 100
 expect reelspl 0
+# EDIT held on the reel's pages: the splice picked cut at its attacks (the audio left where it is)
+tap EDIT
+wait 100
+expect reelstate 1
+wait 1500
+tap REC
+wait 100
+expect reelstate 0
+expect reelspl 1
+press EDIT
+wait 1700
+release EDIT
+wait 600
+expect reelspl >1
+expect reelspl <9
+# (and the hold did not record a new splice: EDIT released made no second one)
+expect reelstate 0

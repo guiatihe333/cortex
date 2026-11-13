@@ -95,11 +95,13 @@ static int dice_unmoved(void)
             const int k = view_knob(v, i);
             char nm[24];
             if (moved[i] || k == K_NONE || k == K_OP || k == K_STAGE || k == K_PSTAGE || k == K_SLOT || k == K_TSLOT ||
+                k == K_XSLOT || k == K_MCOMP ||
                 k == K_LEDS || k == K_CPU || k == P_TUNE || k == P_MIDI || k == P_RL(SRC) || k == P_RL(ORG) ||
                 k == P_SG(SONG) || k == P_SG(START) || ((k >= P_SETP && k < P_ST(VBRIGHT)) && !(k >= P_ST(VMODE) && k <= P_ST(VSIZE2))) ||
                 k == K_RSLOT || k == K_TKEY ||
                 k == K_TSHIFT ||
-                k == KV(TRNSP) || k == KO(MODE))
+                k == KV(TRNSP) || k == KO(MODE) ||
+                (k >= P_EXPR && ((k - P_EXPR) % EN_XSTRIDE == EX_MORPH_SRC || (k - P_EXPR) % EN_XSTRIDE == EX_MORPH_KIND)))
                 continue;
             view_name(v, nm);
             printf("dice: %s, knob %d (%s) never moved\n", nm, i + 1, knob_label(v, i));
@@ -110,11 +112,29 @@ static int dice_unmoved(void)
     return bad;
 }
 
+/* Preset workflow invariant: interpretation must preserve synthesis, tuning and A/B endpoints. */
+static int16_t host_xbase[P_NPARAMS];
+static uint8_t host_xpatch[EN_NVOX][EN_PATCH];
+static int host_xbase_kept(void)
+{
+    int p;
+    for (p = 0; p < P_NPARAMS; p++) {
+        const int off = p >= P_EXPR && p < P_SEQ ? (p - P_EXPR) % EN_XSTRIDE : -1;
+        if ((p < P_EXPR || p >= P_SEQ || (off >= EX_MORPH_SRC && off <= EX_MORPH_KIND)) && proj.par[p] != host_xbase[p])
+            return 0;
+    }
+    return !memcmp(host_xpatch, vpatch, sizeof host_xpatch);
+}
+
 int app_expect(const char *what, int *got)
 {
     int g;
-    if (!strcmp(what, "playing"))
+    if (!strcmp(what, "xbaseunchanged"))
+        g = host_xbase_kept();
+    else if (!strcmp(what, "playing"))
         g = en_playing;
+    else if (!strcmp(what, "tape_playing"))
+        g = en_tape_playing;
     else if (!strcmp(what, "frozen"))
         g = en_frozen;
     else if (!strcmp(what, "view"))
@@ -153,6 +173,29 @@ int app_expect(const char *what, int *got)
         g = en_reel_nspl;
     else if (!strcmp(what, "reelsec"))          /* its seconds recorded, tenths */
         g = (int)(en_reel_len * 10u / 22050u);
+    else if (!strcmp(what, "reellevel"))        /* its sound now (1.5.25: the tape's own transport) */
+        g = (int)(en_reel_level * 100.0f);
+    else if (!strncmp(what, "xpar", 4) && strchr(what, '_')) {
+        const int v = atoi(what + 4), k = atoi(strchr(what, '_') + 1);
+        if ((unsigned)v >= EN_NVOX || (unsigned)k >= EN_XSTRIDE)
+            return 0;
+        g = proj.par[P_EX(v, k)];
+    } else if (!strncmp(what, "xroute", 6) && strchr(what, '_')) {
+        const int v = atoi(what + 6), k = atoi(strchr(what, '_') + 1);
+        if ((unsigned)v >= EN_NVOX || (unsigned)k >= EN_XROUTES)
+            return 0;
+        g = en_expr_route[v][k];
+    } else if (!strncmp(what, "xmeter", 6) && strchr(what, '_')) {
+        const int v = atoi(what + 6), k = atoi(strchr(what, '_') + 1);
+        if ((unsigned)v >= EN_NVOX || (unsigned)k >= 4u)
+            return 0;
+        g = en_expression[v][k];
+    } else if (!strncmp(what, "xphase", 6)) {
+        const int v = atoi(what + 6);
+        if ((unsigned)v >= EN_NVOX)
+            return 0;
+        g = en_expr_phase[v];
+    }
     else if (!strncmp(what, "par", 3))          /* parN: parameter N (amb.h P_*) */
         g = proj.par[atoi(what + 3)];
     else if (!strncmp(what, "pat", 3) && strchr(what, '_'))   /* patV_OFF: voice V's patch byte OFF */
@@ -166,6 +209,12 @@ int app_expect(const char *what, int *got)
 int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, const char *d)
 {
     (void)b, (void)c, (void)d;
+    if (!strcmp(cmd, "xsavebase")) {
+        memcpy(host_xbase, proj.par, sizeof host_xbase);
+        memcpy(host_xpatch, vpatch, sizeof host_xpatch);
+        return 1;
+    }
+
     if (!strcmp(cmd, "battery")) {               /* battery N: plat_battery as N (-1..4), "battery off" its own */
         batt_host = (int8_t)(strcmp(a, "off") ? atoi(a) : -2);
         return 1;
@@ -294,6 +343,30 @@ int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, c
         }
         f[3] = 0x0B;
         app_sysex(f, 5);
+        return 1;
+    }
+    if (!strcmp(cmd, "storev30") || !strcmp(cmd, "storev31") || !strcmp(cmd, "storev32")) {
+        const uint32_t old_format = !strcmp(cmd, "storev30") ? 30u : !strcmp(cmd, "storev31") ? 31u : 32u;
+        const int old_end = old_format == 30u ? P_SEQ : P_SEQ + 4;
+        uint32_t bit = 0;
+        int i, p;
+        project_save();
+        pst.format = tst.format = pstore.format = old_format;
+        memset(tst.expression, 0, sizeof tst.expression);
+        for (i = 0; i <= NPIECES; i++) {
+            const int16_t *values = i < NPIECES ? proj.slot[i].par : proj.par;
+            for (p = P_EXPR; p < old_end; p++) {
+                const en_param_t *q = en_param_info(p);
+                const unsigned width = stored_expression_width(p, old_format);
+                const unsigned value = (unsigned)(values[p] - q->lo);
+                unsigned k;
+                for (k = 0; k < width; k++, bit++)
+                    tst.expression[bit >> 3] |= (uint8_t)(((value >> k) & 1u) << (bit & 7u));
+            }
+        }
+        plat_store_save(OBJ_PROJ, &pst, sizeof pst);
+        plat_store_save(OBJ_TAPE, &tst, sizeof tst);
+        plat_store_save(OBJ_PATCH, &pstore, sizeof pstore);
         return 1;
     }
     if (!strcmp(cmd, "storev13")) {              /* format 13 (as 1.4.2 wrote it): the targets with no Off before them */

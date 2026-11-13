@@ -1,0 +1,121 @@
+# All interpretation recipes exercise real keyboard rendering, not just parameter tables.
+wait 300
+tap FX
+spin K1 -100
+spin K3 -100
+tap PLAY
+wait 6000
+tap HOME
+turn SELECT 5 100
+wait 200
+expect view 96
+# Subtle
+tap EDIT
+wait 200
+key 7 down
+wait 1000
+peakreset
+wait 2000
+expect peak_db_max >-60
+expect peak_db_max -0.5
+key 7 up
+wait 1500
+# Breath
+tap EDIT
+wait 200
+key 7 down
+wait 1000
+peakreset
+wait 2000
+expect peak_db_max >-60
+expect peak_db_max -0.5
+key 7 up
+wait 1500
+# Pluck
+tap EDIT
+wait 200
+key 7 down
+wait 1000
+peakreset
+wait 2000
+expect peak_db_max >-60
+expect peak_db_max -0.5
+key 7 up
+wait 1500
+# Legato
+tap EDIT
+wait 200
+key 7 down
+wait 1000
+peakreset
+wait 2000
+expect peak_db_max >-60
+expect peak_db_max -0.5
+key 7 up
+wait 1500
+# Cloud
+tap EDIT
+wait 200
+key 7 down
+wait 1000
+peakreset
+wait 2000
+expect peak_db_max >-60
+expect peak_db_max -0.5
+key 7 up
+wait 1500
+# CallResponse
+tap EDIT
+wait 200
+key 7 down
+wait 1000
+peakreset
+wait 2000
+expect peak_db_max >-60
+expect peak_db_max -0.5
+key 7 up
+wait 1500
+# Sparse
+tap EDIT
+wait 200
+key 7 down
+wait 1000
+peakreset
+wait 2000
+expect peak_db_max >-60
+expect peak_db_max -0.5
+key 7 up
+wait 1500
+# Swell
+tap EDIT
+wait 200
+key 7 down
+wait 1000
+peakreset
+wait 2000
+expect peak_db_max >-60
+expect peak_db_max -0.5
+key 7 up
+wait 1500
+# Pulse
+tap EDIT
+wait 200
+key 7 down
+wait 1000
+peakreset
+wait 2000
+expect peak_db_max >-60
+expect peak_db_max -0.5
+key 7 up
+wait 1500
+# Off
+tap EDIT
+wait 200
+key 7 down
+wait 1000
+peakreset
+wait 2000
+expect peak_db_max >-60
+expect peak_db_max -0.5
+key 7 up
+wait 1500

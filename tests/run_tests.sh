@@ -25,7 +25,16 @@ run() {
     fi
 }
 run amb sh -c "$CC -O2 -ffp-contract=off -std=c99 -Wall -Wextra -Wdouble-promotion -Werror -DEN_HOST -Iapp/dsp -Ibase/include \
-    -o $OUT/amb_test tests/host/amb_test.c app/dsp/amb.c -lm && $OUT/amb_test"
+    -o $OUT/amb_test tests/host/amb_test.c app/dsp/amb.c app/dsp/fm_morph.c -lm && $OUT/amb_test"
+run morph sh -c "$CC -O2 -ffp-contract=off -std=c99 -Wall -Wextra -Wdouble-promotion -Werror -DEN_HOST -Iapp/dsp -Ibase/include \
+    -o $OUT/morph_test tests/host/morph_test.c app/dsp/fm_morph.c app/dsp/amb.c -lm && $OUT/morph_test"
+run expression sh -c "$CC -O2 -ffp-contract=off -std=c99 -Wall -Wextra -Wdouble-promotion -Werror -DEN_HOST -Iapp/dsp -Ibase/include \
+    -o $OUT/expression_test tests/host/expression_test.c app/dsp/fm_morph.c -lm && $OUT/expression_test"
+run expression-bypass "$PY" -c 'import subprocess,sys; p=sys.argv[1]; a=subprocess.check_output([p,"hash-plain"]); b=subprocess.check_output([p,"hash-configured"]); assert a==b,(a,b); print("Amount 0: sample-identical in fresh processes",a.decode().strip())' "$OUT/expression_test"
+run filter sh -c "$CC -O2 -ffp-contract=off -std=c99 -Wall -Wextra -Wdouble-promotion -Werror -DEN_HOST -Iapp/dsp -Ibase/include \
+    -o $OUT/filter_test tests/host/filter_test.c app/dsp/fm_morph.c -lm && $OUT/filter_test"
+run seq sh -c "$CC -O2 -ffp-contract=off -std=c99 -Wall -Wextra -Wdouble-promotion -Werror -DEN_HOST -Iapp/dsp -Ibase/include \
+    -o $OUT/seq_test tests/host/seq_test.c app/dsp/fm_morph.c -lm && $OUT/seq_test"
 if [ -f $B/cortex.fwsc ]; then
     run ota-entry sh -c "$CC -w -o $OUT/ota_test base/tests/ota_test.c && $OUT/ota_test $B/cortex.fwsc"
     run update-loader sh -c "head -c 100000 $B/cortex.bin > $OUT/old_app.bin && \
@@ -40,6 +49,8 @@ else
     echo "  skip fita (no node)"
 fi
 run host-build sh build.sh --host
+run video-canvas sh -c "$CC -O2 -std=c99 -Wall -Wextra -Wno-unused-function -Werror -I$B/gen \
+    -o $OUT/video_canvas_test tests/host/video_canvas_test.c && $OUT/video_canvas_test"
 if command -v emcc >/dev/null 2>&1; then
     run emu sh -c "sh build.sh --web && node tests/host/emu_test.mjs $B/emu/app.wasm"
     echo "  skip app (web/app, AMB-1's engine-only web app, is not kept up in CORTEX: no pulse since 1.4.0)"

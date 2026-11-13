@@ -1,0 +1,104 @@
+/* Curated interpretation recipes. These touch only interpretation controls and routes;
+ * the base patch, tuning and the independent A/B morph remain untouched. */
+typedef struct {
+    const char *name;
+    int16_t control[6]; /* amount, style, phrase, variation, memory, link */
+    int16_t route[4][XR_N]; /* source, target, depth, timing, curve, smoothing, min, max */
+} expression_preset_t;
+#define XROUTE(s,t,d,w,c,z) {s,t,d,w,c,z,0,100}
+static const expression_preset_t EXPRESSION_PRESET[] = {
+    {"Off", {0,XSTYLE_NATURAL,8,0,70,0}, {{0}}},
+    {"Subtle", {24,XSTYLE_NATURAL,40,8,80,12}, {
+        XROUTE(XS_ENERGY,XT_LEVEL,12,XW_LIVE,XC_SOFT,75),
+        XROUTE(XS_ARCH,XT_CUTOFF,14,XW_LIVE,XC_SOFT,70)}},
+    {"Breath", {58,XSTYLE_BREATH,65,15,82,22}, {
+        XROUTE(XS_BREATH,XT_CUTOFF,38,XW_LIVE,XC_SOFT,80),
+        XROUTE(XS_DURATION,XT_ATTACK,24,XW_NOTE,XC_SOFT,55),
+        XROUTE(XS_SILENCE,XT_RELEASE,30,XW_NOTE,XC_SOFT,60)}},
+    {"Pluck", {62,XSTYLE_PLUCK,0,18,45,8}, {
+        XROUTE(XS_ACCENT,XT_INDEX,34,XW_NOTE,XC_STEP,8),
+        XROUTE(XS_ENERGY,XT_DECAY,-28,XW_NOTE,XC_LINEAR,12),
+        XROUTE(XS_DENSITY,XT_GATE,-24,XW_NOTE,XC_SOFT,20)}},
+    {"Legato", {56,XSTYLE_LEGATO,80,8,92,32}, {
+        XROUTE(XS_LINK,XT_GATE,38,XW_NOTE,XC_SOFT,75),
+        XROUTE(XS_DURATION,XT_RELEASE,26,XW_NOTE,XC_SOFT,80),
+        XROUTE(XS_LEAP,XT_ATTACK,18,XW_NOTE,XC_SOFT,55)}},
+    {"Cloud", {68,XSTYLE_CLOUD,100,26,95,45}, {
+        XROUTE(XS_MEMORY,XT_RELEASE,42,XW_PHRASE,XC_SOFT,92),
+        XROUTE(XS_BREATH,XT_CUTOFF,30,XW_LIVE,XC_CENTER,90),
+        XROUTE(XS_DENSITY,XT_LEVEL,-22,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_ARCH,XT_INDEX,16,XW_NOTE,XC_SOFT,85)}},
+    {"CallResponse", {54,XSTYLE_NATURAL,35,20,72,85}, {
+        XROUTE(XS_OTHER,XT_LEVEL,-42,XW_LIVE,XC_SOFT,65),
+        XROUTE(XS_SILENCE,XT_GATE,32,XW_NOTE,XC_SOFT,40),
+        XROUTE(XS_LINK,XT_CUTOFF,28,XW_PHRASE,XC_CENTER,60)}},
+    {"Sparse", {48,XSTYLE_PLUCK,85,12,88,35}, {
+        XROUTE(XS_DENSITY,XT_LEVEL,-38,XW_LIVE,XC_SOFT,75),
+        XROUTE(XS_DENSITY,XT_GATE,-32,XW_NOTE,XC_STEP,35),
+        XROUTE(XS_SILENCE,XT_RELEASE,36,XW_NOTE,XC_SOFT,70)}},
+    {"Swell", {72,XSTYLE_BREATH,85,10,90,20}, {
+        XROUTE(XS_ARCH,XT_ATTACK,36,XW_NOTE,XC_SOFT,85),
+        XROUTE(XS_BREATH,XT_LEVEL,34,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_ARCH,XT_CUTOFF,46,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_DURATION,XT_RELEASE,32,XW_NOTE,XC_SOFT,75)}},
+    {"Pulse", {58,XSTYLE_PLUCK,0,6,35,18}, {
+        XROUTE(XS_ACCENT,XT_LEVEL,40,XW_LIVE,XC_STEP,10),
+        XROUTE(XS_ACCENT,XT_INDEX,30,XW_NOTE,XC_STEP,5),
+        XROUTE(XS_BREATH,XT_GATE,-30,XW_NOTE,XC_CENTER,15)}},
+    {"Glow", {52,XSTYLE_NATURAL,45,8,88,20}, {
+        XROUTE(XS_ARCH,XT_CUTOFF,30,XW_PHRASE,XC_SOFT,90),
+        XROUTE(XS_BREATH,XT_LEVEL,22,XW_LIVE,XC_SOFT,88),
+        XROUTE(XS_DURATION,XT_RELEASE,20,XW_NOTE,XC_SOFT,70)}},
+    {"Shiver", {46,XSTYLE_PLUCK,30,22,40,10}, {
+        XROUTE(XS_LEAP,XT_INDEX,28,XW_NOTE,XC_STEP,6),
+        XROUTE(XS_ACCENT,XT_ATTACK,-26,XW_NOTE,XC_LINEAR,10),
+        XROUTE(XS_REGISTER,XT_CUTOFF,18,XW_LIVE,XC_CENTER,35)}},
+    {"Tide", {60,XSTYLE_LEGATO,55,6,92,70}, {
+        XROUTE(XS_OTHER,XT_GATE,34,XW_LIVE,XC_SOFT,92),
+        XROUTE(XS_LINK,XT_LEVEL,20,XW_PHRASE,XC_SOFT,90),
+        XROUTE(XS_SILENCE,XT_RELEASE,26,XW_NOTE,XC_SOFT,80)}},
+    {"Flow", {55,XSTYLE_NATURAL,65,6,85,25}, {
+        XROUTE(XS_ENERGY,XT_MOTIF,30,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_BREATH,XT_ROTATION,35,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_MEMORY,XT_DIALOGUE,70,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_DENSITY,XT_SPACE,25,XW_LIVE,XC_SOFT,80)}},
+    {"Slow Orbit", {45,XSTYLE_NATURAL,70,4,90,20}, {
+        XROUTE(XS_DENSITY,XT_EVOLVE,-20,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_SILENCE,XT_MOTIF,15,XW_LIVE,XC_SOFT,85)}},
+    {"Living Touch", {45,XSTYLE_BREATH,60,8,85,25}, {
+        XROUTE(XS_BREATH,XT_CUTOFF,25,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_ENERGY,XT_ACCENT,25,XW_LIVE,XC_SOFT,80),
+        XROUTE(XS_ARCH,XT_MOTIF,20,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_DENSITY,XT_DENSITY,-15,XW_LIVE,XC_SOFT,90)}},
+    {"Ratchet", {58,XSTYLE_PLUCK,20,10,45,15}, {
+        XROUTE(XS_ACCENT,XT_PASSING,40,XW_LIVE,XC_STEP,30),
+        XROUTE(XS_DENSITY,XT_ACCENT,25,XW_NOTE,XC_SOFT,60)}},
+    {"Swing Tide", {40,XSTYLE_NATURAL,60,4,85,20}, {
+        XROUTE(XS_DENSITY,XT_SWING,30,XW_LIVE,XC_SOFT,90),
+        XROUTE(XS_SILENCE,XT_HUMAN,25,XW_LIVE,XC_SOFT,85)}},
+    {"Bicker", {50,XSTYLE_NATURAL,30,8,75,60}, {
+        XROUTE(XS_OTHER,XT_LEVEL,-30,XW_LIVE,XC_SOFT,70),
+        XROUTE(XS_SILENCE,XT_GATE,30,XW_NOTE,XC_SOFT,45),
+        XROUTE(XS_MEMORY,XT_DIALOGUE,40,XW_LIVE,XC_SOFT,88)}},
+    {"Compass", {44,XSTYLE_NATURAL,75,12,88,35}, {
+        XROUTE(XS_REGISTER,XT_RANGE,35,XW_LIVE,XC_CENTER,60),
+        XROUTE(XS_ARCH,XT_MOTIF,20,XW_PHRASE,XC_SOFT,85)}}
+};
+#undef XROUTE
+#define NEXPRESSION_PRESET ((int)(sizeof EXPRESSION_PRESET / sizeof *EXPRESSION_PRESET))
+
+#define NINTERPRETATION_PRESET 13
+/* Routing recipes deliberately reserve modulator 5; older interpretation presets leave LFOs alone. */
+#define NROUTING_PRESET (NEXPRESSION_PRESET - NINTERPRETATION_PRESET)
+/* One row for each routing recipe, bottom of EXPRESSION_PRESET: depth, rate, shape, target, spread, fade, sync,
+ * smooth. RATE under SYNC Tempo is a note value (0: 8 bars .. 100: 1/16); the target stores dest + 1. */
+static const int16_t ROUTING_LFO[NROUTING_PRESET][MS_N] = {
+    {0},                                                                          /* Flow: routes only */
+    {20,0,SHAPE_SINE,MOD_SEQ + XT_ROTATION-XT_DENSITY + 1,0,25,SYNC_TEMPO,85},    /* Slow Orbit: Rotation */
+    {15,10,SHAPE_SINE,MOD_EXPR + 2,0,25,SYNC_TEMPO,85},                           /* Living Touch: ExprVar */
+    {35,100,SHAPE_SH,MOD_SEQ + XT_ACCENT-XT_DENSITY + 1,0,0,SYNC_TEMPO,20},       /* Ratchet: an accent a 1/16 */
+    {40,9,SHAPE_SINE,MOD_SEQ + XT_SWING-XT_DENSITY + 1,0,20,SYNC_TEMPO,95},       /* Swing Tide: 4 bars */
+    {45,17,SHAPE_WALK,MOD_SEQ + XT_LENGTH-XT_DENSITY + 1,0,30,SYNC_TEMPO,90},     /* Bicker: phrase length */
+    {50,25,SHAPE_TRI,MOD_SEQ + XT_RANGE-XT_DENSITY + 1,0,40,SYNC_TEMPO,88}        /* Compass: octave range */
+};
+_Static_assert(sizeof ROUTING_LFO / sizeof *ROUTING_LFO == NROUTING_PRESET, "a routing recipe an LFO row");

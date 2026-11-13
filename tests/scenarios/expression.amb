@@ -1,0 +1,205 @@
+# Dedicated Expression page, all curated recipes, safe application, undo and persistence.
+wait 300
+xsavebase
+battery 2
+tap ENV
+wait 100
+expect view 1
+shot voice-main.png
+tap HOME
+turn SELECT 5 100
+wait 200
+expect view 96
+expect xpar0_0 0
+shot expression-custom.png
+listen
+where
+said Expr 1 Expression page
+where
+said Preset Custom
+where
+said Phrase progress
+# Subtle
+tap EDIT
+wait 300
+expect xpar0_0 24
+expect xbaseunchanged 1
+listen
+where
+said Preset Subtle
+shot expression-subtle.png
+# Breath
+tap EDIT
+wait 300
+expect xpar0_0 58
+expect xbaseunchanged 1
+listen
+where
+said Preset Breath
+shot expression-breath.png
+# Pluck
+tap EDIT
+wait 300
+expect xpar0_0 62
+expect xbaseunchanged 1
+listen
+where
+said Preset Pluck
+shot expression-pluck.png
+# Legato
+tap EDIT
+wait 300
+expect xpar0_0 56
+expect xbaseunchanged 1
+listen
+where
+said Preset Legato
+shot expression-legato.png
+# Cloud
+tap EDIT
+wait 300
+expect xpar0_0 68
+expect xbaseunchanged 1
+listen
+where
+said Preset Cloud
+shot expression-cloud.png
+# CallResponse
+tap EDIT
+wait 300
+expect xpar0_0 54
+expect xbaseunchanged 1
+listen
+where
+said Preset CallResponse
+where
+said Battery two thirds
+shot expression-callresponse.png
+# Sparse
+tap EDIT
+wait 300
+expect xpar0_0 48
+expect xbaseunchanged 1
+listen
+where
+said Preset Sparse
+shot expression-sparse.png
+# Swell
+tap EDIT
+wait 300
+expect xpar0_0 72
+expect xbaseunchanged 1
+listen
+where
+said Preset Swell
+shot expression-swell.png
+# Pulse
+tap EDIT
+wait 300
+expect xpar0_0 58
+expect xbaseunchanged 1
+listen
+where
+said Preset Pulse
+shot expression-pulse.png
+# Glow, Shiver and Tide: the newest interpretation recipes
+tap EDIT
+wait 300
+expect xpar0_0 52
+expect xbaseunchanged 1
+listen
+where
+said Preset Glow
+shot expression-glow.png
+tap EDIT
+wait 300
+expect xpar0_0 46
+expect xbaseunchanged 1
+listen
+where
+said Preset Shiver
+shot expression-shiver.png
+tap EDIT
+wait 300
+expect xpar0_0 60
+expect xbaseunchanged 1
+listen
+where
+said Preset Tide
+shot expression-tide.png
+# Off
+tap EDIT
+wait 300
+expect xpar0_0 0
+expect xbaseunchanged 1
+listen
+where
+said Preset Off
+shot expression-off.png
+# Undo Off restores Tide, including its routes.
+press SEL
+wait 1100
+release SEL
+wait 200
+expect xpar0_0 60
+expect xpar0_9 12
+expect xpar0_10 5
+expect xpar0_11 34
+expect xbaseunchanged 1
+# Back to Swell (Tide, Shiver, Glow, Pulse); inspect its roomy matrix pages.
+tap REC
+wait 200
+tap REC
+wait 200
+tap REC
+wait 200
+tap REC
+wait 500
+expect xpar0_0 72
+turn SELECT 3 100
+expect view 99
+expect xpar0_9 8
+expect xpar0_10 1
+shot matrix-route.png
+turn SELECT 1 100
+expect view 100
+shot matrix-timing.png
+turn SELECT 1 100
+expect view 101
+shot matrix-bounds.png
+# Manual depth change becomes Custom; all parameters survive reboot.
+turn SELECT -2 100
+spin K4 1
+expect xpar0_11 37
+tap SAVE
+wait 300
+reboot
+wait 300
+expect xpar0_0 72
+expect xpar0_11 37
+expect xbaseunchanged 1
+tap ENV
+tap HOME
+turn SELECT 5 100
+wait 200
+expect view 96
+listen
+where
+said Preset Custom
+shot expression-restored.png
+# Shared page selects the voice without changing its parameters.
+tap ARP
+expect view 96
+expect xpar1_0 0
+tap EDIT
+wait 400
+expect xpar1_0 24
+expect xpar0_0 72
+turn SELECT -1 100
+expect view 3
+turn SELECT 1 100
+expect view 96
+turn SELECT 8 100
+expect view 104
+turn SELECT 1 100
+expect view 6

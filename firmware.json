@@ -14,7 +14,7 @@
   "hardware": {
     "models": ["FM-1"],
     "flash": ["856014", "B36014"],
-    "features": ["usb-audio-in", "usb-audio-out", "screen-reader"]
+    "features": ["usb-audio-in", "usb-audio-out", "second-core", "screen-reader"]
   },
   "credits": "A fork of AMB-1 by Charles Vestal; the FM6 core is msfa (Dexed), by way of JIANT FM. Built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
 }

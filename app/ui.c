@@ -17,6 +17,7 @@
  * MIDI in: channel 1 notes, the scale; clock; CC and NRPN set what the knobs set (midi_cc); MIDI out: what the knobs
  * set, as CC and NRPN (with MIDI out on) */
 #include "fastmath.h"
+#include "expression_presets.h"
 
 /* CORTEX's letters (1.5.1): the panel's face melted, still read as it was: each column of a letter on a slow wave (a
  * pixel, two for the big faces), drops running down from some strokes' feet, and a ghost of the letter a pixel down
@@ -82,42 +83,61 @@ static void ui_blit(uint32_t x, uint32_t y);
 #define cv_blit(x, y) ui_blit(x, y)
 
 /* the pages, one a layer (a button each); SELECT steps through them in this order. Each voice (the pad, the bells,
- * the bass) has NSUB more, in three groups (SUB_*), with no button of their own: its page's button pressed again goes
+ * the bass) has NSUB more, in five groups (SUB_*), with no button of their own: its page's button pressed again goes
  * to the next group (the page it was left on) and from the last back to the layer's page; SELECT steps through the
  * voice's own pages; the voice's button stays lit on them */
 enum { V_GARDEN, V_PAD, V_BELLS, V_BASS, V_SPACE, V_SETUP, V_TAPE, V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_TKEY, V_SONG,
        V_MIDI, V_VIS, V_VID, V_SHAPE, V_VMIX, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN, V_OSC, V_OSC2, V_XFORM, V_SHAPE2, V_MAIN };
 #define VIS_OSC 8                               /* (VISUAL's Osc: drawn, not one MORPH turns into) */
-enum { S_GEN, S_VOICE, S_PLAY, S_ADSR, S_FILT, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, NSUB };
-#define NVIEWS (V_MAIN + EN_NVOX * NSUB)
-#define NGROUP 4
-static const uint8_t GROUP0[NGROUP + 1] = {S_GEN, S_VOICE, S_OP, S_MOD, NSUB};   /* each group's first page */
+enum { S_GEN, S_VOICE, S_PLAY, S_ADSR, S_FILT, S_LFO, S_LFO2, S_PEG, S_OP, S_OPENV, S_OP2, S_OP3, S_OP4, S_OP5, S_MOD, S_MOD2, S_MOD3, S_EXPR, S_GESTURE, S_MORPH, S_MATRIX, S_MATRIX2, S_MATRIX3, NSUB };
+#define V_EXPR (V_MAIN + EN_NVOX * NSUB)
+#define V_EXPR_GESTURE (V_EXPR + 1)
+#define V_EXPR_MORPH (V_EXPR + 2)
+#define V_EXPR_MATRIX (V_EXPR + 3)
+#define V_EXPR_MATRIX2 (V_EXPR + 4)
+#define V_EXPR_MATRIX3 (V_EXPR + 5)
+#define V_MOD (V_EXPR + 6)
+#define V_MOD2 (V_EXPR + 7)
+#define V_MOD3 (V_EXPR + 8)
+#define V_SEQ (V_EXPR + 9)
+#define V_SEQ2 (V_SEQ + 1)                  /* (1.5.26) the sequencer's second page: Swing */
+#define V_PHRASE (V_SEQ2 + 1)
+#define NVIEWS (V_PHRASE + 1)
+#define NGROUP 5
+static const uint8_t GROUP_VISIT[NGROUP] = {4, 0, 1, 2, 3}; /* Expression first, preserve stored page IDs */
+static const uint8_t GROUP0[NGROUP + 1] = {S_GEN, S_VOICE, S_OP, S_MOD, S_EXPR, NSUB};   /* each group's first page */
 /* (1.5.10) the layers' pages in the order SELECT, HOME and the page dots take them: the video synth from its source
  * out (what makes the picture, its shape, a second over it, its motion, its breaking, its colour, what moves it,
  * the screen); Osc's two only while Osc is in use (page_on) */
-static const uint8_t PAGE_ORDER[] = {V_GARDEN, V_PAD, V_BELLS, V_BASS, V_SPACE, V_SETUP, V_MIDI, V_SONG, V_TAPE,
-                                     V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_TKEY, V_VIS, V_OSC, V_OSC2, V_SHAPE, V_SHAPE2,
+static const uint8_t PAGE_ORDER[] = {V_GARDEN, V_SEQ, V_PAD, V_BELLS, V_BASS, V_EXPR, V_TAPE, V_GENE, V_DECK, V_TMOD1, V_TMOD2, V_TKEY,
+                                     V_SPACE, V_SETUP, V_MIDI, V_SONG,
+                                     V_VIS, V_OSC, V_OSC2, V_SHAPE, V_SHAPE2,
                                      V_VMIX,
                                      V_VID, V_XFORM, V_LIFE, V_MOSH, V_CHROMA, V_REACT, V_SCREEN};
-_Static_assert(sizeof PAGE_ORDER == V_MAIN, "every layer page once");
-static const char *const MAIN_NAME[V_MAIN] = {"Cortex", "Voice 1", "Voice 2", "Voice 3", "Space", "Setup", "Tape",
-                                              "Gene", "Deck", "Tape Mod", "Tape Mod 2", "Tape Key", "Song", "MIDI", "Visual", "Video", "Shape", "Mix", "Life", "Mosh",
-                                              "Chroma", "React", "Screen", "Osc", "Osc 2",
-                                              "Transform", "Shape 2"};
+_Static_assert(sizeof PAGE_ORDER == V_MAIN + 2, "every layer page and expression");
+static const char *const MAIN_NAME[V_MAIN + 1] = {"Cortex", "Voice 1", "Voice 2", "Voice 3", "Space", "Setup", "Tape", "Gene", "Deck", "Tape Mod", "Tape Mod 2", "Tape Key", "Song", "MIDI",
+                                              "Visual", "Video", "Shape", "Mix", "Life", "Mosh", "Chroma", "React", "Screen", "Osc", "Osc 2",
+                                              "Transform", "Shape 2", "Expression"};
 static const char *const SUB_NAME[NSUB] = {"Gen", "Patch", "Play", "ADSR", "Filter", "LFO", "LFO 2", "Pitch EG", "OP", "OP Env", "OP 2", "OP 3",
-                                           "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3"};
+                                           "OP 4", "OP 5", "Mod", "Mod 2", "Mod 3", "Expression", "Gesture", "Morph", "Matrix", "Matrix 2", "Matrix 3"};
 static const uint8_t VIEW_BTN[V_MAIN] = {B_HOME, B_ENV, B_ARP, B_LFO, B_FX, B_GLO, B_SEQ, B_SEQ, B_SEQ, B_SEQ, B_SEQ,
                                          B_SEQ, B_GLO, B_GLO, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME,
                                          B_HOME, B_HOME, B_HOME, B_HOME, B_HOME, B_HOME};
 static int tape_view(int v) { return v >= V_TAPE && v <= V_TKEY; }   /* the reel's six pages (SEQ, again ..) */
 static const uint8_t VOX_VIEW[EN_NVOX] = {V_PAD, V_BELLS, V_BASS};
+static int expression_view(int v) { return v >= V_EXPR && v <= V_MOD3; }
+static int expression_voice(void);
 #define KEY_NOTE0 53                            /* key 0: F3 (MIDI) */
 static int view_vox(int v)                     /* the voice a page is of (its layer's or its own); -1 none */
 {
-    return v >= V_MAIN ? (v - V_MAIN) / NSUB : v >= V_PAD && v <= V_BASS ? v - V_PAD : -1;
+    if (v >= V_SEQ) return -1;
+    if (expression_view(v))
+        return expression_voice();
+    if (v >= V_MAIN) return (v - V_MAIN) / NSUB;
+    return v >= V_PAD && v <= V_BASS ? v - V_PAD : -1;
 }
-static int view_sub(int v) { return v >= V_MAIN ? (v - V_MAIN) % NSUB : -1; }   /* its page of the voice's own */
-static int view_main(int v) { return v >= V_MAIN ? VOX_VIEW[view_vox(v)] : v; }   /* its dot */
+static int view_sub(int v) { return v >= V_SEQ ? -1 : expression_view(v) ? (v < V_MOD ? S_EXPR + v - V_EXPR : S_MOD + v - V_MOD) : v >= V_MAIN ? (v - V_MAIN) % NSUB : -1; }
+static int view_main(int v) { return v >= V_SEQ ? V_SEQ : expression_view(v) ? V_EXPR : v >= V_MAIN ? VOX_VIEW[(v - V_MAIN) / NSUB] : v; }   /* its dot */
 static int view_group(int v)                   /* the group a voice's page is in; -1 the layer's page */
 {
     int s = view_sub(v), g;
@@ -128,11 +148,21 @@ static int view_group(int v)                   /* the group a voice's page is in
 }
 static void view_name(int v, char *b)          /* "Garden", "Bells OP Env" */
 {
-    const char *s = MAIN_NAME[view_main(v)];
+    const char *s = v == V_PHRASE ? "Phrase" : v == V_SEQ2 ? "Seq 2" : v >= V_SEQ ? "Sequence" : expression_view(v) ? "Expr" : MAIN_NAME[view_main(v)];
+    if (v >= V_SEQ) {
+        int n = 0; while (*s) b[n++] = *s++;
+        b[n] = 0; return;
+    }
     int k = 0;
     while (*s)
         b[k++] = *s++;
-    if (v >= V_MAIN) {
+    if (expression_view(v)) {
+        b[k++] = ' ';
+        b[k++] = (char)('1' + expression_voice());
+        b[k++] = ' ';
+        for (s = SUB_NAME[view_sub(v)]; *s;)
+            b[k++] = *s++;
+    } else if (v >= V_MAIN && !expression_view(v)) {
         b[k++] = ' ';
         for (s = SUB_NAME[view_sub(v)]; *s;)
             b[k++] = *s++;
@@ -144,8 +174,8 @@ static void view_name(int v, char *b)          /* "Garden", "Bells OP Env" */
  * the operator, envelope stage and modulator picked, a byte of the voice's patch (KP_V + its offset) or of the
  * operator picked (KP_O + its field), the stage picked's rate or level, the modulator picked's setting (KM + MS_*) */
 enum { K_LEDS = 1000, K_CPU, K_NONE, K_SRC, K_OP, K_STAGE, K_PSTAGE, K_SLOT, K_TSLOT, K_GKIND, K_GBRIGHT, K_GMOTION,
-       K_GVARY, K_TKEY, K_TSHIFT, K_RSLOT, KP_OR, KP_OL, KP_PR, KP_PL,
-       KP_V = 1100, KP_O = 1300, KM = 1400, KPL = 1500, KTM = 1600, KAR = 1700, KVF = 1800 };   /* KPL + PL_*: how the page's voice plays
+       K_GVARY, K_TKEY, K_TSHIFT, K_RSLOT, KP_OR, KP_OL, KP_PR, KP_PL, K_XSLOT, K_MCOMP,
+       KP_V = 1100, KP_O = 1300, KM = 1400, KPL = 1500, KTM = 1600, KAR = 1700, KVF = 1800, KXR = 1900, KEX = 2000 };   /* KPL + PL_*: how the page's voice plays
                                                                           * (P_PL); KTM + TM_*: the reel's modulator
                                                                           * picked (P_TM) */
 #define KPL_(k) (KPL + PL_##k)
@@ -154,9 +184,9 @@ enum { K_LEDS = 1000, K_CPU, K_NONE, K_SRC, K_OP, K_STAGE, K_PSTAGE, K_SLOT, K_T
 #define KMS(k) (KM + MS_##k)
 static const uint16_t MAIN_KNOB[V_MAIN][4] = {
     {P_TEMPO, P_EVOLVE, P_MOTION, P_DRIFT},
-    {P_PAD, KPL_(ROLE), KPL_(OCT), KPL_(DENS)},   /* the three voices alike */
-    {P_BELLS, KPL_(ROLE), KPL_(OCT), KPL_(DENS)},
-    {P_BASS, KPL_(ROLE), KPL_(OCT), KPL_(DENS)},
+    {P_PAD, KPL_(ROLE), P_PADTONE, KPL_(DENS)},   /* the three voices alike */
+    {P_BELLS, KPL_(ROLE), P_BELLPATCH, KPL_(DENS)},
+    {P_BASS, KPL_(ROLE), P_BASSPATCH, KPL_(DENS)},
     {P_ECHO, P_ETIME, P_REVERB, P_SIZE},
     {P_ROOT, P_TUNE, P_MIDI, K_LEDS},
     {P_RL(SRC), P_RL(MIX), P_RL(SOS), P_RL(SPEED)},
@@ -183,7 +213,7 @@ static const uint16_t MAIN_KNOB[V_MAIN][4] = {
 };
 static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_GKIND, K_GBRIGHT, K_GMOTION, K_GVARY},  /* the generator (EDIT: a new voice, REC: varied) */
-    {K_SRC, KV(ALG), KV(FB), K_NONE},          /* (INDEX: P_VX, put in below) */
+    {KPL_(OCT), KV(ALG), KV(FB), K_NONE},          /* (INDEX: P_VX, put in below) */
     {KPL_(ENV), KPL_(GATE), KPL_(PACE), KPL_(GLIDE)},   /* (the voice's P_PL, put in below) */
     {KPL_(A), KPL_(D), KPL_(S), KPL_(R)},
     {KVF, KVF + 1, KVF + 2, KVF + 3},         /* the filter (P_VF: the page's voice's, below) */
@@ -199,12 +229,18 @@ static const uint16_t SUB_KNOB[NSUB][4] = {
     {K_SLOT, KMS(DEST), KMS(DEPTH), KMS(RATE)},
     {K_SLOT, KMS(SHAPE), KMS(SYNC), KMS(SMOOTH)},
     {K_SLOT, KMS(SPREAD), KMS(FADE), K_NONE},
+    {KEX + EX_AMOUNT, KEX + EX_STYLE, KEX + EX_PHRASE, KEX + EX_VARIATION},
+    {KEX + EX_MEMORY, KEX + EX_LINK, K_NONE, K_NONE},
+    {KEX + EX_MORPH_SRC, KEX + EX_MORPH, KEX + EX_MORPH_KIND, K_MCOMP},
+    {K_XSLOT, KXR + XR_SOURCE, KXR + XR_TARGET, KXR + XR_DEPTH},
+    {K_XSLOT, KXR + XR_WHEN, KXR + XR_CURVE, KXR + XR_SMOOTH},
+    {K_XSLOT, KXR + XR_MIN, KXR + XR_MAX, K_NONE},
 };
 static const char *const MAIN_LABEL[V_MAIN][4] = {
     {"Tempo", "Evolve", "Motion", "Drift"},
-    {"Level", "Role", "Octave", "Density"},
-    {"Level", "Role", "Octave", "Density"},
-    {"Level", "Role", "Octave", "Density"},
+    {"Level", "Role", "Preset", "Density"},
+    {"Level", "Role", "Preset", "Density"},
+    {"Level", "Role", "Preset", "Density"},
     {"Echo", "Echo time", "Reverb", "Size"},
     {"Root", "Tune", "MIDI out", "Lights"},
     {"Source", "Dry/Wet", "SOS", "Speed"},
@@ -231,7 +267,7 @@ static const char *const MAIN_LABEL[V_MAIN][4] = {
 };
 static const char *const SUB_LABEL[NSUB][4] = {
     {"Kind", "Bright", "Motion", "Vary"},
-    {"Patch", "Algorithm", "Feedback", "Index"},
+    {"Octave", "Algorithm", "Feedback", "Index"},
     {"Envelope", "Gate", "Pace", "Glide"},
     {"Attack", "Decay", "Sustain", "Release"},
     {"Filter", "Cutoff", "Resonance", "Env"},
@@ -247,15 +283,31 @@ static const char *const SUB_LABEL[NSUB][4] = {
     {"Mod", "Target", "Depth", "Rate"},
     {"Mod", "Shape", "Sync", "Smooth"},
     {"Mod", "Spread", "Fade", ""},
+    {"Amount", "Style", "Phrase", "Variation"},
+    {"Memory", "Link", "", ""},
+    {"Source B", "Morph", "Kind", "Match"},
+    {"Route", "Source", "Target", "Depth"},
+    {"Route", "When", "Curve", "Smooth"},
+    {"Route", "Minimum", "Maximum", ""},
 };
+static int expression_route(int v);
 static int view_knob(int v, int i)             /* page v's knob i */
 {
-    int k = v < V_MAIN ? MAIN_KNOB[v][i] : SUB_KNOB[view_sub(v)][i];
+    if (v == V_SEQ) { const int k[4] = {P_SEQ_MOTIF, P_SEQ_ROTATE, P_SEQ_ACCENT, P_SEQ_PASS}; return k[i]; }
+    if (v == V_PHRASE) { const int k[4] = {P_SEQ_DIALOGUE, P_SEQ_LENGTH, P_SEQ_TENSION, P_SEQ_RESOLVE}; return k[i]; }
+    if (v == V_SEQ2) { const int k[4] = {P_SWING, P_SEQ_HUMAN, P_SEQ_SPACE, P_SEQ_RANGE}; return k[i]; }
+    int sub = view_sub(v);
+    if (v >= V_MAIN && (sub < 0 || sub >= NSUB)) return K_NONE;
+    int k = v < V_MAIN ? MAIN_KNOB[v][i] : SUB_KNOB[sub][i];
     if (k >= KPL && k < KPL + PL_N)
         return P_PL(view_vox(v), k - KPL);
     if (k >= KVF && k < KVF + VF_N)
         return P_VF(view_vox(v), k - KVF);
-    if (v < V_MAIN)
+    if (k >= KEX && k < KEX + EX_N)
+        return P_EX(view_vox(v), k - KEX);
+    if (k >= KXR && k < KXR + XR_N)
+        return P_XR(view_vox(v), expression_route(view_vox(v)), k - KXR);
+    if (v < V_MAIN || expression_view(v))
         return k;
     if (view_sub(v) == S_VOICE && i == 3)
         return P_VX(view_vox(v), VX_INDEX);
@@ -263,7 +315,13 @@ static int view_knob(int v, int i)             /* page v's knob i */
         return EN_VOX_PATCH[view_vox(v)];       /* (the source is a parameter, turned its own way: knob_turn) */
     return k;
 }
-static const char *knob_label(int v, int i) { return v < V_MAIN ? MAIN_LABEL[v][i] : SUB_LABEL[view_sub(v)][i]; }
+static const char *knob_label(int v, int i)
+{
+    if (v == V_PHRASE) { static const char *const labels[4] = {"Dialogue", "Length", "Tension", "Resolve"}; return labels[i]; }
+    if (v == V_SEQ2) { static const char *const global2[4] = {"Swing", "Humanize", "Space", "Range"}; return global2[i]; }
+    if (v >= V_SEQ) { static const char *const global[4] = {"Motif", "Rotation", "Accent", "Passing"}; return global[i]; }
+    return expression_view(v) ? SUB_LABEL[view_sub(v)][i] : v < V_MAIN ? MAIN_LABEL[v][i] : SUB_LABEL[view_sub(v)][i];
+}
 
 /* the screen's colours: a palette a page, after the records of Aphex Twin (their colours only: no names, no marks).
  * Each: the ground, a panel, rules, dim and plain ink, the accent (the page, the knob being turned, a message's
@@ -311,7 +369,7 @@ static uint8_t ui_wash_on;                      /* the bands' ground washed with
 static int theme_of(int v)                     /* a page's palette: the voices', their own pages too */
 {
     static const uint8_t T[V_MAIN] = {0, 2, 3, 4, 5, 6, 1, 1, 1, 1, 1, 1, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    return T[view_main(v)];
+    return v >= V_SEQ || expression_view(v) ? 0 : T[view_main(v)];
 }
 #define K_BG (TH->bg)
 #define K_PANEL (TH->panel)
@@ -340,6 +398,7 @@ static struct {
     uint8_t help;                      /* a button's card is up: the button + 1 */
     uint8_t reset_done;                /* SAVE held: the piece went back to its recipe this hold */
     uint8_t erase_done;                /* REC held on the reel's pages: the reel erased this hold */
+    uint8_t chop_done;                 /* EDIT held on the reel's pages: the splice cut this hold */
     uint8_t dirty;                     /* the project changed since the last save */
     uint32_t act_t, saved_t;
     char msg[2][24];
@@ -349,6 +408,8 @@ static struct {
     uint32_t frame;
     uint32_t sig[3];                   /* what each band shows: redrawn when it changes */
     uint8_t tslot;                     /* the reel's modulator picked (0..) */
+    uint8_t xslot[EN_NVOX];            /* selected interpretation route, shared by its three pages */
+    uint8_t xvoice;                    /* voice selected on the shared expression page */
     uint8_t rslot;                     /* the visual's react slot picked (0..3) */
     int8_t key_vox[32];                /* each key held on a voice's page: the voice it plays (-1 none) */
     uint8_t in_ch, in_port;            /* MIDI in: the last note's channel (1..16, 0 none yet) and port (PORT_*) */
@@ -357,10 +418,12 @@ static struct {
     uint8_t gsub[EN_NVOX][NGROUP];     /* each voice's group: the page it was left on */
     uint8_t gen[EN_NVOX][4];           /* each voice's generator: its kind, bright, motion, vary */
     uint32_t gen_seed[EN_NVOX];        /* the voice it made last (its seed) */
-    uint8_t gen_dirty;                 /* a knob of it turned: made again this frame (2: a new kind, fresh) */
     uint8_t cc_in;                     /* a knob's value came in as MIDI: not sent out again */
     uint8_t nrpn[16][2];               /* each channel's NRPN, as CC 99 / 98 set it */
 } ui;
+
+static int expression_voice(void) { return ui.xvoice % EN_NVOX; }
+static int expression_route(int v) { return ui.xslot[v]; }
 
 static uint8_t vis_over;                        /* the header and the knobs drawn over the visual (no ground, no blit) */
 static uint8_t vhold;                           /* the visual's genome held (REC on its pages) */
@@ -369,7 +432,7 @@ static void vis_mutate(float amount);
  * changed be; and the transport as last said (PLAY says its own: the engine takes it a block later) */
 static uint8_t sp_said;
 static struct {
-    uint8_t playing;
+    uint8_t playing, tape;             /* tape: the reel's own transport (PLAY on its pages) */
     uint32_t play_t;                   /* when PLAY (or the start) set it: the engine catches up within ms */
 } sp_tp;
 static void sp_piece(void);
@@ -481,6 +544,15 @@ static int tkey_spl(void)                       /* the splice Tape Key shows: th
     const int n = en_reel_nspl, k = proj.par[P_RL(ORG)];
     return n ? (k < n ? k : n - 1) : 0;
 }
+static int is_morph_src(int p)
+{
+    return p >= P_EXPR && p < P_SEQ && (p - P_EXPR) % EN_XSTRIDE == EX_MORPH_SRC;
+}
+static int expression_latched_target(int target)
+{
+    return target == XT_ATTACK || target == XT_DECAY || target == XT_SUSTAIN ||
+           target == XT_RELEASE || target == XT_GATE || target == XT_MORPH;
+}
 static int knob_get(int k)
 {
     const int v = kvox(), p = knob_par(k), off = knob_off(k);
@@ -492,6 +564,10 @@ static int knob_get(int k)
         return proj.leds;
     if (k == K_CPU)
         return (int)plat_cpu_pct();
+    if (k == K_XSLOT)
+        return 1 + ui.xslot[v];
+    if (k == K_MCOMP)
+        return project_morph_compatible(v);
     if (k == K_OP)
         return ui.op[v] ? ui.op[v] : 1;
     if (k == K_STAGE || k == K_PSTAGE || k == K_SLOT)
@@ -515,6 +591,11 @@ static void knob_range(int k, int *lo, int *hi)
         *hi = en_param_info(p)->hi;
     } else if (off >= 0) {
         *hi = en_patch_max(off);
+    } else if (k == K_XSLOT) {
+        *lo = 1;
+        *hi = EN_XROUTES;
+    } else if (k == K_MCOMP) {
+        *hi = 1;
     } else if (k == K_OP || k == K_STAGE || k == K_PSTAGE || k == K_SLOT || k == K_TSLOT || k == K_RSLOT) {
         *lo = 1;
         *hi = k == K_OP ? 6 : k == K_SLOT ? EN_NSLOT : k == K_TSLOT ? EN_NTMOD : 4;
@@ -704,6 +785,8 @@ void ui_reel_in(int ok)                         /* a file's reel came in: SOURCE
         warn("TAPE IN", "NOT SAVED YET");
 }
 static uint8_t tom_song_in;                     /* (a song came in: Tom brings word of it) */
+static uint32_t cpu2_pct, cpu2_sample_t, cpu2_sample_ticks;
+static uint32_t vis_step_us, vis_paint_us, vis_wait_us;
 static uint32_t vis_us, vis_us_max, loop_us, loop_t;   /* a visual frame's time (average, most); the main loop's */
 static uint8_t tom_look;                        /* (a look picked, + 1: Tom says what it is) */
 static uint8_t tom_knob_turned;                 /* (a knob turned, + 1: Tom says what it does once it rests) */
@@ -722,6 +805,9 @@ static void knob_text(int k, char *b)
     const int v = knob_get(k), p = knob_par(k), off = knob_off(k);
     if (p == P_SG(SONG)) {
         song_name(v, b);
+    } else if (p >= 0 && is_morph_src(p)) {
+        if (v < EN_NFACT || !bank_name(v, b))
+            en_param_text(EN_VOX_PATCH[kvox()], v, b);
     } else if (p >= 0 && is_src(p)) {
         src_text(p, v, b);
     } else if (p >= 0) {
@@ -733,6 +819,10 @@ static void knob_text(int k, char *b)
     } else if (k == K_CPU) {
         b = cat_i(b, v, 0);
         cat_s(b, "%");
+    } else if (k == K_MCOMP) {
+        cat_s(b, v ? "Ready" : "No match");
+    } else if (k == K_XSLOT) {
+        cat_i(b, v, 0);
     } else if (k == K_OP) {
         b = cat_s(b, "OP");
         cat_i(b, v, 0);
@@ -814,19 +904,40 @@ static void knob_set(int k, int v)
 {
     int lo, hi;
     const int p = knob_par(k), off = knob_off(k);
-    if (k == K_CPU || k == K_NONE || k == K_TSHIFT)
+    if (k == K_CPU || k == K_NONE || k == K_TSHIFT || k == K_MCOMP)
         return;
     knob_range(k, &lo, &hi);
     v = v < lo ? lo : v > hi ? hi : v;
     if (v == knob_get(k))
         return;
-    if (p >= 0 && is_src(p)) {                   /* a source: its patch, as loaded */
+    if (k == K_XSLOT) {
+        ui.xslot[kvox()] = (uint8_t)(v - 1);
+        return;
+    }
+    if (is_morph_src(p)) {
+        project_morph_source(kvox(), v);
+    } else if (p >= 0 && is_src(p)) {                   /* a source: its patch, as loaded */
         project_source(src_vox(p), v);
         par_out(p);
     } else if (p >= 0) {
         proj.par[p] = (int16_t)v;
         en_set(p, v);
         par_out(p);
+        if (p >= P_EXPR && p < P_SEQ) {
+            const int voice = (p - P_EXPR) / EN_XSTRIDE, q = (p - P_EXPR) % EN_XSTRIDE;
+            if (q >= EX_N && ((q - EX_N) % XR_N == XR_TARGET || (q - EX_N) % XR_N == XR_WHEN)) {
+                const int route = (q - EX_N) / XR_N, when = P_XR(voice, route, XR_WHEN);
+                if (expression_latched_target(proj.par[P_XR(voice, route, XR_TARGET)]) && proj.par[when] == XW_LIVE) {
+                    proj.par[when] = XW_NOTE;
+                    en_set(when, XW_NOTE);
+                    say("MATRIX", "AT NEXT NOTE");
+                }
+            }
+            if ((q == EX_MORPH_KIND || q == EX_MORPH) &&
+                proj.par[P_EX(voice, EX_MORPH_KIND)] == XM_COMPATIBLE &&
+                proj.par[P_EX(voice, EX_MORPH)] && !project_morph_compatible(voice))
+                warn("MORPH", "NO MATCH: A KEPT");
+        }
         if (p == P_SG(SONG) || p == P_SG(START))
             song_attach(p == P_SG(SONG));        /* (a song chosen: its key and tempo; a start: from there) */
     } else if (off >= 0) {
@@ -847,10 +958,8 @@ static void knob_set(int k, int v)
     } else if (k == K_TKEY) {                    /* the splice's key by hand (with the reel: SAVE keeps it) */
         en_reel_keyset(tkey_spl(), v);
         return;
-    } else if (k >= K_GKIND && k <= K_GVARY) {   /* the generator: its voice made again (at the frame's end) */
+    } else if (k >= K_GKIND && k <= K_GVARY) {   /* generator settings: EDIT applies them, REC varies the current voice */
         ui.gen[kvox()][k - K_GKIND] = (uint8_t)v;
-        if (k != K_GVARY && ui.gen_dirty < 2u)
-            ui.gen_dirty = k == K_GKIND ? 2u : 1u;
         return;
     }
     mark_dirty();
@@ -880,9 +989,9 @@ static int32_t accel(int role, int32_t s, int range)
 static void turn(int role, int k, int32_t e)
 {
     int lo, hi;
-    if (!e || k == K_NONE || k == K_CPU || k == K_TSHIFT)
+    if (!e || k == K_NONE || k == K_CPU || k == K_TSHIFT || k == K_MCOMP)
         return;
-    if (knob_par(k) >= 0 && is_src(knob_par(k))) {   /* a source: a detent a voice, the empty slots passed by */
+    if (knob_par(k) >= 0 && (is_src(knob_par(k)) || is_morph_src(knob_par(k)))) {   /* a source: a detent a voice, the empty slots passed by */
         int s = knob_get(k), n = e < 0 ? -e : e;
         while (n--)
             s = bank_next(s, e > 0 ? 1 : -1);
@@ -969,6 +1078,65 @@ static void dice_keep(void)                     /* the undo: the piece as it is 
     if (!dice_rng)
         dice_rng = 1u;
 }
+/* A recipe is recognized from actual project values, including after load/undo.
+ * An edited route therefore reads Custom without adding persistent state. */
+static int expression_preset_index(int v)
+{
+    int n, k, r;
+    for (n = 0; n < NEXPRESSION_PRESET; n++) {
+        const expression_preset_t *p = &EXPRESSION_PRESET[n];
+        for (k = 0; k < 6 && proj.par[P_EX(v, k)] == p->control[k]; k++)
+            ;
+        if (k < 6)
+            continue;
+        for (r = 0; r < EN_XROUTES; r++) {
+            for (k = 0; k < XR_N; k++) {
+                const int expected = r < 4 && p->route[r][XR_SOURCE] ? p->route[r][k] : k == XR_MAX ? 100 : 0;
+                if (proj.par[P_XR(v, r, k)] != expected)
+                    break;
+            }
+            if (k < XR_N)
+                break;
+        }
+        if (r == EN_XROUTES && n >= NINTERPRETATION_PRESET) {
+            const int16_t *lfo=ROUTING_LFO[n-NINTERPRETATION_PRESET];
+            if (lfo[MS_DEST]) for(k=0;k<MS_N;k++)
+                if(proj.par[P_MS(v,EN_NSLOT-1,k)]!=lfo[k]) break;
+            if (lfo[MS_DEST] && k<MS_N) continue;
+        }
+        if (r == EN_XROUTES) return n;
+    }
+    return -1;
+}
+static void expression_preset_apply(int v, int n)
+{
+    const expression_preset_t *p = &EXPRESSION_PRESET[n];
+    int k, r;
+    dice_keep();
+    for (k = 0; k < 6; k++) {
+        proj.par[P_EX(v, k)] = p->control[k];
+        en_set(P_EX(v, k), p->control[k]);
+        par_out(P_EX(v, k));
+    }
+    for (r = 0; r < EN_XROUTES; r++)
+        for (k = 0; k < XR_N; k++) {
+            const int value = r < 4 && p->route[r][XR_SOURCE] ? p->route[r][k] : k == XR_MAX ? 100 : 0;
+            proj.par[P_XR(v, r, k)] = (int16_t)value;
+            en_set(P_XR(v, r, k), value);
+            par_out(P_XR(v, r, k));
+        }
+    if (n >= NINTERPRETATION_PRESET) {
+        const int16_t *lfo=ROUTING_LFO[n-NINTERPRETATION_PRESET];
+        if(lfo[MS_DEST]) for(k=0;k<MS_N;k++) {
+            int pmod=P_MS(v,EN_NSLOT-1,k);
+            proj.par[pmod]=lfo[k]; en_set(pmod,lfo[k]); par_out(pmod);
+        }
+    }
+    ui.xslot[v] = 0;
+    mark_dirty();
+    ui.sig[1] = 0;
+    say("EXPRESSION PRESET", p->name);
+}
 static void dice_par(int p, int lo, int hi)     /* a parameter rolled in lo..hi (within its range) */
 {
     const en_param_t *pi = en_param_info(p);
@@ -1037,6 +1205,14 @@ static const struct {
     {"Prism", "Prism: the notes' spokes in four mirrored quarters, over a spiral.", 6, {ST_VMODE, ST_VMIRROR, ST_VLAYER, ST_VBLEND, ST_VMIX, ST_VPAL}, {2, 3, 7, 1, 50, 1}},
     {"Starfield", "Starfield: stars rushing out of the middle, the frame falling back behind them.", 11, {ST_VMODE, ST_VGEO, ST_VFEED, ST_VXZOOM, ST_VXTGT, ST_VPAL, ST_VTRAIL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {7, 13, 30, -30, 0, 4, 70, 0, 0, 0, 0}},
     {"Broken TV", "Broken TV: torn sync, the colours apart, rows slipping, posterized.", 7, {ST_VMODE, ST_VSYNC, ST_VRGB, ST_VSLICE, ST_VCORRUPT, ST_VPOSTER, ST_VPULSE}, {0, 80, 70, 60, 30, 40, 60}},
+    {"Aurora", "Aurora: slow plasma in cold light, its colours turning, drifting like curtains.", 15, {ST_VMODE, ST_VPAL, ST_VFEED, ST_VTRAIL, ST_VSPEED, ST_VMUTATE, ST_VCHAOS, ST_VEAR, ST_VPULSE, ST_VFLOW, ST_VHUE, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {5, 2, 10, 88, 15, 10, 0, 75, 10, 25, 30, 0, 0, 0, 0}},
+    {"Mandala", "Mandala: the notes' spokes folded eight ways, warm, turning with the sound.", 10, {ST_VMODE, ST_VGEO, ST_VSIDES, ST_VMIRROR, ST_VFEED, ST_VPAL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {2, 4, 8, 4, 30, 1, 0, 0, 0, 0}},
+    {"Phosphor", "Phosphor: a scope's trace and a Lissajous on a green screen, lingering.", 11, {ST_VMODE, ST_VGEO, ST_VGEO2, ST_VPAL, ST_VFEED, ST_VTRAIL, ST_VRGB, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {1, 5, 2, 4, 40, 75, 0, 0, 0, 0, 0}},
+    {"Moire", "Moire: two ring patterns nearly alike, their difference shimmering.", 12, {ST_VMODE, ST_VOFREQ, ST_VOSHAPE, ST_VOFREQ2, ST_VOCOMB, ST_VOSPEED, ST_VPAL, ST_VFEED, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {8, 70, 5, 72, 2, 10, 4, 0, 0, 0, 0, 0}},
+    {"Wormhole", "Wormhole: a spiral of lines falling into itself, turned each frame, acid colours.", 13, {ST_VMODE, ST_VGEO, ST_VSIDES, ST_VFEED, ST_VXTGT, ST_VXZOOM, ST_VXROT, ST_VTRAIL, ST_VPAL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {6, 16, 5, 45, 2, 25, -20, 60, 3, 0, 0, 0, 0}},
+    {"VHS", "VHS: a worn tape: warm, colours a little apart, the picture wobbling and slipping.", 10, {ST_VMODE, ST_VSYNC, ST_VRGB, ST_VSLICE, ST_VPOSTER, ST_VTRAIL, ST_VPAL, ST_VMOSH, ST_VCORRUPT, ST_VHUE}, {0, 45, 55, 30, 20, 70, 1, 15, 10, 5}},
+    {"Synthwave", "Synthwave: a grid floor rushing at you through a neon tunnel.", 11, {ST_VMODE, ST_VGEO, ST_VPAL, ST_VFEED, ST_VXTGT, ST_VXZOOM, ST_VTRAIL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {4, 3, 3, 50, 0, 30, 70, 0, 0, 0, 0}},
+    {"Ink", "Ink: sparks as drops of ink in water, black and white, flowing.", 11, {ST_VMODE, ST_VPAL, ST_VKEY, ST_VPOSTER, ST_VFEED, ST_VFLOW, ST_VTRAIL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {3, 4, 40, 60, 60, 60, 90, 0, 0, 0, 0}},
 };
 #define NLOOK ((int)(sizeof LOOKS / sizeof *LOOKS))
 static uint8_t look_i;                          /* the look picked last */
@@ -1091,7 +1267,7 @@ static void dice_mod(int v, int s, int on)      /* modulator s: a target, a shap
     dice_par(P_MS(v, s, MS_SYNC), 0, EN_NMODSYNC - 1);
     dice_par(P_MS(v, s, MS_SMOOTH), 0, 60);
 }
-/* the Gen page: voice v made from its kind, bright and motion, and its seed (the knobs move the voice made); EDIT a
+/* the Gen page: voice v made from its kind, bright and motion, and its seed (EDIT applies the settings); EDIT a
  * new seed, REC the voice as it is varied by VARY (each kept for SEL's undo) */
 static void gen_apply(int v, int fresh)
 {
@@ -1133,11 +1309,11 @@ static void dice_layer(int vw)                  /* a layer's page: its four, in 
         dice_par(P_MOTION, 20, 90);
         dice_par(P_DRIFT, 10, 70);
         break;
-    case V_PAD: case V_BELLS: case V_BASS: {    /* a voice: its level, a role, an octave for it, a density */
+    case V_PAD: case V_BELLS: case V_BASS: {    /* a voice: level, role, preset, density */
         const int v = view_vox(vw), r = dice(0, EN_NROLE - 1);
         dice_par(vw == V_PAD ? P_PAD : vw == V_BELLS ? P_BELLS : P_BASS, 45, 80);
         dice_par(P_PL(v, PL_ROLE), r, r);
-        dice_par(P_PL(v, PL_OCT), r == ROLE_BASS ? -1 : r == ROLE_LOOPS ? 0 : -1, r == ROLE_BASS ? 0 : 1);
+        dice_source(v);
         dice_par(P_PL(v, PL_DENS), r == ROLE_CHORD ? 40 : 15, r == ROLE_CHORD ? 100 : 80);
         break;
     }
@@ -1283,11 +1459,45 @@ static void dice_page(int vw)                   /* the page shown */
 {
     const int v = view_vox(vw), s = view_sub(vw);
     int k;
+    if (vw >= V_SEQ) { for (k = 0; k < 4; k++) { const int p = view_knob(vw,k); const en_param_t *q;
+        if (p >= P_NPARAMS) continue;
+        q = en_param_info(p); dice_par(p,q->lo,q->hi); } return; }
     if (vw < V_MAIN) {
         dice_layer(vw);
         return;
     }
     switch (s) {
+    case S_EXPR:
+        dice_par(P_EX(v, EX_AMOUNT), 15, 60);
+        dice_par(P_EX(v, EX_STYLE), 0, XSTYLE_N - 1);
+        dice_par(P_EX(v, EX_PHRASE), 4, 16);
+        dice_par(P_EX(v, EX_VARIATION), 5, 35);
+        break;
+    case S_GESTURE:
+        dice_par(P_EX(v, EX_MEMORY), 40, 95);
+        dice_par(P_EX(v, EX_LINK), 0, 60);
+        break;
+    case S_MORPH:                               /* B and the FM policy stay put; vary only the blend */
+        dice_par(P_EX(v, EX_MORPH), 10, 70);
+        break;
+    case S_MATRIX: {
+        const int route = ui.xslot[v];
+        dice_par(P_XR(v, route, XR_SOURCE), XS_ENERGY, XS_OTHER);
+        dice_par(P_XR(v, route, XR_TARGET), XT_ATTACK, XT_INDEX);
+        dice_par(P_XR(v, route, XR_DEPTH), -35, 35);
+        if (expression_latched_target(proj.par[P_XR(v, route, XR_TARGET)]))
+            knob_set(P_XR(v, route, XR_WHEN), XW_NOTE);
+        break;
+    }
+    case S_MATRIX2:
+        dice_par(P_XR(v, ui.xslot[v], XR_WHEN), XW_NOTE, XW_PHRASE);
+        dice_par(P_XR(v, ui.xslot[v], XR_CURVE), 0, XC_N - 1);
+        dice_par(P_XR(v, ui.xslot[v], XR_SMOOTH), 0, 80);
+        break;
+    case S_MATRIX3:
+        dice_par(P_XR(v, ui.xslot[v], XR_MIN), 0, 40);
+        dice_par(P_XR(v, ui.xslot[v], XR_MAX), 50, 100);
+        break;
     case S_GEN:                                 /* a kind, how bright, how it moves, a new seed: a voice made */
         ui.gen[v][0] = (uint8_t)dice(0, EN_NGEN - 1);
         ui.gen[v][1] = (uint8_t)dice(15, 85);
@@ -1297,7 +1507,9 @@ static void dice_page(int vw)                   /* the page shown */
         gen_apply(v, 1);
         break;
     case S_VOICE:
-        dice_source(v);
+        dice_par(P_PL(v, PL_OCT), -2, 2);
+        dice_byte(v, EP_ALG, 0, 31);
+        dice_byte(v, EP_FB, 0, 7);
         dice_par(P_VX(v, VX_INDEX), -6, 6);
         break;
     case S_PLAY:
@@ -1439,7 +1651,12 @@ static void dice_init(void)
     const int v = view_vox(ui.view), sub = view_sub(ui.view);
     int s, k;
     dice_keep();
-    if (v >= 0 && sub >= S_MOD) {
+    if (v >= 0 && sub >= S_EXPR) {
+        for (k = 0; k < EN_XSTRIDE; k++)
+            par_init(P_EX(v, k));
+        project_morph_source(v, proj.par[P_EX(v, EX_MORPH_SRC)]);
+        say("INIT", "EXPRESSION AND MORPH");
+    } else if (v >= 0 && sub >= S_MOD) {
         for (s = 0; s < EN_NSLOT; s++)
             for (k = 0; k < MS_N; k++)
                 par_init(P_MS(v, s, k));
@@ -1454,7 +1671,7 @@ static void dice_init(void)
                 par_init(P_MS(v, s, k));
         say("INIT", "THE VOICE");
     } else if (tape_view(ui.view)) {
-        for (k = P_TAPE; k < P_NPARAMS; k++)
+        for (k = P_TAPE; k < P_EXPR; k++)
             if (k != P_RL(SRC))
                 par_init(k);
         say("INIT", "THE REEL");
@@ -1462,7 +1679,7 @@ static void dice_init(void)
         for (s = 0; s < EN_NVOX; s++)
             for (k = 0; k < EN_NSLOT * MS_N; k++)
                 par_init(P_VX(s, VX_SLOT) + k);
-        for (k = P_TMOD; k < P_NPARAMS; k++)
+        for (k = P_TMOD; k < P_EXPR; k++)
             par_init(k);
         say("INIT", "ALL MODULATION");
     }
@@ -1489,7 +1706,7 @@ static void set_view(int v)
     int g = view_group(v);
     ui.view = (uint8_t)v;
     ui.touched = -1;
-    if (g >= 0)                                  /* the group remembers its page */
+    if (g >= 0 && !expression_view(v))             /* voice groups remember their page */
         ui.gsub[view_vox(v)][g] = (uint8_t)(view_sub(v) - GROUP0[g]);
 }
 
@@ -1586,12 +1803,14 @@ static void reel_button(int b)                  /* on the reel's pages: REC over
 }
 static int page_on(int v)                       /* a layer page shown in the round (Osc's: Osc in use) */
 {
+    if (v == V_EXPR)
+        return 1;
     return (v != V_OSC && v != V_OSC2) || proj.par[P_ST(VMODE)] == VIS_OSC || proj.par[P_ST(VLAYER)] == VIS_OSC + 1;
 }
 static int page_at(int v)                       /* its place in PAGE_ORDER */
 {
     int i;
-    for (i = 0; i < V_MAIN; i++)
+    for (i = 0; i < V_MAIN + 2; i++)
         if (PAGE_ORDER[i] == v)
             return i;
     return 0;
@@ -1600,7 +1819,7 @@ static int page_step(int v, int dir, int visual)   /* the next page shown, dir +
                                                  * the video synth's alone */
 {
     int i = page_at(v) + dir;
-    for (; i >= 0 && i < V_MAIN; i += dir)
+    for (; i >= 0 && i < V_MAIN + 2; i += dir)
         if (page_on(PAGE_ORDER[i]) && (!visual || (PAGE_ORDER[i] >= V_VIS && PAGE_ORDER[i] <= V_SHAPE2)))
             return PAGE_ORDER[i];
     return -1;
@@ -1609,33 +1828,54 @@ static void button(int b)
 {
     int v;
     if (b == B_HOME) {                           /* the garden; again: its visual's page, the video synth's, its
-                                                  * shape's, round */
+                                                  * shape's, round; again on Sequence: Seq 2 */
+        if (ui.view >= V_SEQ && ui.view <= V_PHRASE) {  /* (1.5.26) the sequencer's two pages, as the garden's visual */
+            set_view(ui.view == V_PHRASE ? V_SEQ : ui.view + 1);
+            return;
+        }
         /* (the visual's pages in PAGE_ORDER, from the Screen back to the garden) */
         const int nx = ui.view == V_GARDEN ? V_VIS : ui.view >= V_VIS && ui.view <= V_SHAPE2 ? page_step((int)ui.view, 1, 1)
                                                                                          : V_GARDEN;
         set_view(nx < 0 ? V_GARDEN : nx);
         return;
     }
-    if (b == B_GLO) {                            /* Setup; again: MIDI, the song's page, round */
+    if (b == B_GLO) {                            /* Setup; then MIDI and Song */
         set_view(ui.view == V_SETUP ? V_MIDI : ui.view == V_MIDI ? V_SONG : V_SETUP);
         return;
     }
-    if (b == B_SEQ) {                            /* the reel; again: its next page, round */
+    if (b == B_SEQ) {
         set_view(tape_view(ui.view) ? (ui.view == V_TKEY ? V_TAPE : ui.view + 1) : V_TAPE);
         reel_say();
         return;
     }
+    if (expression_view(ui.view) && (b == B_ENV || b == B_ARP || b == B_LFO)) {
+        ui.xvoice = (uint8_t)(b == B_ENV ? 0 : b == B_ARP ? 1 : 2);
+        ui.sig[0] = ui.sig[1] = ui.sig[2] = 0;
+        return;
+    }
     for (v = 0; v < V_MAIN; v++)                 /* a page's button: its page; a voice's again: its next group */
         if (VIEW_BTN[v] == b) {
-            int x = view_vox(v), g = view_group(ui.view) + 1;
-            if (x >= 0 && view_vox(ui.view) == x && g < NGROUP)
-                set_view(V_MAIN + x * NSUB + GROUP0[g] + ui.gsub[x][g]);
+            int x = view_vox(v), g = -1, at;
+            if (x >= 0 && view_vox(ui.view) == x) {
+                const int current = view_group(ui.view);
+                for (at = 0; at < NGROUP && GROUP_VISIT[at] != current; at++)
+                    ;
+                g = current < 0 ? 0 : current < 2 ? current + 1 : -1;
+            }
+            if (g >= 0)
+                set_view(V_MAIN + x * NSUB + GROUP0[g] + (g == 4 ? 0 : ui.gsub[x][g]));
             else
                 set_view(v);
             if (x >= 0)
                 vox_title();
             return;
         }
+    if (expression_view(ui.view) && b == B_SEL) {
+        ui.xvoice = (uint8_t)((ui.xvoice + 1u) % EN_NVOX);
+        ui.sig[0] = ui.sig[1] = ui.sig[2] = 0;
+        say("VOICE", ui.xvoice == 0 ? "ONE" : ui.xvoice == 1 ? "TWO" : "THREE");
+        return;
+    }
     if (tape_view(ui.view) && (b == B_REC || b == B_EDIT || b == B_SAVE)) {   /* the reel's transport */
         reel_button(b);
         return;
@@ -1651,6 +1891,12 @@ static void button(int b)
         }
         return;
     }
+    if ((view_sub(ui.view) == S_EXPR || view_sub(ui.view) == S_GESTURE) && (b == B_EDIT || b == B_REC)) {
+        const int x = view_vox(ui.view), current = expression_preset_index(x);
+        const int next = current < 0 || current >= NINTERPRETATION_PRESET ? (b == B_EDIT ? 1 : 0) : (current + NINTERPRETATION_PRESET + (b == B_EDIT ? 1 : -1)) % NINTERPRETATION_PRESET;
+        expression_preset_apply(x, next);
+        return;
+    }
     if (view_sub(ui.view) == S_GEN && (b == B_EDIT || b == B_REC)) {   /* the generator: a new voice, or varied */
         if (b == B_EDIT)
             gen_new(view_vox(ui.view));
@@ -1664,6 +1910,13 @@ static void button(int b)
         say("NEXT CHORD", en_playing ? "ON THE BAR" : 0);
         break;
     case B_PLAY:
+        if (tape_view(ui.view)) {                /* the reel's transport: the tape alone, CORTEX left as it is */
+            sp_tp.tape = (uint8_t)!en_tape_playing;
+            sp_tp.play_t = plat_ms();
+            en_tape(sp_tp.tape);
+            say("TAPE", sp_tp.tape ? "PLAYING" : "STOPPED");
+            break;
+        }
         sp_tp.playing = !en_playing;
         sp_tp.play_t = plat_ms();
         if (en_playing) {
@@ -1839,6 +2092,8 @@ static void input(void)
                 ui.reset_done = 0;
             if (i == B_REC)
                 ui.erase_done = 0;
+            if (i == B_EDIT)
+                ui.chop_done = 0;
             if (i == B_PLAY)                   /* transport on the press */
                 button((int)i);
         } else if (!(ui.btn_used & m) && i != B_PLAY) {
@@ -1902,16 +2157,27 @@ static void input(void)
                 itoa_u((uint32_t)proj.par[P_TEMPO], t);
                 say("TEMPO", t);
             }
-        } else if (ui.view < V_MAIN) {            /* the layers' pages, one after another (PAGE_ORDER) */
+        } else if (ui.view > V_SEQ) {            /* Seq 2: SELECT leaves it; the Sequence page keeps its place */
+            set_view(e > 0 ? V_PAD : V_SEQ);
+        } else if (expression_view(ui.view)) {
+            int next = (int)ui.view + (e > 0 ? 1 : -1);
+            set_view(next < V_EXPR ? V_BASS : next > V_MOD3 ? V_TAPE : next);
+        } else if (ui.view == V_SEQ || ui.view < V_MAIN) { /* layer and shared expression pages (Sequence too) */
             const int v = page_step((int)ui.view, e > 0 ? 1 : -1, 0);
             if (v >= 0)
                 set_view(v);
         } else {                                 /* a voice's own, one after another; before the first its layer's */
-            int x = view_vox(ui.view), s = view_sub(ui.view) + (e > 0 ? 1 : -1);
-            if (s < 0)
+            int x = view_vox(ui.view), s = view_sub(ui.view), next;
+            if (e > 0)
+                next = s >= S_OP5 ? NSUB : s + 1;
+            else
+                next = s == S_GEN ? -1 : s - 1;
+            if (next < 0)
                 set_view(VOX_VIEW[x]);
-            else if (s < NSUB)
-                set_view(V_MAIN + x * NSUB + s);
+            else if (next < NSUB)
+                set_view(V_MAIN + x * NSUB + next);
+            else
+                set_view(VOX_VIEW[x]);
             vox_title();
         }
         ui.turn_t = plat_ms();
@@ -1921,6 +2187,14 @@ static void input(void)
         ui.turn_t = plat_ms();
     }
     if ((e = plat_enc(EN_PRESET)) != 0) {
+        if (expression_view(ui.view)) {
+            int current=expression_preset_index(expression_voice());
+            int index=current >= NINTERPRETATION_PRESET ? current-NINTERPRETATION_PRESET : (e>0 ? -1 : 0);
+            expression_preset_apply(expression_voice(),
+                                    NINTERPRETATION_PRESET + (index + NROUTING_PRESET + (e > 0 ? 1 : -1)) % NROUTING_PRESET);
+            ui.turn_t=plat_ms();
+            return;
+        }
         if (ui.view >= V_VIS && ui.view <= V_SHAPE2) {   /* (1.5.20: on the video synth's pages, its looks) */
             look_i = (uint8_t)((look_i + NLOOK + (e > 0 ? 1 : -1)) % NLOOK);
             look_apply(look_i);
@@ -1959,13 +2233,26 @@ static void input(void)
             warn("TAPE", "ERASED");
         }
     }
+    if ((btn >> B_EDIT & 1u) && tape_view(ui.view) && !ui.chop_done && !en_reel_state &&
+        plat_ms() - ui.down_t[B_EDIT] >= RESET_HOLD) {
+        ui.chop_done = 1;                        /* EDIT held on the reel's pages: the splice cut at its attacks */
+        ui.btn_used |= 1u << B_EDIT;
+        ui.help = 0;
+        if (project_reel_progress() >= 0) {
+            warn("SAVING", "THE REEL");
+        } else {
+            switch (en_reel_chop(tkey_spl())) {
+            case 0: say("CHOPPING", "THE SPLICE"); break;
+            case -1: warn("NOT CHOPPED", "NO SPLICE"); break;
+            case -2: warn("NOT CHOPPED", "TOO SHORT"); break;
+            case -5: warn("NOT CHOPPED", "THE REEL IS FULL"); break;
+            default: warn("NOT CHOPPED", "THE TAPE IS BUSY"); break;
+            }
+        }
+    }
     if (btn == 1u << B_SEL && !(ui.btn_used >> B_SEL & 1u) && plat_ms() - ui.down_t[B_SEL] >= 1000u) {
         ui.btn_used |= 1u << B_SEL;              /* SEL held alone a second: undo the last roll */
         dice_undo();
-    }
-    if (ui.gen_dirty) {                          /* the generator's knobs turned: the voice made again, once a frame */
-        gen_apply(kvox(), ui.gen_dirty == 2u);
-        ui.gen_dirty = 0;
     }
     help_tick(btn, keys);
 }
@@ -2066,28 +2353,43 @@ static float turns(float y, float x)
 
 /* a knob: a 270-degree track from 7:30 to 4:30, anti-aliased, round ends; the value filled from
  * the start (or from the top, for a centred value) and a round handle */
-static void arc(int32_t cx, int32_t cy, int32_t r, float v, uint16_t track, uint16_t fill, uint16_t bg, int bipolar)
+static void arc(int32_t cx, int32_t cy, float v, uint16_t track, uint16_t fill, uint16_t bg, int bipolar)
 {
+    enum { r = 12 };
+    /* The ring never changes shape. Cache its covered pixels, in draw order, once;
+     * the complete integer annulus contains 276 pixels (the track uses fewer). */
+    static struct { float t; int8_t x, y; uint8_t a; } ring[320] PLAT_POOL;
+    static uint16_t nr;
+    static uint8_t ready;
     const float th = 3.4f, a0 = 0.375f, sweep = 0.75f;
     float ro = (float)r, ri = ro - th, rm = ro - th * 0.5f, fx = (float)cx + 0.5f, fy = (float)cy + 0.5f, lo, hi;
     int32_t x, y;
     v = fm_clampf(v, 0.0f, 1.0f);
     lo = bipolar ? (v < 0.5f ? v : 0.5f) : 0.0f;
     hi = bipolar ? (v < 0.5f ? 0.5f : v) : v;
-    for (y = -r - 1; y <= r + 1; y++)
-        for (x = -r - 1; x <= r + 1; x++) {
-            float dx = (float)x, dy = (float)y, d = fm_sqrtf(dx * dx + dy * dy), t, a;
-            a = fm_clampf(ro + 0.5f - d, 0.0f, 1.0f) * fm_clampf(d - ri + 0.5f, 0.0f, 1.0f);
-            if (a <= 0.0f)
-                continue;
-            t = turns(dy, dx) - a0;
-            if (t < 0.0f)
-                t += 1.0f;
-            t /= sweep;
-            if (t > 1.0f)
-                continue;
-            px_blend(cx + x, cy + y, (t >= lo && t <= hi) ? fill : track, (uint32_t)(a * 16.0f + 0.5f));
-        }
+    if (!ready) {
+        for (y = -r - 1; y <= r + 1; y++)
+            for (x = -r - 1; x <= r + 1; x++) {
+                float dx = (float)x, dy = (float)y, d = fm_sqrtf(dx * dx + dy * dy), t, a;
+                a = fm_clampf(ro + 0.5f - d, 0.0f, 1.0f) * fm_clampf(d - ri + 0.5f, 0.0f, 1.0f);
+                if (a <= 0.0f)
+                    continue;
+                t = turns(dy, dx) - a0;
+                if (t < 0.0f)
+                    t += 1.0f;
+                t /= sweep;
+                if (t > 1.0f)
+                    continue;
+                ring[nr].t = t;
+                ring[nr].x = (int8_t)x;
+                ring[nr].y = (int8_t)y;
+                ring[nr++].a = (uint8_t)(a * 16.0f + 0.5f);
+            }
+        ready = 1;
+    }
+    for (x = 0; x < nr; x++)
+        px_blend(cx + ring[x].x, cy + ring[x].y,
+                 ring[x].t >= lo && ring[x].t <= hi ? fill : track, ring[x].a);
     {
         float e0 = a0 * FM_TWO_PI, e1 = (a0 + sweep) * FM_TWO_PI, ev = (a0 + sweep * v) * FM_TWO_PI;
         float el = (a0 + sweep * lo) * FM_TWO_PI;
@@ -2190,14 +2492,14 @@ static const char *const TOM_TIP[TT_N] = {
     "a song came in: GLO twice, Song to its slot",
     "the battery is low: plug the USB cable in",
 };
-static const char *const TOM_PAGE[V_MAIN + NSUB] = {
+static const char *const TOM_PAGE[V_MAIN + 3 + NSUB] = {
     "The Cortex page: the whole of it. Three voices grow from one scale and one chord, and a slow tide swings it from sparse to full every few minutes.",
     "A voice: an FM patch playing one role. Press its button again for its own pages: Patch, then Operator, then Mod.",
     0,
     0,
     "The space, after Eno's Discreet Music: a tape echo with two heads, each repeat darker, then a plate reverb.",
     "Setup: the key's root, the tuning, MIDI out and the lights. Top right: the CPU, and after X the times the sound ran out of time.",
-    "The reel: 11.8 s of tape. EDIT records a new splice, REC overdubs the one picked, REC held 1.5 s erases the reel.",
+    "The reel: 11.8 s of tape. EDIT records a new splice, REC overdubs the one picked, REC held 1.5 s erases the reel, EDIT held 1.5 s cuts the one picked at its attacks.",
     "Genes, after the Morphagene: the splice is read in small windows, the genes, overlapped, slid, sped up or reversed.",
     "The deck: where the echo and reverb sit, and how the tape colours the sound.",
     "Five LFOs for the reel. KNOB 1 picks one; Target says what it moves, Depth how far, Rate how fast.",
@@ -2235,15 +2537,24 @@ static const char *const TOM_PAGE[V_MAIN + NSUB] = {
     "Five modulators move this voice's sound, each note its own way. KNOB 1 picks one; Target says what it moves.",
     "The modulator's shape and timing.",
     "How the modulator spreads across the notes and comes in.",
+    "Expression monitor: live Energy, Link, Open, Breath and phrase progress. EDIT selects the next curated preset, REC the previous. Knobs play Amount, Style, Phrase and Variation. SELECT opens Gesture, Morph and three Matrix pages. Amount zero bypasses interpretation; Morph has its own amount.",
+    "Gesture: how interpretation remembers its character and listens to the other voices.",
+    "Morph: A is the current preset. Color borrows B's envelopes and levels while keeping A's FM structure; Compatible requires a matching structure. New notes take the blend.",
+    "Matrix: eight musical relationships per voice. Route chooses one; Source, Target and Depth define its direction.",
+    "Matrix timing: a note or phrase captures the relationship; continuous updates are for level, cutoff and index.",
+    "Matrix limits: constrain this route's contribution. They do not rewrite the base preset.",
+    [V_MAIN + NSUB] = "Sequence: Motif controls how often Evolve transforms a loop. Rotation and Accent weight rhythmic and dynamic transformations. Passing controls bass chord tones between roots. Evolve zero keeps the patterns stable.",
+    [V_MAIN + NSUB + 2] = "Phrase: Dialogue preserves a motif, asks a question near the end, then restores it and favors the current chord. Length sets two to eight loop passes; Tension and Resolve shape the question and answer. Evolve zero disables dialogue.",
+    [V_MAIN + NSUB + 1] = "Seq 2: Humanize gives bounded note delays; Space skips notes without erasing the motif; Range limits scale-step register. Swing keeps the clock steady.  the rhythm's Swing, from straight (50%) to 75%: the second of each pair of sixteenths or eighths arrives late, on the loops and the bass. The song player stays straight.",
 };
-static const char *const TOM_KNOB[(V_MAIN + NSUB) * 4] = {
+static const char *const TOM_KNOB[(V_MAIN + 3 + NSUB) * 4] = {
     "Tempo: beats a minute, 30 to 240. HOME + SELECT sets it from any page; MIDI clock in takes over (EXT).",
     "Evolve: how restless it is. At 0 the loops repeat exactly; up, notes change at the end of a pass and the voices take rests.",
     "Motion: how far the slow tide swings, and how far pitch, pan and the echo's heads wander.",
-    "Drift: how long a chord lasts before CORTEX moves to another, 20 s to 5 min. EDIT moves on now.",
+    "Drift: how long a chord lasts before CORTEX moves to another, 2 s to 5 min. EDIT moves on now.",
     "Level: this voice's volume in the mix.",
     "Role: what this voice plays, Chord, Loops or Bass. Any voice can take any role.",
-    "Octave: two down to two up. OCT- and OCT+ do it too.",
+    "Preset: CORTEX factory voices, then your DX7 banks. Pick a preset to load this voice.",
     "Density: a chord's notes (1 to 4), the loops' notes a pass, or how often the bass leans on the fifth.",
     0,
     0,
@@ -2345,11 +2656,11 @@ static const char *const TOM_KNOB[(V_MAIN + NSUB) * 4] = {
     "Sides 2: its own corners, petals or lobes.",
     "Size 2: its size, 10 to 200 % of the first's.",
     0,
-    "Kind: the family it draws from: Pad, Glass, Air, Strings, Bell, Keys, Pluck, Bass, Drone, Texture.",
+    "Kind: the family for the next generated voice. EDIT generates it; changing these settings leaves the current voice intact.",
     "Bright: the modulators' level and how high their ratios go: dark to brilliant.",
     "Motion: the carriers' chorus, an LFO on the modulators, slow sweeps of their envelopes.",
     "Vary: how far a variation (REC) strays from the patch.",
-    "Patch: CORTEX's own 18, then the DX7 banks you sent. Any edit makes it the piece's own, with a *.",
+    "Octave: two down to two up. OCT- and OCT+ do it too.",
     "Algorithm: how the six operators are wired, 32 ways as on the DX7: which are heard, which shape them.",
     "Feedback: one operator modulates itself. Up: a sine turns to a saw, then to noise.",
     "Index: every modulator louder or softer at once, +-24 dB: the whole patch brighter or darker.",
@@ -2413,6 +2724,40 @@ static const char *const TOM_KNOB[(V_MAIN + NSUB) * 4] = {
     "Spread: 100, each note moves its own way; 0, the voice's notes move as one.",
     "Fade: the modulation comes in after each note, at once (Off) to 8 s.",
     0,
+    "Amount: the depth of musical interpretation. At 0 the original articulation is kept.",
+    "Style: Natural, Breath, Pluck, Legato or Cloud; a tendency, not a physical instrument model.",
+    "Phrase: how many attacks form this voice's phrase; independent loops keep their rhythm.",
+    "Variation: bounded changes to the gesture, with its own random stream.",
+    "Memory: how much the gesture keeps its previous character.",
+    "Link: how much this voice responds to the activity of the others.", 0, 0,
+    "Source B: the preset supplying the second morph endpoint. A remains the voice's original or edited patch.",
+    "Morph: the blend captured by new notes. It does not restart the envelopes already sounding.",
+    "Kind: Color keeps A's algorithm and tuning; Compatible only blends structurally matching patches.",
+    "Match: read-only. Ready means the two patches can use Compatible; No match leaves A unchanged in that mode.",
+    "Route: choose one of eight relationships; the same selection follows across all three Matrix pages.",
+    "Source: a musical feature or gesture, such as density, phrase arch or the other voices' activity.",
+    "Target: attack, decay, sustain, release, gate, level, cutoff, index or morph. Tuning and algorithm are protected.",
+    "Depth: positive follows the source; negative reverses it. Zero disconnects its contribution.",
+    "Route: choose one of eight relationships.",
+    "When: capture at Note or Phrase; Live follows continuously for level, cutoff and index.",
+    "Curve: Linear, Soft, Step or Center changes the source's response.",
+    "Smooth: the route's transition time, in milliseconds.",
+    "Route: choose one of eight relationships.",
+    "Minimum: lower bound of this route's contribution, not the destination's absolute value.",
+    "Maximum: upper bound of this route's contribution. Contributions combine before destination limits.", 0,
+    [(V_MAIN + NSUB) * 4] = "Motif: probability of transforming a loop at each completed pass, scaled by Evolve.",
+    [(V_MAIN + NSUB) * 4 + 1] = "Rotation: relative weight of cyclic rhythm shifts among motif transformations. Notes and rests move together.",
+    [(V_MAIN + NSUB) * 4 + 2] = "Accent: relative weight of dynamic transformations. Strong beats gain emphasis without adding notes.",
+    [(V_MAIN + NSUB) * 4 + 3] = "Passing: probability, scaled by Evolve, of a bass chord tone before returning to its root.",
+    [(V_MAIN + NSUB + 1) * 4 + 1] = "Humanize: random note delays, limited to 40 ms or one fifth of a sixteenth. Zero is exact timing.",
+    [(V_MAIN + NSUB + 1) * 4 + 2] = "Space: up to 80 percent of loop attacks become rests; the stored motif is preserved.",
+    [(V_MAIN + NSUB + 1) * 4 + 3] = "Range: one to four octaves of scale steps above each loop's base register.",
+    [(V_MAIN + NSUB + 2) * 4] = "Dialogue: probability that the next phrase preserves, questions and answers its motif. Evolve must be above zero.",
+    [(V_MAIN + NSUB + 2) * 4 + 1] = "Length: two to eight loop passes per phrase, captured at its beginning.",
+    [(V_MAIN + NSUB + 2) * 4 + 2] = "Tension: chance of transforming the motif on the penultimate pass.",
+    [(V_MAIN + NSUB + 2) * 4 + 3] = "Resolve: chance of moving answer notes to the nearest tone of the current chord.",
+    [(V_MAIN + NSUB + 1) * 4] = "Swing: 50% straight, up to 75%: the off-beat arrives up to half a step late, on the loops and the bass.",
+
 };
 static const char *const TOM_V_ROLE[3] = {
     "Chord: up to four notes, each breathing in and out on its own cycle, so chords form and dissolve.",
@@ -2507,11 +2852,11 @@ static const char *const TOM_V_XTGT[3] = {
     "Lines: the geometry itself turns, travels and grows.",
     "Both at once.",
 };
-_Static_assert(sizeof TOM_PAGE / sizeof *TOM_PAGE == V_MAIN + NSUB, "a word a page");
-_Static_assert(sizeof TOM_KNOB / sizeof *TOM_KNOB == (V_MAIN + NSUB) * 4, "a word a knob");
+_Static_assert(sizeof TOM_PAGE / sizeof *TOM_PAGE == V_MAIN + 3 + NSUB, "a word a page");
+_Static_assert(sizeof TOM_KNOB / sizeof *TOM_KNOB == (V_MAIN + 3 + NSUB) * 4, "a word a knob");
 #define TOM_COLS 29                             /* (FONT_XS: 6 px a letter; he sits at 184) */
 #define TOM_PANEL_MS 3800u                      /* two lines this long */
-#define TOM_NK ((V_MAIN + NSUB) * 4)
+#define TOM_NK ((V_MAIN + 3 + NSUB) * 4)
 static struct {
     uint8_t st, frame, panel, npanel;           /* st: 0 away, 1 walking (to stop), 2 sitting (his word), 3 on his
                                                  * way out, 4 a jump, 5 asleep, 6 a stretch, 7 sitting a while */
@@ -2568,6 +2913,11 @@ static char *tom_cat(char *b, const char *s)    /* (into tom.dyn, as far as it g
 }
 static int tom_pidx(int v)                      /* a page's word (the three voices' pages one) */
 {
+    if (v == V_PHRASE) return V_MAIN + NSUB + 2;
+    if (v == V_SEQ2) return V_MAIN + NSUB + 1;
+    if (v >= V_SEQ) return V_MAIN + NSUB;
+    if (expression_view(v))
+        return V_MAIN + view_sub(v);
     return v >= V_MAIN ? V_MAIN + view_sub(v) : v == V_BELLS || v == V_BASS ? V_PAD : v;
 }
 static int tom_kidx(int v, int i) { return tom_pidx(v) * 4 + i; }
@@ -2582,9 +2932,89 @@ static const char *tom_value(int k, int val, char *b)
         return TV(TOM_V_ENV);
     if (p == P_RL(SRC))
         return TV(TOM_V_SRC);
-    if (p >= P_VCF && (p - P_VCF) % VF_N == VF_ON)
+    if (p >= P_VCF && p < P_EXPR && (p - P_VCF) % VF_N == VF_ON)
         return val ? "On: the highs taken away above Cutoff, as an analog synth's: round, dark, singing at the "
                      "Resonance." : "Off: the voice as the FM makes it, bright.";
+    if (p >= P_EXPR && p < P_SEQ) {
+        const int off = (p - P_EXPR) % EN_XSTRIDE;
+        if (off == EX_STYLE) {
+            static const char *const TOM_V_STYLE[5] = {
+                "Natural: balanced phrasing, following the garden's organic pulse.",
+                "Breath: long wind-like swells, gentle attacks and breathing decays.",
+                "Pluck: percussive, sharp attacks that bite with fast articulation.",
+                "Legato: connected notes with smooth transitions and singing sustain.",
+                "Cloud: diffuse, shimmering ambient textures dissolving in space."
+            };
+            return TV(TOM_V_STYLE);
+        }
+        if (off == EX_MORPH_KIND) {
+            static const char *const TOM_V_MKIND[2] = {
+                "Color: continuous timbre interpolation across any two presets.",
+                "Compat: structured morphing between algorithms with matching topology."
+            };
+            return TV(TOM_V_MKIND);
+        }
+        if (off >= EX_N) {
+            const int rk = (off - EX_N) % XR_N;
+            if (rk == XR_SOURCE) {
+                static const char *const TOM_V_XSRC[14] = {
+                    "Off: this modulation route is disconnected.",
+                    "Energy: total musical tension from velocity, pitch and density.",
+                    "Link: interaction and conversation with the other two voices.",
+                    "Open: brightness from the current filter cutoff state.",
+                    "Breath: cyclical breathing motion across phrases.",
+                    "Density: notes actually rendered by this voice, including keys and release tails. Four notes fill it.",
+                    "Duration: average sounded age of this voice's active notes. Four seconds fill it; silence clears it.",
+                    "Accent: dynamic emphasis on rhythmic stress points.",
+                    "Arch: melodic contour rising and falling over time.",
+                    "Silence: rests and space between musical phrases.",
+                    "Leap: pitch distance and interval jumps between notes.",
+                    "Register: octave placement and pitch height in the scale.",
+                    "Other: melodic activity from the sibling voice.",
+                    "Memory: accumulated melodic and harmonic history over time."
+                };
+                return TV(TOM_V_XSRC);
+            }
+            if (rk == XR_TARGET) {
+                static const char *const TOM_V_XTGT[XT_N] = {
+                    "Off: no destination assigned.",
+                    "Attack: modifies the rise time of the note envelope.",
+                    "Decay: modifies the initial fall time of the envelope.",
+                    "Sustain: modifies the held level of sustained notes.",
+                    "Release: modifies the tail ring-out after note release.",
+                    "Gate: modifies how long notes are held before release.",
+                    "Level: voice volume and output loudness.",
+                    "Cutoff: low-pass filter cutoff frequency.",
+                    "Index: FM modulation depth and harmonic brightness.",
+                    "Morph: blend position towards preset B.",
+                    "Density: varies this layer's sequence density.", "Evolve: varies musical evolution.",
+                    "Drift: varies the next chord's duration.", "Motif: varies transformation probability at loop boundaries.",
+                    "Rotation: varies the weight of rhythm rotation.", "Accent: varies dynamic transformation weight.",
+                    "Passing: varies bass chord-tone probability before returning to root.", "Swing: varies the next offbeat delay, bounded to 75 percent.",
+                    "Humanize: bounded random timing.", "Space: temporary musical rests.", "Range: scale-preserving register limits.",
+                    "Dialogue: phrase probability.", "Length: phrase length captured at its start.", "Tension: variation before the answer.", "Resolve: attraction to the current chord in the answer."
+                };
+                return TV(TOM_V_XTGT);
+            }
+            if (rk == XR_WHEN) {
+                static const char *const TOM_V_XWHEN[3] = {
+                    "Note: evaluated and latched fresh at every note attack.",
+                    "Phrase: evaluated once at the start of each phrase.",
+                    "Live: follows continuously in real time as the gesture moves."
+                };
+                return TV(TOM_V_XWHEN);
+            }
+            if (rk == XR_CURVE) {
+                static const char *const TOM_V_XCURVE[4] = {
+                    "Linear: direct 1:1 proportional response.",
+                    "Soft: gentle exponential curve with relaxed response.",
+                    "Step: quantized threshold jumping between levels.",
+                    "Center: S-curve centered around the middle value."
+                };
+                return TV(TOM_V_XCURVE);
+            }
+        }
+    }
     if (p == P_ST(VMODE))
         return TV(TOM_V_VIS);
     if (p == P_ST(VLAYER))
@@ -3267,17 +3697,17 @@ static int help_lines(int b, const char *l[HELP_LINES])
 #define L(t) (l[n++] = (t))
     switch (b) {
     case B_HOME: L("THE CORTEX"); L("TEMPO, EVOLVE, MOTION, DRIFT"); L("AGAIN: ITS VISUAL"); L("+ SELECT: TEMPO"); break;
-    case B_ENV: L("VOICE 1"); L("LEVEL, ROLE, OCTAVE, DENSITY"); L("AGAIN: GEN, PATCH, OP, MOD");
-        L("GEN: EDIT NEW, REC VARY"); break;
-    case B_ARP: L("VOICE 2"); L("LEVEL, ROLE, OCTAVE, DENSITY"); L("AGAIN: GEN, PATCH, OP, MOD");
-        L("GEN: EDIT NEW, REC VARY"); break;
-    case B_LFO: L("VOICE 3"); L("LEVEL, ROLE, OCTAVE, DENSITY"); L("AGAIN: GEN, PATCH, OP, MOD");
-        L("GEN: EDIT NEW, REC VARY"); break;
+    case B_ENV: L("VOICE 1"); L("LEVEL, ROLE, OCTAVE, DENSITY"); L("AGAIN: EXPRESSION, THEN GEN");
+        L("PATCH, OP, MOD: PRESS AGAIN"); break;
+    case B_ARP: L("VOICE 2"); L("LEVEL, ROLE, OCTAVE, DENSITY"); L("AGAIN: EXPRESSION, THEN GEN");
+        L("PATCH, OP, MOD: PRESS AGAIN"); break;
+    case B_LFO: L("VOICE 3"); L("LEVEL, ROLE, OCTAVE, DENSITY"); L("AGAIN: EXPRESSION, THEN GEN");
+        L("PATCH, OP, MOD: PRESS AGAIN"); break;
     case B_SEQ: L("THE TAPE"); L("SOURCE, DRY/WET, SOS, SPEED"); L("AGAIN: GENE, DECK, ITS MOD,"); L(" KEY SYNC"); break;
     case B_FX: L("THE SPACE"); L("ECHO, ECHO TIME, REVERB,"); L("SIZE"); break;
     case B_GLO: L("SETUP"); L("ROOT, TUNE, MIDI OUT, LIGHTS"); L("AGAIN: MIDI CHANNELS,"); L(" SONG (A MIDI FILE)"); break;
-    case B_EDIT: L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); L("TAPE: A NEW SPLICE"); break;
-    case B_REC: L("FREEZE: THE CHORD HOLDS"); L(" AND THE REVERB RINGS ON"); L("TAPE: OVERDUB, HELD: ERASE"); break;
+    case B_EDIT: L("EXPRESSION: NEXT PRESET"); L("THE NEXT CHORD,"); L("ON THE NEXT BAR"); L("TAPE: NEW SPLICE, HELD: CHOP"); break;
+    case B_REC: L("EXPRESSION: PREV PRESET"); L("FREEZE: THE CHORD HOLDS"); L(" AND THE REVERB RINGS ON"); L("TAPE: OVERDUB, HELD: ERASE"); break;
     case B_OCTDN: L("THE VOICE SHOWN AN OCTAVE"); L(" DOWN"); L("WITH OCT+, 5 S: UPDATE MODE"); break;
     case B_OCTUP: L("THE VOICE SHOWN AN OCTAVE"); L(" UP"); L("WITH OCT-, 5 S: UPDATE MODE"); break;
     case B_SAVE: L("SAVES ALL EIGHT PIECES"); L("KEEP HOLDING: THE PIECE"); L(" BACK TO ITS RECIPE");
@@ -3577,6 +4007,7 @@ static void draw_tape(void)
 #define VSEG_N 270
 static uint8_t vf[VF_H][VF_W] PLAT_POOL;
 static uint8_t vtmp[VF_H][VF_W] PLAT_POOL;      /* FEEDBACK: the last frame, turned and zoomed, before it comes back */
+static uint16_t vpal_screen[256] PLAT_POOL;     /* screen byte order, prepared once per visual frame */
 static uint16_t vpal[256] PLAT_POOL;            /* (RGB565, not yet swapped: its planes taken apart) */
 static uint8_t vline[2][240] PLAT_POOL __attribute__((aligned(4)));         /* (a screen row of the field, smoothed; its colour index) */
 static struct {
@@ -3599,6 +4030,7 @@ static int vnseg, vpal_key = -1;
 static uint8_t vhist_w, vis_ok;
 static int8_t vtear[VF_H];                      /* SYNC: each row's tear now (a bass hit) */
 static float vchroma[12], vorb[EN_NVOX][2], vt, vbass_prev, vband[EN_NBAND], vlv[EN_NVOX], vgain;
+static uint32_t vbeat_n;                        /* (the beats counted: which way the next one turns) */
 static float vpeak[EN_NBAND], vprev[EN_NBAND], vflux_avg, vbeat, vhue_kick;   /* the ear's: each band's recent peak,
                                                                                 * the last frame's, the rise's average,
                                                                                 * the beat (1 .. 0), HUE's jump */
@@ -4068,6 +4500,20 @@ static void geo_lines(int geo, int sides)        /* geometry geo's lines, added 
 static void geo_transform(void)
 {
     int i;
+    {   /* (1.5.22) the beat's punch on the lines, whatever TARGET: they leap out and turn a little, each beat the
+         * other way, as far as PULSE says, falling back with the beat */
+        const float k = vbeat * (float)VPAR(VPULSE) * 0.01f;
+        if (k > 0.01f) {
+            const float sc = 1.0f + 0.25f * k, an = 0.14f * k * (vbeat_n & 1u ? 1.0f : -1.0f),
+                        ca = fm_cosf(an) * sc, sa = fm_sinf(an) * sc;
+            for (i = 0; i < vnseg; i++) {
+                const float x0 = (float)vseg[i].x0 - 120.0f, y0 = (float)vseg[i].y0 - 120.0f,
+                            x1 = (float)vseg[i].x1 - 120.0f, y1 = (float)vseg[i].y1 - 120.0f;
+                vseg[i].x0 = (int16_t)(120.0f + x0 * ca - y0 * sa), vseg[i].y0 = (int16_t)(120.0f + x0 * sa + y0 * ca);
+                vseg[i].x1 = (int16_t)(120.0f + x1 * ca - y1 * sa), vseg[i].y1 = (int16_t)(120.0f + x1 * sa + y1 * ca);
+            }
+        }
+    }
     {                                            /* (1.5.14) TRANSFORM on the lines too: turned on by ROTATE, carried by
                                                   * SHIFT (round the screen), grown or shrunk by ZOOM */
         static float ga, gx, gy;
@@ -4338,14 +4784,18 @@ static void vis_step(int mode)                   /* a frame of the field and the
             vpeak[k] = fm_maxf(e, fm_maxf(vpeak[k] * 0.993f, 1e-4f));
             nb = e / vpeak[k];
             nb = nb * nb * (3.0f - 2.0f * nb);   /* (a softer knee) */
-            vband[k] += (fm_minf(nb * pres * vgain * 0.55f + e * vgain * 2.0f, 1.5f) - vband[k]) *
-                        (1.0f - (float)VPAR(VEAR) * 0.0085f);   /* EAR: smoothed (0 at once) */
+            {   /* EAR: smoothed (0 at once); 1.5.22: it leaps up at once and lets go slower, as a VU's needle */
+                const float tg = fm_minf(nb * pres * vgain * 0.55f + e * vgain * 2.0f, 1.5f),
+                            rel = 1.0f - (float)VPAR(VEAR) * 0.0085f;
+                vband[k] += (tg - vband[k]) * (tg > vband[k] ? fm_maxf(rel, 0.8f) : rel * 0.6f);
+            }
             flux += fm_maxf(vband[k] - vprev[k], 0.0f) * (k < 2 ? 1.5f : 1.0f);
             vprev[k] = vband[k];
         }
         if (flux > vflux_avg * 1.6f + 0.08f && plat_ms() - vbeat_t > 120u) {
             vbeat = 1.0f;
             vbeat_t = plat_ms();
+            vbeat_n++;                           /* (1.5.22: each beat turns the other way) */
             vhue_kick += 0.6f * (float)VPAR(VPULSE) * 0.01f;
         } else {
             vbeat *= 0.75f;
@@ -4361,6 +4811,7 @@ static void vis_step(int mode)                   /* a frame of the field and the
                         (1.0f - (float)(VPAR(VXTGT) != 1 ? VPAR(VXZOOM) : 0) * 0.0006f),   /* TRANSFORM's ZOOM (TARGET
                                                   * Feedback or Both): up to 6 % a frame, in or out */
                     an = fb * (0.05f * fm_sinf(vt * 0.37f) + 0.02f * vband[1] + G(2, -0.05f, 0.05f)) +
+                         0.06f * pu * vbeat * (vbeat_n & 1u ? 1.0f : -1.0f) +   /* (1.5.22: the beat's jolt) */
                          (float)(VPAR(VXTGT) != 1 ? VPAR(VXROT) : 0) * 0.0008f,   /* ROTATE: up to 0.08 rad a frame */
                     ca = fm_cosf(an) * z, sa = fm_sinf(an) * z, ff = G(3, 0.04f, 0.22f), fa = 3.0f * fl * (0.5f + vband[2]);
         /* SHIFT, along Osc's ANGLE: 2 cells a frame at 100 (TARGET Feedback or Both) */
@@ -4368,10 +4819,15 @@ static void vis_step(int mode)                   /* a frame of the field and the
                     shang = (float)VPAR(VOANGLE) * (FM_PI / 100.0f), vshx = sh * fm_cosf(shang), vshy = sh * fm_sinf(shang);
         static int8_t flx[VF_H] PLAT_POOL, fly[VF_W] PLAT_POOL;   /* FLOW: the swirl the feedback is carried by
                                                                     * (sixteenths of a cell) */
-        for (y = 0; y < VF_H; y++)
-            flx[y] = (int8_t)fm_clampf(16.0f * fa * fm_sinf((float)y * ff + vt * 1.3f), -127.0f, 127.0f);
-        for (x = 0; x < VF_W; x++)
-            fly[x] = (int8_t)fm_clampf(16.0f * fa * fm_cosf((float)x * ff - vt * 1.1f), -127.0f, 127.0f);
+        if (fa != 0.0f) {
+            for (y = 0; y < VF_H; y++)
+                flx[y] = (int8_t)fm_clampf(16.0f * fa * fm_sinf((float)y * ff + vt * 1.3f), -127.0f, 127.0f);
+            for (x = 0; x < VF_W; x++)
+                fly[x] = (int8_t)fm_clampf(16.0f * fa * fm_cosf((float)x * ff - vt * 1.1f), -127.0f, 127.0f);
+        } else {                                /* FLOW off: every displacement is exactly zero */
+            memset(flx, 0, sizeof flx);
+            memset(fly, 0, sizeof fly);
+        }
         for (y = 0; y < VF_H; y++)
             for (x = 0; x < VF_W; x++) {
                 const float dx = (float)x - VCX, dy = (float)y - VCY;
@@ -4791,6 +5247,7 @@ static void vis_draw(int mode, float tr)         /* picture mode into vdst (the 
 }
 /* screen rows y0 .. y0 + h - 1 of the field, smooth (each screen pixel between four cells), through the palette:
  * RGB its planes apart (wider with the highs), SYNC its rows bent and torn; then the geometry's lines over it */
+static uint8_t vpixel_x[VF_W];                 /* mosaic cell indices, shared by every row */
 static int16_t vrow_o[MAIN_H];                  /* the band's rows' offsets (SYNC, SLICE): the sharp lines move with
                                                  * them */
 static void vis_seg(int x0, int yy0, int x1, int yy1, uint16_t c, int y0, int h)   /* a sharp line, in the band */
@@ -4836,6 +5293,9 @@ static void vis_band(int y0, int h)
         const float fo = (float)VPAR(VFOLD) * 0.01f, po = (float)VPAR(VPOSTER) * 0.01f;
         const int kth = VPAR(VKEY) * 2, mul = 1 + (int)(fo * 7.0f), off = (int)(vt * 40.0f * fo),
                   lv = 2 + (int)((1.0f - po) * 14.0f), step = 255 / (lv - 1);
+        if (ps > 1)
+            for (i = 0; i < VF_W; i++)
+                vpixel_x[i] = (uint8_t)(i / ps * ps);
         for (i = 0; i < 256; i++) {
             int v = i;
             if (fo > 0.0f) {                     /* (folded back on itself: a triangle) */
@@ -4850,6 +5310,7 @@ static void vis_band(int y0, int h)
                 v = v * 3 / 10;                  /* (Rutt: the picture under its lines) */
             v = v * (VPAR(VBRIGHT) + 50) / 100;  /* BRIGHT */
             vlut[i] = (uint8_t)(v > 255 ? 255 : v);
+            vpal_screen[i] = swap16(vpal[i]);
         }
     }
     for (y = y0; y < y0 + h; y++) {
@@ -4859,14 +5320,14 @@ static void vis_band(int y0, int h)
         uint8_t *col = vline[0], *ln = vline[1];
         uint16_t *out = cv_px + (uint32_t)(y - y0) * 240u;
         const int fi = y >> 1 < VF_H ? y >> 1 : VF_H - 1,
-                  o = 2 * ((int)(syn * 5.0f * fm_sinf((float)fi * 0.19f + vt * 2.3f) + 0.5f) + vtear[fi]) +
+                  o = 2 * ((int)((syn > 0.0f ? syn * 5.0f * fm_sinf((float)fi * 0.19f + vt * 2.3f) : 0.0f) + 0.5f) + vtear[fi]) +
                       ((fi & 1) ? (int)((float)VPAR(VSLICE) * 0.06f * (vband[3] + vbeat)) : 0),   /* (interlace) */
                   spr = sp + vchan[fi >> 3];
         vrow_o[y - y0] = (int16_t)o;
         if (ps > 1) {                            /* PIXEL: blocks of ps cells (Fairlight's mosaic) */
             const uint8_t *q = vf[fi / ps * ps];
             for (x = 0; x < VF_W; x++)
-                ln[2 * x] = ln[2 * x + 1] = q[x / ps * ps];
+                ln[2 * x] = ln[2 * x + 1] = q[vpixel_x[x]];
         } else {
             for (x = 0; x < VF_W; x++)
                 col[x] = (uint8_t)((a[x] * (4 - wb) + b[x] * wb) >> 2);
@@ -4876,20 +5337,43 @@ static void vis_band(int y0, int h)
                 ln[2 * x + 1] = (uint8_t)((3 * c + r) >> 2);
             }
         }
-        static const int8_t BAYER[4][4] = {{-6, 2, -4, 4}, {6, -2, 8, 0}, {-3, 5, -5, 3}, {9, 1, 7, -1}};
-        const int8_t *dr = BAYER[y & 3];
-        if (ps <= 1) {                           /* (sharpened along the row: what the smoothing softened) */
-            memcpy(col, ln, 240);
-            for (x = 1; x < 239; x++) {
-                const int v = ln[x] + (2 * col[x] - col[x - 1] - col[x + 1]) / 3;
-                ln[x] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+        /* the 4 x 4 Bayer offsets already halved, as BAYER[][] / 2 was (C's division: toward zero) */
+        static const int8_t BAYER2[4][4] = {{-3, 1, -2, 2}, {3, -1, 4, 0}, {-1, 2, -2, 1}, {4, 0, 3, 0}};
+        const int8_t *dr = BAYER2[y & 3];
+        if (ps <= 1) {                           /* (1.5.22: sharpened along the row, dithered and mapped in one pass,
+                                                  * the same pixels: n / 3 as (n * 43691) >> 17, exact below 65536) */
+            int pl = ln[0];
+            for (x = 0; x < 240; x++) {
+                const int c = ln[x];
+                int v = c, d;
+                if (x > 0 && x < 239) {
+                    const int sh = 2 * c - pl - ln[x + 1];
+                    v = c + (sh >= 0 ? (int)(((uint32_t)sh * 43691u) >> 17) : -(int)(((uint32_t)-sh * 43691u) >> 17));
+                    v = v < 0 ? 0 : v > 255 ? 255 : v;
+                }
+                pl = c;
+                d = v + (dith && v > 8 ? dr[x & 3] : 0);
+                ln[x] = vlut[d < 0 ? 0 : d > 255 ? 255 : d];
+            }
+        } else {
+            for (x = 0; x < VF_W * 2; x++) {     /* (dithered between the palette's steps, unless POSTER; CHROMA) */
+                const int d = ln[x] + (dith && ln[x] > 8 ? dr[x & 3] : 0);
+                ln[x] = vlut[d < 0 ? 0 : d > 255 ? 255 : d];
             }
         }
-        for (x = 0; x < VF_W * 2; x++) {         /* (dithered between the palette's steps, unless POSTER; CHROMA) */
-            const int d = ln[x] + (dith && ln[x] > 8 ? dr[x & 3] / 2 : 0);
-            ln[x] = vlut[d < 0 ? 0 : d > 255 ? 255 : d];
-        }
-        for (x = 0; x < 240; x++) {
+        if (!spr && o > -240 && o < 240) {     /* no RGB separation: one palette fetch; the row's shift as two runs */
+            const int oo = o < 0 ? o + 240 : o;
+            for (x = 0; x < oo; x++)
+                out[x] = vpal_screen[ln[x + 240 - oo]];
+            for (; x < 240; x++)
+                out[x] = vpal_screen[ln[x - oo]];
+        } else if (!spr) {
+            for (x = 0; x < 240; x++) {
+                int xg = x - o;
+                xg = xg < 0 ? xg + 240 : xg >= 240 ? xg - 240 : xg;
+                out[x] = vpal_screen[ln[xg]];
+            }
+        } else for (x = 0; x < 240; x++) {
             int xg = x - o, xr, xb;
             xg = xg < 0 ? xg + 240 : xg >= 240 ? xg - 240 : xg;
             xr = xg - spr;
@@ -4898,7 +5382,8 @@ static void vis_band(int y0, int h)
             xb = xb < 0 ? xb + 240 : xb >= 240 ? xb - 240 : xb;
             xr = xr < 0 ? xr + 240 : xr;
             xb = xb >= 240 ? xb - 240 : xb;
-            out[x] = swap16((vpal[ln[xr]] & 0xF800u) | (vpal[ln[xg]] & 0x07E0u) | (vpal[ln[xb]] & 0x001Fu));
+            out[x] = (vpal_screen[ln[xr]] & 0x00F8u) | (vpal_screen[ln[xg]] & 0xE007u) |
+                     (vpal_screen[ln[xb]] & 0x1F00u);
         }
         if ((y & 1) && y >> 1 < VF_H)
             vtear[y >> 1] = (int8_t)(vtear[y >> 1] * 3 / 4);
@@ -5081,44 +5566,164 @@ static void draw_knobs(void);
 static void draw_vis_screen(void)                /* the whole screen: the visual, the header and knobs over it */
 {
     char nm[16];
+    int band;
+    uint32_t t = plat_ticks24(), paint = 0, wait, step;
+    _Static_assert(CV_MAX >= 2u * 240u * (MAIN_H / 2u), "video needs two half-main canvases");
     const uint32_t idle = plat_ms() - ui.act_t;
     const int bars = proj.par[P_ST(VBARS)],
               hide = plat_ms() >= ui.msg_until &&
                      (bars == 2 ? idle > 1500u : bars == 1 ? idle > (uint32_t)proj.par[P_ST(VDELAY)] * 1000u : 0);
+    lcd_sync();                                 /* start a new alternating-buffer sequence */
+    wait = plat_ticks24() - t;
+    t = plat_ticks24();
     vis_step(proj.par[P_ST(VMODE)]);
+    step = plat_ticks24() - t;
+    t = plat_ticks24();
     ui.sig[0] = ui.sig[1] = ui.sig[2] = 0;       /* (the bands drawn afresh when it leaves) */
     vis_over = 1;
-    cv_begin(240, HDR_H, K_BG);
+    cv_begin_pingpong(240, HDR_H, 0);
     vis_band(0, HDR_H);
     if (!hide) {                                 /* BARS: the header and the knobs, or the picture alone */
         vis_dim(HDR_H);
         cv_rect(0, HDR_H - 1, 240, 1, K_LINE);
         draw_header();
     }
+    paint += plat_ticks24() - t;
+    t = plat_ticks24();
     cv_blit(0, 0);
-    cv_begin(240, MAIN_H, K_BG);
-    vis_band(MAIN_Y, MAIN_H);
-    if (!hide)
-        cv_text(6, 4, &FONT_XS, chord_now(nm), TH->text);   /* the chord, and the way to the next */
-    if (hide) {
-    } else if (en_frozen) {
-        cv_text(232 - text_w(&FONT_XS, "held"), 4, &FONT_XS, "held", K_FROST);
-    } else {
-        int32_t w = 30, f = (int32_t)(en_drift * (float)w + 0.5f);
-        cv_round(232 - w, 8, w, 6, 3, K_LINE);
-        if (f > 0)
-            cv_round(232 - w, 8, f < 6 ? 6 : f, 6, 3, K_PAD);
+    wait += plat_ticks24() - t;
+    t = plat_ticks24();
+    for (band = 0; band < 2; band++) {
+        cv_begin_pingpong(240, MAIN_H / 2, (uint32_t)(band + 1));
+        vis_band(MAIN_Y + band * (MAIN_H / 2), MAIN_H / 2);
+        cv_oy = -band * (MAIN_H / 2);
+        if (!hide)
+            cv_text(6, 4, &FONT_XS, chord_now(nm), TH->text);   /* the chord, and the way to the next */
+        if (hide) {
+        } else if (en_frozen) {
+            cv_text(232 - text_w(&FONT_XS, "held"), 4, &FONT_XS, "held", K_FROST);
+        } else {
+            int32_t w = 30, f = (int32_t)(en_drift * (float)w + 0.5f);
+            cv_round(232 - w, 8, w, 6, 3, K_LINE);
+            if (f > 0)
+                cv_round(232 - w, 8, f < 6 ? 6 : f, 6, 3, K_PAD);
+        }
+        cv_oy = 0;
+        paint += plat_ticks24() - t;
+        t = plat_ticks24();
+        cv_blit(0, MAIN_Y + (uint32_t)band * (MAIN_H / 2));
+        wait += plat_ticks24() - t;
+        t = plat_ticks24();
     }
-    cv_blit(0, MAIN_Y);
-    cv_begin(240, KNB_H, K_BG);
+    cv_begin_pingpong(240, KNB_H, 3);
     vis_band(KNB_Y, KNB_H);
     if (!hide) {
         vis_dim(KNB_H);
         cv_rect(0, 0, 240, 1, K_LINE);
         draw_knobs();
     }
+    paint += plat_ticks24() - t;
+    t = plat_ticks24();
     cv_blit(0, KNB_Y);
+    wait += plat_ticks24() - t;
+    t = plat_ticks24();
     vis_over = 0;
+    vis_step_us += ((int32_t)(step / 24u) - (int32_t)vis_step_us) / 8;
+    vis_paint_us += ((int32_t)(paint / 24u) - (int32_t)vis_paint_us) / 8;
+    vis_wait_us += ((int32_t)(wait / 24u) - (int32_t)vis_wait_us) / 8;
+}
+
+/* Expression occupies only the 144-pixel middle band; the four playable
+ * controls below keep their standard knob rendering and reader descriptions. */
+static int expression_meter(int value) { return value < 0 ? 0 : value > 100 ? 100 : value; }
+static void expression_value(int32_t x, int32_t y, int p, int value, uint16_t color)
+{
+    char t[32];
+    en_param_text(p, value, t);
+    cv_text(x, y, &FONT_XS, t, color);
+}
+static void draw_expression(int v, int sub)
+{
+    int r, active = 0;
+    char t[32];
+    for (r = 0; r < EN_XROUTES; r++)
+        if (proj.par[P_XR(v, r, XR_SOURCE)] && proj.par[P_XR(v, r, XR_TARGET)] && proj.par[P_XR(v, r, XR_DEPTH)])
+            active++;
+    if (sub == S_EXPR || sub == S_GESTURE) {
+        static const char *const METER[4] = {"ENERGY", "LINK", "OPEN", "BREATH"};
+        const int preset = expression_preset_index(v);
+        cv_text(8, 2, &FONT_XS, "PRESET", K_DIM);
+        cv_text(56, 0, &FONT_S, preset >= 0 ? EXPRESSION_PRESET[preset].name : "Custom", K_ACC);
+        cv_text(8, 22, &FONT_XS, "EDIT / REC   PRESET ROUTING", K_TEXT);
+        for (r = 0; r < 4; r++) {
+            const int value = expression_meter(en_expression[v][r]), y = 44 + r * 16;
+            cv_text(8, y - 3, &FONT_XS, METER[r], K_TEXT);
+            cv_round(68, y, 128, 7, 3, K_LINE);
+            if (value)
+                cv_rect(69, y + 1, value * 126 / 100, 5, K_ACC);
+            itoa_u((uint32_t)value, t);
+            cv_text(204, y - 3, &FONT_XS, t, K_TEXT);
+        }
+        cv_text(8, 108, &FONT_XS, "PHRASE", K_DIM);
+        cv_rect(68, 112, 128, 4, K_LINE);
+        cv_rect(68, 112, expression_meter(en_expr_phase[v]) * 128 / 100, 4, K_ACC);
+        itoa_u((uint32_t)active, t);
+        cv_text(8, 128, &FONT_XS, t, K_ACC);
+        cv_text(20, 128, &FONT_XS, "ROUTES", K_DIM);
+        cv_text(88, 128, &FONT_XS, !proj.par[P_EX(v, EX_AMOUNT)] ? "BYPASS / AMT 0" : en_playing ? "LIVE / PLAYING" : "PLAY / HOLD KEYS", K_TEXT);
+    } else {
+        const int route = ui.xslot[v], p = P_XR(v, route, 0);
+        int contribution = en_expr_route[v][route];
+        if (contribution < -100) contribution = -100;
+        if (contribution > 100) contribution = 100;
+        cv_text(8, 0, &FONT_XS, "ROUTE", K_DIM);
+        itoa_u((uint32_t)(route + 1), t);
+        cv_text(52, 0, &FONT_XS, t, K_ACC);
+        itoa_u((uint32_t)active, t);
+        cv_text(144, 0, &FONT_XS, t, K_ACC);
+        cv_text(156, 0, &FONT_XS, "OF 8 ACTIVE", K_DIM);
+        for (r = 0; r < EN_XROUTES; r++) {
+            const int on = proj.par[P_XR(v,r,XR_SOURCE)] && proj.par[P_XR(v,r,XR_TARGET)] && proj.par[P_XR(v,r,XR_DEPTH)];
+            cv_round(8 + r * 28, 19, 25, 15, 3, r == route ? K_ACC : K_PANEL);
+            itoa_u((uint32_t)(r + 1), t);
+            text_c(20 + r * 28, 18, &FONT_XS, t, r == route ? K_BG : on ? K_TEXT : K_DIM);
+        }
+        cv_round(8, 40, 96, 29, 4, K_PANEL);
+        cv_round(136, 40, 96, 29, 4, K_PANEL);
+        en_param_text(p + XR_SOURCE, proj.par[p + XR_SOURCE], t);
+        text_c(56, 46, &FONT_S, t, K_TEXT);
+        en_param_text(p + XR_TARGET, proj.par[p + XR_TARGET], t);
+        text_c(184, 46, &FONT_S, t, K_ACC);
+        cv_line(109, 54, 130, 54, K_ACC);
+        cv_line(124, 49, 130, 54, K_ACC);
+        cv_line(124, 59, 130, 54, K_ACC);
+        cv_text(8, 76, &FONT_XS, "NOW", K_DIM);
+        t[0] = contribution < 0 ? '-' : '+';
+        itoa_u((uint32_t)(contribution < 0 ? -contribution : contribution), t + 1);
+        cv_text(43, 76, &FONT_XS, t, K_ACC);
+        cv_text(102, 76, &FONT_XS, "DEPTH", K_DIM);
+        expression_value(150, 76, p + XR_DEPTH, proj.par[p + XR_DEPTH], K_TEXT);
+        cv_rect(16, 98, 208, 6, K_LINE);
+        if (contribution > 0)
+            cv_rect(120, 99, contribution * 103 / 100, 4, K_ACC);
+        else if (contribution < 0)
+            cv_rect(120 + contribution * 103 / 100, 99, -contribution * 103 / 100, 4, K_ACC);
+        cv_rect(119, 95, 2, 12, K_TEXT);
+        if (sub == S_MATRIX3) {
+            cv_text(8, 114, &FONT_XS, "MIN", K_DIM);
+            expression_value(43, 114, p + XR_MIN, proj.par[p + XR_MIN], K_TEXT);
+            cv_text(128, 114, &FONT_XS, "MAX", K_DIM);
+            expression_value(163, 114, p + XR_MAX, proj.par[p + XR_MAX], K_TEXT);
+            cv_text(8, 130, &FONT_XS, "ROUTE OUTPUT BOUNDS", K_DIM);
+        } else {
+            cv_text(8, 112, &FONT_XS, "WHEN", K_DIM);
+            cv_text(85, 112, &FONT_XS, "CURVE", K_DIM);
+            cv_text(164, 112, &FONT_XS, "SMOOTH", K_DIM);
+            expression_value(8, 129, p + XR_WHEN, proj.par[p + XR_WHEN], K_TEXT);
+            expression_value(85, 129, p + XR_CURVE, proj.par[p + XR_CURVE], K_TEXT);
+            expression_value(164, 129, p + XR_SMOOTH, proj.par[p + XR_SMOOTH], K_TEXT);
+        }
+    }
 }
 
 static void draw_main(void)
@@ -5145,8 +5750,14 @@ static void draw_main(void)
         }
         return;
     }
+    if (view_sub(ui.view) == S_EXPR || view_sub(ui.view) == S_GESTURE || (view_sub(ui.view) >= S_MATRIX && view_sub(ui.view) <= S_MATRIX3)) {
+        cv_begin(240, MAIN_H, K_BG);
+        draw_expression(view_vox(ui.view), view_sub(ui.view));
+        cv_blit(0, MAIN_Y);
+        return;
+    }
     if (tape_view(ui.view)) {                   /* the reel's pages: the reel */
-        if (en_playing && en_reel_nspl)
+        if (en_tape_playing && en_reel_nspl)
             tape_ang += (float)tape_speed() * 0.006f;
         if (en_reel_state)
             tape_ang += 0.6f;
@@ -5242,17 +5853,17 @@ static void draw_knobs(void)
         ui.sig[2] = h;
         cv_begin(240, KNB_H, K_BG);
     }
-    {   /* the rule; at its right end, where you are: the page, then the dots (a voice's own pages on its dot) */
-        char t[20], nm[20];
-        int k;
-        int32_t xd = 237 - V_MAIN * 6, xt;
-        view_name(ui.view, nm);
-        caps(t, nm, sizeof t);
-        xt = xd - 5 - text_w(&FONT_XS, t);
-        cv_rect(4, 5, xt - 9, 1, K_LINE);
-        cv_text(xt, -1, &FONT_XS, t, K_ACC);
-        for (k = 0; k < V_MAIN; k++)              /* (in PAGE_ORDER) */
-            cv_round(xd + k * 6, 3, 4, 4, 2, PAGE_ORDER[k] == view_main(ui.view) ? K_ACC : K_LINE);
+    {   /* Fixed title origin: long voice names must never begin off-screen. */
+        char title[32], name[32], position[12];
+        int n, at = page_at(view_main(ui.view)) + 1;
+        view_name(ui.view, name);
+        caps(title, name, sizeof title);
+        for (n = 0; title[n]; n++)
+            ;
+        while (n > 0 && text_w(&FONT_XS,title) > 180) title[--n] = 0;
+        cv_text(6, -1, &FONT_XS, title, K_ACC);
+        { char *end = position; itoa_u((uint32_t)at,position); while (*end) end++; *end++='/'; itoa_u((uint32_t)(V_MAIN+2),end); }
+        cv_text(234-text_w(&FONT_XS,position),-1,&FONT_XS,position,K_DIM);
     }
     for (i = 0; i < 4; i++) {
         int k = view_knob(ui.view, (int)i), lo, hi, v, hot = now_touch && ui.touched == (int)i;
@@ -5268,13 +5879,14 @@ static void draw_knobs(void)
         knob_range(k, &lo, &hi);
         v = knob_get(k);
         caps(t, knob_label(ui.view, (int)i), sizeof t);
+        { int count=0; while (t[count]) count++; while(count>0 && text_w(&FONT_XS,t)>54) t[--count]=0; }
         text_c(cx, 12, &FONT_XS, t, (K_BG >> 11) > 16u ? (hot ? 0x8A00u : 0xA440u) : hot ? 0xFFE0u : 0xFEA0u);   /* (the name: yellow, bright when turned; ochre on a light page) */
         if (k != K_CPU && hi - lo < 6) {         /* a switch: its positions as pips */
             int n = hi - lo + 1, j, pw = n > 4 ? 6 : 9, gap = 3, w0 = n * (pw + gap) - gap;
             for (j = 0; j < n; j++)
                 cv_round(cx - w0 / 2 + j * (pw + gap), 33, pw, 8, 2, j == v - lo ? fill : K_LINE);
         } else if (k != K_CPU) {
-            arc(cx, 37, 12, hi > lo ? (float)(v - lo) / (float)(hi - lo) : 0.0f, K_LINE, fill, bg, lo < 0);
+            arc(cx, 37, hi > lo ? (float)(v - lo) / (float)(hi - lo) : 0.0f, K_LINE, fill, bg, lo < 0);
         }
         knob_text(k, t);
         text_fit(cx, 50, t, hot ? K_ACC : K_TEXT);
@@ -5286,8 +5898,8 @@ static void draw_knobs(void)
 static void leds(void)
 {
     uint32_t b = 0, k = 0, i, ap = pool_abs();
-    b |= 1u << VIEW_BTN[view_main(ui.view)];
-    if (en_playing)
+    b |= 1u << (ui.view >= V_SEQ ? B_HOME : expression_view(ui.view) ? B_FX : VIEW_BTN[view_main(ui.view)]);
+    if (tape_view(ui.view) ? en_tape_playing : en_playing)
         b |= 1u << B_PLAY;
     if (en_frozen)
         b |= 1u << B_REC;
@@ -5344,7 +5956,7 @@ static void autosave(void)
 /* ------------------------------------------------------ screen reader --- */
 /* The screen as text for a screen reader on the computer (announce.c; fm1-reader): a page once it settles,
  * with its knobs; a knob's value as it turns; a help card as it comes up; the chord as it moves (queued: the
- * garden moves it by itself, every 20 s at the quickest); growing and resting from MIDI, and a MIDI clock
+ * garden moves it by itself, every 2 s at the quickest); growing and resting from MIDI, and a MIDI clock
  * arriving or going; what a button did (say). WHERE (the reader asks, or it has just started listening) is
  * the whole screen in two: the page, its knobs and the header, then the garden (the chord, the scale).
  * Nothing is built while no reader listens. */
@@ -5479,6 +6091,25 @@ static void sp_page(int all)
         sp_cat(i ? ", " : ": ");
         sp_knob(ui.view, i);
     }
+    if (view_sub(ui.view) == S_EXPR || view_sub(ui.view) == S_GESTURE) {
+        const int v = view_vox(ui.view), preset = expression_preset_index(v);
+        sp_cat(". Preset ");
+        sp_cat(preset >= 0 ? EXPRESSION_PRESET[preset].name : "Custom");
+        sp_cat(". EDIT next, REC previous. PRESET: routing");
+    } else if (view_sub(ui.view) >= S_MATRIX) {
+        const int v = view_vox(ui.view), r = ui.xslot[v], contribution = en_expr_route[v][r];
+        sp_cat(". Source ");
+        sp_value(P_XR(v, r, XR_SOURCE));
+        sp_cat(" to ");
+        sp_value(P_XR(v, r, XR_TARGET));
+        sp_cat(". Current contribution ");
+        if (contribution < 0)
+            sp_cat("minus ");
+        else
+            sp_cat("plus ");
+        sp_int((uint32_t)(contribution < 0 ? -contribution : contribution));
+        sp_cat(" percent");
+    }
     if (!all)
         return;
     sp_cat(". Piece ");
@@ -5511,29 +6142,66 @@ static void sp_page(int all)
             sp_cat(PN[ui.in_port < NPORTS ? ui.in_port : 0]);
         }
     }
-    if (ui.view == V_SETUP) {                    /* (and the audio's overruns, the notes shed to avoid them) */
-        sp_cat(". CPU ");
-        sp_int(plat_cpu_pct());
-        sp_cat("%, overruns ");
-        sp_int(plat_xruns());
-        sp_cat(", shed ");
-        sp_int(en_sheds);
-        sp_cat(", video frame ");               /* (1.5.22: the visual's last frames, ms, and the loop's) */
-        sp_int((int)(vis_us / 1000u));
-        sp_cat(" ms, most ");
-        sp_int((int)(vis_us_max / 1000u));
-        sp_cat(" ms, loop ");
-        sp_int((int)(loop_us / 100u));
-        sp_cat(" tenths of ms");
-    }
     if (batt_words(batt())) {                    /* the battery, at the end */
         sp_cat(". ");
         sp_cat(batt_words(batt()));
     }
 }
 
+/* Diagnostics have their own announcement: the ordinary page and battery must
+ * not be truncated by the reader's fixed-size SAY packet. */
+static void sp_setup_stats(void)
+{
+    sp_n = 0;
+    sp_buf[0] = 0;
+    sp_cat(". CPU ");
+    sp_int(plat_cpu_pct());
+    sp_cat("%, overruns ");
+    sp_int(plat_xruns());
+    sp_cat(", shed ");
+    sp_int(en_sheds);
+    sp_cat(", core 2 audio jobs ");
+    sp_int(plat_cpu2_on() ? cpu2_pct : 0u);
+    sp_cat("%, longest ");
+    sp_int(cpu2_job_max_ticks / 24u);
+    sp_cat(" us");
+    sp_cat(", video frame ");               /* (1.5.22: the visual's last frames, ms, and the loop's) */
+    sp_int((int)(vis_us / 1000u));
+    sp_cat(" ms, most ");
+    sp_int((int)(vis_us_max / 1000u));
+    sp_cat(" ms, generate ");
+    sp_int(vis_step_us / 1000u);
+    sp_cat(" ms, paint ");
+    sp_int(vis_paint_us / 1000u);
+    sp_cat(" ms, LCD wait/send ");
+    sp_int(vis_wait_us / 1000u);
+    sp_cat(" ms, loop ");
+    sp_int((int)(loop_us / 100u));
+    sp_cat(" tenths of ms");
+}
+
 /* the garden: the chord and how far to the next, the scale from the root up ("F and F sharp": one letter's
  * two notes joined, so they are heard as two), the pulse sitting out */
+/* Meter snapshots use their own SAY packet: leave page/battery text intact. */
+static void sp_expression_stats(void)
+{
+    static const char *const names[4] = {"Energy", "Link", "Open", "Breath"};
+    const int v = view_vox(ui.view);
+    int i;
+    sp_n = 0;
+    sp_buf[0] = 0;
+    for (i = 0; i < 4; i++) {
+        if (i) sp_cat(", ");
+        sp_cat(names[i]);
+        sp_cat(" ");
+        sp_int(en_expression[v][i]);
+        sp_cat(" percent");
+    }
+    sp_cat(". Phrase progress ");
+    sp_int(en_expr_phase[v]);
+    sp_cat(" percent");
+}
+
 static void sp_garden(void)
 {
     uint32_t ap = pool_abs();
@@ -5647,6 +6315,14 @@ static void speak(void)
             sp_garden();
         }
         ann_say(sp_buf, 0, 0);
+        if (ui.view == V_SETUP) {
+            sp_setup_stats();
+            ann_say(sp_buf, 0, 0);
+        }
+        if (view_sub(ui.view) == S_EXPR || view_sub(ui.view) == S_GESTURE) {
+            sp_expression_stats();
+            ann_say(sp_buf, 0, 0);
+        }
         sp_said = 0;
         return;
     }
@@ -6012,23 +6688,40 @@ static void ui_blit(uint32_t x, uint32_t y)
 
 void ui_frame(void)
 {
+    static uint32_t vis_frame_t;                /* last visual start; zero when another page was drawn */
     {
         const uint32_t t = plat_ticks24();
         if (loop_t)
             loop_us += ((int32_t)((t - loop_t) / 24u) - (int32_t)loop_us) / 16;
         loop_t = t;
+        if (t - cpu2_sample_t >= 24000000u) {
+            const uint32_t ticks = cpu2_job_ticks;
+            cpu2_pct = (ticks - cpu2_sample_ticks) / ((t - cpu2_sample_t) / 100u);
+            cpu2_sample_ticks = ticks;
+            cpu2_sample_t = t;
+        }
     }
     input();
     en_reel_study();                             /* (a splice's key: a frame of it) */
+    {
+        const int r = en_reel_chop_step();       /* (the splice cut at its attacks: a frame of it) */
+        if (r == 0)
+            say("CHOPPED", "THE SPLICE");
+        else if (r == -2)
+            warn("NOT CHOPPED", "TOO SHORT");
+    }
     key_follow();
     ui_live();
     TH = &th_live;
     reel_saving();
     autosave();
     if (draw_splash()) {                         /* the start screen */
-    } else if ((tom_step(), vis_full())) {                     /* the visual: the whole screen, 20 frames a second */
-        if (ui.frame % 3u == 0u) {               /* (1.5.22: timed, for Setup's words: can it go faster?) */
+        vis_frame_t = 0;
+    } else if ((tom_step(), vis_full())) {       /* about 20 fps when fast; no skipped loops after a slow frame */
+        const uint32_t now = plat_ms();
+        if (vis_frame_t ? now - vis_frame_t >= 48u : ui.frame % 3u == 0u) {
             const uint32_t t0 = plat_ticks24();
+            vis_frame_t = now;
             uint32_t us;
             draw_vis_screen();
             us = (plat_ticks24() - t0) / 24u;
@@ -6037,6 +6730,7 @@ void ui_frame(void)
                 vis_us_max = us;
         }
     } else {
+        vis_frame_t = 0;
         ui_wash_on = 1;
         draw_header();
         draw_main();

@@ -11,13 +11,10 @@ expect par43 7
 expect par40 35
 expect par201 4
 # Voice 1's MOD page: SEL + SAVE, its modulators to their defaults
-tap ENV
-tap ENV
-tap ENV
-tap ENV
-tap ENV
+turn SELECT 5 100
+turn SELECT 6 100
 wait 100
-expect view 41
+expect view 102
 press SEL
 tap SAVE
 release SEL

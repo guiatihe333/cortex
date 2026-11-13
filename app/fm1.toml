@@ -8,7 +8,7 @@ usb_audio_in = true            # the music recordable over USB
 usb_audio_out = true           # a phone or a computer plays into it (the reel records it: SOURCE USB)
 words = "words.tsv"
 include = ["dsp"]
-o2 = ["dsp/amb.c"]             # the engine, at -O2
+o2 = ["dsp/amb.c", "dsp/fm_morph.c"]             # the engine and morph, at -O2
 # the site
 tagline = "A generative FM instrument and video synth for the FM-1"
 repo = "https://github.com/guiatihe333/cortex"

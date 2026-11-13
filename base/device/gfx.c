@@ -19,7 +19,8 @@ typedef struct {               /* proportional, see tools/gen_font.py */
 #define APP_CANVAS_PX (240u * 144u)   /* X0X: the main area, both bands, is 240 x 144 */
 #endif
 #define CV_MAX APP_CANVAS_PX      /* (app.h may give less: a WiFi build needs the pool; cv_begin keeps to it) */
-static uint16_t cv_px[CV_MAX] __attribute__((section(".pool")));
+static uint16_t cv_storage[CV_MAX] __attribute__((section(".pool")));
+static uint16_t *cv_px = cv_storage;
 static uint32_t cv_w, cv_h;
 static int32_t cv_oy;            /* y offset for graph drawing */
 static int32_t cv_y0, cv_y1;     /* X0X: the rows drawing may touch (cv_band) */
@@ -66,6 +67,7 @@ static void cv_begin(uint32_t w, uint32_t h, uint16_t bg)
     if (w * h > CV_MAX)
         h = CV_MAX / w;
     lcd_sync();                     /* the last blit may still read cv_px */
+    cv_px = cv_storage;
     cv_w = w;
     cv_h = h;
     cv_oy = cv_y0 = 0;
@@ -73,6 +75,19 @@ static void cv_begin(uint32_t w, uint32_t h, uint16_t bg)
     n = w * h;
     for (i = 0; i < n; i++)
         cv_px[i] = swap16(bg);
+}
+
+/* CORTEX video: alternate the two halves of the existing canvas. The caller
+ * must submit exactly one blit between begins; submitting waits for the preceding
+ * DMA, so the half reused here is no longer in flight. Every pixel is overwritten.
+ * Ordinary cv_begin synchronizes and restores the full canvas. */
+static void cv_begin_pingpong(uint32_t w, uint32_t h, uint32_t slot)
+{
+    cv_px = cv_storage + (slot & 1u) * (CV_MAX / 2u);
+    cv_w = w;
+    cv_h = h;
+    cv_oy = cv_y0 = 0;
+    cv_y1 = (int32_t)h;
 }
 
 /* X0X: draw the next things as if the canvas were rows y0 .. y0+h-1 alone (one band of a

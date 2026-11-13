@@ -1,0 +1,55 @@
+# the tape's own transport (1.5.25): PLAY on the reel's pages plays the reel alone, CORTEX left resting (no FM voices,
+# no sequencer); PLAY again stops the reel. The garden is stopped first, from HOME, where PLAY is still its own.
+wait 300
+tap SEQ
+wait 100
+tap EDIT
+wait 1500
+tap REC
+wait 300
+tap HOME
+wait 100
+tap PLAY
+wait 400
+expect playing 0
+expect reellevel <5
+tap SEQ
+wait 100
+expect view 6
+tap PLAY
+wait 700
+expect playing 0
+expect tape_playing 1
+expect reellevel >5
+tap PLAY
+wait 700
+expect playing 0
+expect tape_playing 0
+expect reellevel <5
+
+# Both on, then tape off while sequencer keeps running.
+tap HOME
+tap PLAY
+wait 300
+expect playing 1
+expect tape_playing 0
+tap SEQ
+tap PLAY
+wait 700
+expect playing 1
+expect tape_playing 1
+expect reellevel >5
+tap PLAY
+wait 700
+expect playing 1
+expect tape_playing 0
+expect reellevel <5
+# Stop the sequencer with tape running: tape must remain audible.
+tap PLAY
+wait 700
+tap HOME
+tap PLAY
+wait 700
+expect playing 0
+expect tape_playing 1
+expect reellevel >5
