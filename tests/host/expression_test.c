@@ -301,6 +301,39 @@ static void actual_observation(void)
     { int32_t out[512]; en_render(out, 256, 2048); }
     CHECK(xdensity[0] >= 25, "keyboard audio contributes real density");
 }
+static void hard_bypass_with_lfo(void)
+{
+    int target;
+    for(target=XT_LEVEL;target<XT_N;target++) {
+        en_init();
+        route(0,XS_OPEN,target,XW_LIVE,100,0);
+        set(P_MS(0,EN_NSLOT-1,MS_DEST),MOD_EXPR+1);
+        en_mod[EN_NSLOT-1][VOX_GEN0[0]]=0.75f;
+        set(P_EX(0,EX_AMOUNT),0);
+        expr_block(0);
+        CHECK(expr_control(0,EX_AMOUNT)==0,"Amount zero is a hard bypass with ExprAmt LFO active");
+        CHECK(en_expr_route[0][0]==0,"bypass clears the route contribution");
+        for(int i=0;i<15;i++) CHECK(xseq[0][i]==0,"bypass clears sequencer expression offsets");
+    }
+    set(P_EX(0,EX_AMOUNT),20);
+    CHECK(expr_control(0,EX_AMOUNT)==95,"ExprAmt LFO resumes when base Amount is above zero");
+    en_mod[EN_NSLOT-1][VOX_GEN0[0]]=-1.0f;
+    CHECK(expr_control(0,EX_AMOUNT)==0,"negative LFO remains bounded");
+}
+static void silence_is_local_activity(void)
+{
+    int src[XS_N];
+    en_init();
+    for(int i=0;i<EN_NVOX;i++) en_vox_level[i]=0.0f;
+    arcm=1.0f; expr_sources(0,-1,-1,-1,src);
+    CHECK(src[XS_SILENCE]==100,"silent layer is fully silent even at positive tide");
+    en_vox_level[1]=1.0f; expr_sources(0,-1,-1,-1,src);
+    CHECK(src[XS_SILENCE]==100,"other layers do not hide this layer's silence");
+    en_vox_level[0]=0.5f; expr_sources(0,-1,-1,-1,src);
+    CHECK(src[XS_SILENCE]==50,"silence falls with measured layer activity");
+    en_vox_level[0]=1.0f; expr_sources(0,-1,-1,-1,src);
+    CHECK(src[XS_SILENCE]==0,"full layer activity clears silence");
+}
 int main(int argc, char **argv)
 {
     /* Fresh-process comparison avoids unrelated state retained across this engine's repeated en_init calls. */
@@ -308,6 +341,8 @@ int main(int argc, char **argv)
         printf("%llu\n", (unsigned long long)render_hash(strcmp(argv[1], "hash-configured") == 0));
         return 0;
     }
+    silence_is_local_activity();
+    hard_bypass_with_lfo();
     actual_observation();
     basics();
     live_targets();

@@ -1,0 +1,26 @@
+wait 3500
+turn SELECT 5 150
+expect view 96
+turn SELECT 3 150
+expect view 99
+spin K2 -100
+wait 600
+turn K2 17 150
+expect xpar0_9 17
+tap SAVE
+wait 300
+reboot
+wait 300
+expect xpar0_9 17
+turn SELECT 5 150
+turn SELECT 3 150
+spin K2 -100
+wait 600
+turn K2 13 150
+expect xpar0_9 13
+tap SAVE
+wait 300
+storev33
+reboot
+wait 300
+expect xpar0_9 13

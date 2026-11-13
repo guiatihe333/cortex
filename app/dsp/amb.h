@@ -118,7 +118,7 @@ enum { XR_SOURCE, XR_TARGET, XR_DEPTH, XR_WHEN, XR_CURVE, XR_SMOOTH, XR_MIN, XR_
 #define P_EX(v,k) (P_EXPR + (v) * EN_XSTRIDE + (k))
 #define P_XR(v,r,k) P_EX(v, EX_N + (r) * XR_N + (k))
 enum { XS_OFF, XS_ENERGY, XS_LINK, XS_OPEN, XS_BREATH, XS_DENSITY, XS_DURATION,
-       XS_ACCENT, XS_ARCH, XS_SILENCE, XS_LEAP, XS_REGISTER, XS_OTHER, XS_MEMORY, XS_N };
+       XS_ACCENT, XS_ARCH, XS_SILENCE, XS_LEAP, XS_REGISTER, XS_OTHER, XS_MEMORY, XS_CALL, XS_TENSION, XS_ANSWER, XS_RECALL, XS_N };
 enum { XT_OFF, XT_ATTACK, XT_DECAY, XT_SUSTAIN, XT_RELEASE, XT_GATE, XT_LEVEL, XT_CUTOFF, XT_INDEX, XT_MORPH,
        XT_DENSITY, XT_EVOLVE, XT_DRIFT, XT_MOTIF, XT_ROTATION, XT_ACCENT, XT_PASSING, XT_SWING, XT_HUMAN, XT_SPACE, XT_RANGE, XT_DIALOGUE, XT_LENGTH, XT_TENSION, XT_RESOLVE, XT_N };   /* (1.5.26: the last three aim at the sequencer) */
 enum { XW_NOTE, XW_PHRASE, XW_LIVE, XW_N };
@@ -135,7 +135,9 @@ extern volatile uint8_t en_expression[EN_NVOX][4];
 /* Latest applied route contributions (signed percent) and phrase position, 0..100. */
 extern volatile int16_t en_expr_route[EN_NVOX][EN_XROUTES];
 extern volatile uint8_t en_expr_phase[EN_NVOX];
+extern volatile uint8_t en_phrase_stage, en_phrase_leader, en_phrase_active;
 
+const char *en_expr_target_scope(int target, int role);
 enum { ROLE_CHORD, ROLE_LOOPS, ROLE_BASS, EN_NROLE };
 /* the settings of before each voice had its own (Swell, Density, Bell oct, Bass oct, Glide, Fifth: still in the table,
  * unshown) into each voice's (a piece's recipe, a project of an older format) */

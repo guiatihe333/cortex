@@ -133,6 +133,17 @@ static const char *const DIV_NAME[NDIV] = {"8 bars", "4 bars", "2 bars", "1 bar"
 static const float DIV_BEATS[NDIV] = {32.0f, 16.0f, 8.0f, 4.0f, 3.0f, 2.0f, 1.5f, 1.0f, 0.75f, 0.5f,
                                       0.33333333f, 0.25f};
 static int div_of(int v) { return v * NDIV / 101; }
+const char *en_expr_target_scope(int target, int role)
+{
+    if (target == XT_OFF) return "ROUTE OFF";
+    if (target == XT_DRIFT) return "GLOBAL HARMONY";
+    if (target == XT_SWING) return "GLOBAL GROOVE";
+    if (target == XT_PASSING) return role == ROLE_BASS ? "BASS ONLY" : "INACTIVE: BASS";
+    if (target == XT_MOTIF || target == XT_ROTATION || target == XT_ACCENT ||
+        (target >= XT_HUMAN && target <= XT_RESOLVE))
+        return role == ROLE_LOOPS ? "LOOPS ONLY" : "INACTIVE: LOOPS";
+    return "ALL ROLES";
+}
 const en_param_t *en_param_info(int i) { return (i >= 0 && i < P_NPARAMS) ? &PARAMS[i] : &PARAMS[0]; }
 
 static void copy9(const char *s, char *b)       /* a name of up to 9 characters */
@@ -510,7 +521,7 @@ void en_param_text(int i, int v, char *b)
             if (rk == XR_SOURCE) {
                 static const char *const XS_NAME[XS_N] = {
                     "Off", "Energy", "Link", "Open", "Breath", "Density", "Duration",
-                    "Accent", "Arch", "Silence", "Leap", "Register", "Other", "Memory"
+                    "Accent", "Arch", "Silence", "Leap", "Register", "Other", "Memory", "Call", "Tension", "Answer", "Recall"
                 };
                 s = XS_NAME[(unsigned)v < XS_N ? v : 0];
             } else if (rk == XR_TARGET) {
@@ -581,7 +592,7 @@ void en_param_text(int i, int v, char *b)
         return;
     }
     if (i == P_SEQ_LENGTH || i == P_SEQ_RANGE) {
-        const char *unit = i == P_SEQ_LENGTH ? " loops" : " oct";
+        const char *unit = i == P_SEQ_LENGTH ? " bars" : " oct";
         b = itoa_s(i == P_SEQ_LENGTH ? 2 + v*6/100 : 1 + v*3/100, b);
         while (*unit) { *b++ = *unit++; }
         *b = 0; return;
@@ -1253,6 +1264,10 @@ static volatile uint8_t mstaged[EN_NVOX];
 static float xsm[EN_NVOX][EN_XROUTES], xtarget[EN_NVOX][EN_XROUTES];
 static float xmem[EN_NVOX], xhold[EN_NVOX][EN_XROUTES], xshown[EN_NVOX][EN_XROUTES];
 static uint8_t xvalid[EN_NVOX], xpos[EN_NVOX], xlast[EN_NVOX], xvel[EN_NVOX], xleap[EN_NVOX];
+volatile uint8_t en_phrase_stage, en_phrase_leader, en_phrase_active;
+static uint8_t music_stage, music_active, music_running, music_leader, music_recall[EN_NVOX];
+static void music_tick(void);
+static void music_reset(void);
 static uint32_t expr_rng;
 static float seq_offset(int v, int target);
 static int16_t xseq[EN_NVOX][15];                /* (1.5.26) what Expression asks of the sequencer: Density, Evolve,
@@ -1344,11 +1359,15 @@ static void expr_sources(int v, int k, int note, int vel, int *src)
     src[XS_ACCENT] = xclamp((vel >= 0 ? vel : xvel[v]) * 100 / 127, 0, 100);
     src[XS_ARCH] = note >= 0 ? (ph * 2 > plen - 1 ? plen - 1 - ph : ph) * 200 / (plen - 1)
                                    : (en_expr_phase[v] > 50 ? 100 - en_expr_phase[v] : en_expr_phase[v]) * 2;
-    src[XS_SILENCE] = 100 - energy;
+    src[XS_SILENCE] = 100 - xnorm(en_vox_level[v]); /* Actual layer activity, independent of tide and siblings. */
     src[XS_LEAP] = leap;
     src[XS_REGISTER] = xclamp(((note >= 0 ? note : xlast[v]) - 36) * 100 / 60, 0, 100);
     src[XS_OTHER] = xnorm(others * 0.5f);
     src[XS_MEMORY] = xclamp((int)xmem[v], 0, 100);
+    src[XS_CALL] = music_active && music_stage < 2 && music_leader == v ? 100 : 0;
+    src[XS_TENSION] = music_active && music_stage == 2 ? 100 : 0;
+    src[XS_ANSWER] = music_active && music_stage == 3 ? 100 : 0;
+    src[XS_RECALL] = music_active && music_recall[v] ? 100 : 0;
     for (i = 0; i < 4; i++) en_expression[v][i] = (uint8_t)src[XS_ENERGY + i];
 }
 static float expr_value(int v, int r, const int *src)
@@ -2102,6 +2121,7 @@ static float seq_offset(int v, int target)
 }
 static int expr_control(int v, int k)
 {
+    if (k == EX_AMOUNT && par[P_EX(v,EX_AMOUNT)] == 0) return 0; /* Explicit bypass outranks LFO offsets. */
     float value=(float)par[P_EX(v,k)];
     int slot, dest=MOD_EXPR+(k==EX_VARIATION);
     for(slot=0;slot<EN_NSLOT;slot++)
@@ -2313,8 +2333,113 @@ static void loop_motif(int v, int l)
 static int8_t phrase_notes[EN_NVOX][EN_NLOOP][EN_LOOP_MAX];
 static uint8_t phrase_vel[EN_NVOX][EN_NLOOP][EN_LOOP_MAX];
 static uint8_t phrase_pos[EN_NVOX][EN_NLOOP], phrase_len[EN_NVOX][EN_NLOOP], phrase_on[EN_NVOX][EN_NLOOP];
+/* Two compact melodic memories per voice; reuse the existing phrase snapshot
+ * for local rhythm. Memories contain scale offsets, so recall follows the current key. */
+static int8_t motif_memory[EN_NVOX][2][EN_LOOP_MAX];
+static uint8_t motif_velocity[EN_NVOX][2][EN_LOOP_MAX], motif_count[EN_NVOX], motif_head[EN_NVOX];
+static uint16_t music_tick_pos, music_ticks;
+static uint32_t music_cycle, music_stamp, loop_stamp[EN_NVOX][EN_NLOOP], loop_cycle[EN_NVOX][EN_NLOOP];
+static void music_reset(void)
+{
+    en_phrase_stage=en_phrase_leader=en_phrase_active=0;
+    music_stage=music_active=music_running=music_leader=0;
+    music_tick_pos=music_ticks=0; music_cycle=music_stamp=0;
+    __builtin_memset(music_recall,0,sizeof music_recall);
+    __builtin_memset(motif_count,0,sizeof motif_count);
+    __builtin_memset(motif_head,0,sizeof motif_head);
+    __builtin_memset(loop_stamp,0,sizeof loop_stamp);
+    __builtin_memset(loop_cycle,0,sizeof loop_cycle);
+}
+static void music_store(int v)
+{
+    int slot=motif_head[v];
+    if(vc[v].role!=ROLE_LOOPS || !loop_count(v,0)) return;
+    for(int i=0;i<EN_LOOP_MAX;i++) {
+        motif_memory[v][slot][i]=vc[v].loop_note[0][i];
+        motif_velocity[v][slot][i]=vc[v].loop_vel[0][i];
+    }
+    motif_head[v]^=1u;
+    if(motif_count[v]<2) motif_count[v]++;
+}
+static int coordinated_loop(int v,int l);
+static void music_tick(void)
+{
+    uint32_t previous_stamp=music_stamp;
+    int dialogue=xclamp(par[P_SEQ_DIALOGUE]+(int)seq_global(XT_DIALOGUE-XT_DENSITY),0,100);
+    if(song || !dialogue || fm_clampf(evolve+seq_global(XT_EVOLVE-XT_DENSITY)*0.01f,0,1)<=0) {
+        music_running=music_active=en_phrase_active=0; music_tick_pos=music_ticks=0;
+        __builtin_memset(music_recall,0,sizeof music_recall); return;
+    }
+    music_running=1;
+    if(!music_tick_pos) {
+        int length=xclamp(par[P_SEQ_LENGTH]+(int)seq_global(XT_LENGTH-XT_DENSITY),0,100);
+        int candidate=-1;
+        music_ticks=(uint16_t)((2+length*6/100)*16);
+        for(int i=0;i<EN_NVOX;i++) {
+            int v=(music_cycle ? music_leader+1+i : i)%EN_NVOX;
+            if(vc[v].role==ROLE_LOOPS) { candidate=v; break; }
+        }
+        music_leader=(uint8_t)(candidate>=0 ? candidate : (int)(music_cycle%EN_NVOX));
+        music_active=(uint8_t)(frand()<(float)dialogue*0.01f);
+        music_cycle++; music_stamp++; music_stage=0;
+        __builtin_memset(music_recall,0,sizeof music_recall);
+        if(music_active) music_store(music_leader);
+    }
+    {
+        uint8_t phase=(uint8_t)((uint32_t)music_tick_pos*4u/music_ticks);
+        if(phase!=music_stage) { music_stage=phase; music_stamp++; }
+    }
+    if(music_active && music_stamp!=previous_stamp)
+        for(int v=0;v<EN_NVOX;v++) if(vc[v].role==ROLE_LOOPS)
+            for(int l=0;l<EN_NLOOP;l++) coordinated_loop(v,l);
+    /* A Bass voice resolves on the same answer phase as its partners. */
+    if(music_active && music_stage==3)
+        for(int v=0;v<EN_NVOX;v++) if(vc[v].role==ROLE_BASS && vc[v].pc!=chord_pcs[0]) {
+            vc[v].alt=0; bass_to(v,chord_pcs[0]);
+        }
+    en_phrase_stage=music_stage; en_phrase_leader=music_leader; en_phrase_active=music_active;
+    music_tick_pos=(uint16_t)((music_tick_pos+1)%music_ticks);
+}
+static int coordinated_loop(int v,int l)
+{
+    int len=EN_LOOP_LEN[l];
+    if(!music_active) return 0;
+    if(loop_cycle[v][l]!=music_cycle) {
+        for(int i=0;i<len;i++) { phrase_notes[v][l][i]=vc[v].loop_note[l][i]; phrase_vel[v][l][i]=vc[v].loop_vel[l][i]; }
+        loop_cycle[v][l]=music_cycle;
+    }
+    if(loop_stamp[v][l]==music_stamp) return 1;
+    loop_stamp[v][l]=music_stamp;
+    if(music_stage==2 && frand()<(float)seq_value(v,P_SEQ_TENSION,XT_TENSION-XT_DENSITY)*0.01f)
+        loop_motif(v,l);
+    if(music_stage==3) {
+        int owner=v, memory=par[P_EX(v,EX_MEMORY)]*expr_control(v,EX_AMOUNT)/100, bank;
+        for(int i=0;i<len;i++) { vc[v].loop_note[l][i]=phrase_notes[v][l][i]; vc[v].loop_vel[l][i]=phrase_vel[v][l][i]; }
+        if(memory>0 && v!=music_leader && motif_count[music_leader] && frand()<(float)par[P_EX(v,EX_LINK)]*0.01f)
+            owner=music_leader;
+        if(memory>0 && motif_count[owner] && frand()<(float)memory*0.01f) {
+            int cursor=0;
+            bank=motif_head[owner]^1u;
+            if(motif_count[owner]>1 && frand()<(float)memory*0.01f) bank^=1;
+            for(int i=0;i<len;i++) if(vc[v].loop_note[l][i]>=0) {
+                int tries=0;
+                while(tries++<EN_LOOP_LEN[0] && motif_memory[owner][bank][cursor%EN_LOOP_LEN[0]]<0) cursor++;
+                int at=cursor++%EN_LOOP_LEN[0], offset=motif_memory[owner][bank][at];
+                if(offset>=0) {
+                    /* A reply keeps the listener's rhythm and register, borrowing contour. */
+                    vc[v].loop_note[l][i]=(int8_t)(offset%(nsteps*4));
+                    vc[v].loop_vel[l][i]=(uint8_t)xclamp(((int)phrase_vel[v][l][i]+motif_velocity[owner][bank][at])/2,1,127);
+                    music_recall[v]=1;
+                }
+            }
+        }
+    }
+    return 1;
+}
 static int phrase_pass(int v, int l)
 {
+    if(song) return 0;
+    if(music_running) return coordinated_loop(v,l);
     int i, len = EN_LOOP_LEN[l], pos = phrase_pos[v][l];
     const int dialogue = seq_value(v,P_SEQ_DIALOGUE,XT_DIALOGUE-XT_DENSITY);
     if (!dialogue || xevolve(v) <= 0.0f) { phrase_pos[v][l] = phrase_on[v][l] = 0; return 0; }
@@ -2342,7 +2467,10 @@ static void loop_pass(int v, int l)             /* the end of a pass: grow, prun
         loop_add(v, l);
     for (; n > t && (s = loop_pick(v, l)) >= 0; n--)
         c->loop_note[l][s] = -1;
-    if (phrase_pass(v,l)) { loop_publish(v,l); return; }
+    if (phrase_pass(v,l)) {
+        c->loop_rest[l] = 0; /* Dialogue owns this pass; never latch an earlier stochastic rest. */
+        loop_publish(v,l); return;
+    }
     c->loop_rest[l] = frand() < ev * 0.15f + 0.15f * fm_maxf(-arcm, 0.0f);
     if (ev > 0.0f && frand() < ev * (float)seq_value(v, P_SEQ_MOTIF, XT_MOTIF - XT_DENSITY) * 0.01f) {
         loop_motif(v, l);                        /* a shape kept, moved or turned: the motif survives the pass */
@@ -3050,6 +3178,9 @@ static void patch_apply(int v, int fresh)
 static void loop_regrow(int v, int l);
 static void role_enter(int v)
 {
+    motif_count[v]=motif_head[v]=0;
+    __builtin_memset(loop_stamp[v],0,sizeof loop_stamp[v]);
+    __builtin_memset(loop_cycle[v],0,sizeof loop_cycle[v]);
     __builtin_memset(phrase_pos[v], 0, sizeof phrase_pos[v]);
     __builtin_memset(phrase_on[v], 0, sizeof phrase_on[v]);
     voice_t *c = &vc[v];
@@ -3182,7 +3313,7 @@ static void bell_ring(int v, int l, int slot, int32_t sw)
     int n;
     if (nsteps > 0) offset %= nsteps * range;
     n = bell_note(v, l, offset);
-    if (phrase_on[v][l] && phrase_pos[v][l] == 0 &&
+    if (((music_running && music_active && music_stage==3) || (!music_running && phrase_on[v][l] && phrase_pos[v][l] == 0)) &&
         frand() < (float)seq_value(v,P_SEQ_RESOLVE,XT_RESOLVE-XT_DENSITY)*0.01f) {
         int d, c, found=0;
         for (d=0;d<=6 && !found;d++) for(c=0;c<chord_nt;c++) {
@@ -3394,6 +3525,7 @@ static int32_t swing_delay(int st)              /* the off-beat step's late arri
 }
 static void tick(void)
 {
+    music_tick();
     int l, v;
     if (song)
         song_step();
@@ -3423,7 +3555,7 @@ static void tick(void)
                     bass_to(v, chord_pcs[0]);
                 else
                     c->strike = 1;
-            } else if (xevolve(v) > 0.0f && chord_nt > 1 && frand() < xevolve(v) * (float)seq_value(v, P_SEQ_PASS, XT_PASSING - XT_DENSITY) * 0.01f) {
+            } else if (!(music_running && music_active && music_stage==3) && xevolve(v) > 0.0f && chord_nt > 1 && frand() < xevolve(v) * (float)seq_value(v, P_SEQ_PASS, XT_PASSING - XT_DENSITY) * 0.01f) {
                 c->alt = 1;                      /* a chord tone on the way (the third or fifth) */
                 bass_to(v, chord_pcs[1 + irand(chord_nt - 1)]);
             } else {
@@ -3837,6 +3969,7 @@ static void pool_set(uint32_t p)
 
 static void regrow(void)                        /* a new piece: fresh loops, home chord, patterns home */
 {
+    music_reset();
     int l, v;
     __builtin_memset(phrase_pos, 0, sizeof phrase_pos);
     __builtin_memset(phrase_on, 0, sizeof phrase_on);
@@ -3883,6 +4016,7 @@ static uint32_t arc_left;
 
 void en_init(void)
 {
+    music_reset();
     int i, v;
     for (i = 0; i <= SN; i++)
         sint[i] = fm_sinf((float)i * (FM_TWO_PI / (float)SN));
@@ -3975,6 +4109,7 @@ static void clock_pulse(void)
 
 static void play_start(int from_top)
 {
+    if(from_top) { music_tick_pos=music_ticks=0; music_running=music_active=0; }
     int i, v;
     if (from_top) {
         pulse = 0;
@@ -4011,6 +4146,7 @@ static void play_start(int from_top)
 
 static void play_stop(void)
 {
+    music_running=music_active=en_phrase_active=0;
     int v, i;
     en_playing = 0;
     kb_key(7, 0, 0);                             /* (every key's note let go) */

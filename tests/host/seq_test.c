@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "../../app/dsp/amb.c"
+#include "../../app/expression_presets.h"
 
 static int fails;
 #define CHECK(c, ...)                                                                                              \
@@ -451,12 +452,109 @@ static void route_sum_order(void)
     CHECK(seq_offset(0,XT_MOTIF-XT_DENSITY)==-100.0f,"expression bypass leaves independent LFO active");
     CHECK(par[P_SEQ_MOTIF]==35,"summing leaves stored parameter unchanged");
 }
+static void preset_contracts(void)
+{
+    for(int n=0;n<NEXPRESSION_PRESET;n++) {
+        const expression_preset_t *p=&EXPRESSION_PRESET[n];
+        for(int k=0;k<6;k++) {
+            const en_param_t *q=en_param_info(P_EX(0,k));
+            CHECK(p->control[k]>=q->lo && p->control[k]<=q->hi,"preset %s control %d valid",p->name,k);
+        }
+        for(int route=0;route<4;route++) if(p->route[route][XR_SOURCE]) {
+            for(int k=0;k<XR_N;k++) {
+                const en_param_t *q=en_param_info(P_XR(0,route,k));
+                CHECK(p->route[route][k]>=q->lo && p->route[route][k]<=q->hi,"preset %s route field valid",p->name);
+            }
+            int target=p->route[route][XR_TARGET];
+            int latched=(target>=XT_ATTACK && target<=XT_GATE)||target==XT_MORPH;
+            CHECK(!latched || p->route[route][XR_WHEN]!=XW_LIVE,"preset %s does not promise unsupported Live articulation",p->name);
+        }
+    }
+    for(int n=0;n<NROUTING_PRESET;n++) if(ROUTING_LFO[n][MS_DEST])
+        for(int k=0;k<MS_N;k++) {
+            const en_param_t *q=en_param_info(P_MS(0,4,k));
+            CHECK(ROUTING_LFO[n][k]>=q->lo && ROUTING_LFO[n][k]<=q->hi,"routing preset %d LFO field %d valid",n,k);
+        }
+}
+static void dialogue_recovers_from_rest(void)
+{
+    en_init(); apply(P_EVOLVE,100); apply(P_SEQ_DIALOGUE,100);
+    vc[1].loop_rest[0]=1;
+    for(int pass=0;pass<12;pass++) {
+        loop_pass(1,0);
+        CHECK(!vc[1].loop_rest[0],"active dialogue must not inherit a previous whole-loop rest");
+    }
+    apply(P_SEQ_DIALOGUE,0);
+    for(int pass=0;pass<12;pass++) loop_pass(1,0);
+    CHECK(phrase_on[1][0]==0,"turning dialogue off returns to normal loop evolution");
+}
+static void target_scope_contract(void)
+{
+    CHECK(!strcmp(en_expr_target_scope(XT_MOTIF,ROLE_CHORD),"INACTIVE: LOOPS"),"Chord identifies inactive motif target");
+    CHECK(!strcmp(en_expr_target_scope(XT_DIALOGUE,ROLE_LOOPS),"LOOPS ONLY"),"Loops identifies dialogue target");
+    CHECK(!strcmp(en_expr_target_scope(XT_PASSING,ROLE_LOOPS),"INACTIVE: BASS"),"Loops identifies inactive passing target");
+    CHECK(!strcmp(en_expr_target_scope(XT_PASSING,ROLE_BASS),"BASS ONLY"),"Bass supports passing target");
+    CHECK(!strcmp(en_expr_target_scope(XT_SWING,ROLE_CHORD),"GLOBAL GROOVE"),"Chord route can drive global Swing");
+}
+static void shared_music_phrases(void)
+{
+    int source[XS_N], original[EN_LOOP_MAX], before;
+    en_init(); apply(P_EVOLVE,100); apply(P_SEQ_DIALOGUE,100);
+    apply(P_SEQ_LENGTH,0); apply(P_SEQ_TENSION,0);
+    apply(P_EX(1,EX_AMOUNT),100); apply(P_EX(1,EX_MEMORY),100); apply(P_EX(1,EX_LINK),100);
+    vc[0].role=ROLE_LOOPS;
+    for(int v=0;v<2;v++) {
+        for(int l=0;l<EN_NLOOP;l++) for(int i=0;i<EN_LOOP_MAX;i++) { vc[v].loop_note[l][i]=-1; vc[v].loop_vel[l][i]=70; }
+        for(int i=0;i<3;i++) vc[v].loop_note[0][i*2]=(int8_t)(v ? 5-i : i*2);
+    }
+    for(int i=0;i<EN_LOOP_MAX;i++) original[i]=vc[1].loop_note[0][i];
+    before=loop_count(1,0);
+    apply(P_EX(0,EX_AMOUNT),50); apply(P_EX(0,EX_VARIATION),0);
+    apply(P_XR(0,0,XR_SOURCE),XS_TENSION); apply(P_XR(0,0,XR_TARGET),XT_CUTOFF);
+    apply(P_XR(0,0,XR_WHEN),XW_LIVE); apply(P_XR(0,0,XR_DEPTH),30);
+    for(int tick=0;tick<32;tick++) {
+        music_tick();
+        CHECK(music_stage==tick/8,"all voices share phase at tick %d",tick);
+        CHECK(en_phrase_stage==music_stage,"UI snapshot matches conductor");
+        expr_block(0);
+        CHECK(en_expr_route[0][0]==(tick/8==2 ? 15 : 0),"shared tension controls live timbre through normal expression routing");
+        expr_sources(0,-1,-1,-1,source);
+        CHECK(source[XS_TENSION]==(tick/8==2 ? 100 : 0),"tension source follows common phrase");
+        CHECK(source[XS_ANSWER]==(tick/8==3 ? 100 : 0),"answer source follows common phrase");
+        if(tick<24) for(int i=0;i<EN_LOOP_MAX;i++)
+            CHECK(vc[1].loop_note[0][i]==original[i],"opening/question preserves responding motif");
+    }
+    CHECK(music_leader==0,"first Loops voice leads opening");
+    CHECK(music_recall[1],"Link and Memory recall partner motif in answer");
+    CHECK(loop_count(1,0)==before,"reply preserves responding rhythm and note count");
+    for(int i=0;i<3;i++) CHECK(vc[1].loop_note[0][i*2]==i*2,"response borrows leader contour in scale steps");
+    music_tick(); CHECK(music_leader==1,"leadership rotates among Loops voices");
+    for(int i=0;i<31;i++) music_tick();
+    vc[0].loop_note[0][0]=6;
+    music_tick();
+    CHECK(motif_count[0]==2,"two recent motifs retained without unbounded RAM growth");
+    for(int i=0;i<24;i++) music_tick();
+    CHECK(vc[1].loop_note[0][0]==0,"high Memory recalls the older leader motif, not only the latest version");
+    apply(P_EX(1,EX_AMOUNT),0); music_recall[1]=0; loop_stamp[1][0]=0;
+    coordinated_loop(1,0);
+    CHECK(!music_recall[1],"Amount zero bypasses motif recall despite Memory and Link at 100");
+    for(int i=0;i<EN_LOOP_LEN[0];i++) CHECK(vc[1].loop_note[0][i]==phrase_notes[1][0][i],"recall bypass keeps local answer reference");
+    apply(P_SEQ_DIALOGUE,0); music_tick();
+    CHECK(!music_active && !music_running,"Dialogue zero returns to original sequencing");
+    expr_sources(0,-1,-1,-1,source);
+    CHECK(!source[XS_CALL] && !source[XS_TENSION] && !source[XS_ANSWER] && !source[XS_RECALL],"phase sources clear when disabled");
+    regrow(); CHECK(!motif_count[0] && !motif_count[1],"new piece/regrow clears remembered material");
+}
 int main(void)
 {
+    shared_music_phrases();
+    target_scope_contract();
+    dialogue_recovers_from_rest();
     new_sequence_routes();
     CHECK(drift_secs(0) == 2.0f, "Drift nominal minimum is two seconds");
     CHECK(drift_secs(100)>299.0f && drift_secs(100)<301.0f, "Drift maximum remains five minutes");
     for(int d=1;d<=100;d++) CHECK(drift_secs(d)>drift_secs(d-1), "Drift increases monotonically");
+    preset_contracts();
     route_sum_order();
     rhythm_controls();
     dialogue_phrases();

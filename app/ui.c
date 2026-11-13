@@ -283,7 +283,7 @@ static const char *const SUB_LABEL[NSUB][4] = {
     {"Mod", "Target", "Depth", "Rate"},
     {"Mod", "Shape", "Sync", "Smooth"},
     {"Mod", "Spread", "Fade", ""},
-    {"Amount", "Style", "Phrase", "Variation"},
+    {"Amount", "Style", "Notes", "Variation"},
     {"Memory", "Link", "", ""},
     {"Source B", "Morph", "Kind", "Match"},
     {"Route", "Source", "Target", "Depth"},
@@ -2494,7 +2494,7 @@ static const char *const TOM_TIP[TT_N] = {
 };
 static const char *const TOM_PAGE[V_MAIN + 3 + NSUB] = {
     "The Cortex page: the whole of it. Three voices grow from one scale and one chord, and a slow tide swings it from sparse to full every few minutes.",
-    "A voice: an FM patch playing one role. Press its button again for its own pages: Patch, then Operator, then Mod.",
+    "A voice: an FM patch playing one role. Press its button again for Gen, Patch and Operator. Expression and Mod live in their own area after the three voices.",
     0,
     0,
     "The space, after Eno's Discreet Music: a tape echo with two heads, each repeat darker, then a plate reverb.",
@@ -2537,14 +2537,14 @@ static const char *const TOM_PAGE[V_MAIN + 3 + NSUB] = {
     "Five modulators move this voice's sound, each note its own way. KNOB 1 picks one; Target says what it moves.",
     "The modulator's shape and timing.",
     "How the modulator spreads across the notes and comes in.",
-    "Expression monitor: live Energy, Link, Open, Breath and phrase progress. EDIT selects the next curated preset, REC the previous. Knobs play Amount, Style, Phrase and Variation. SELECT opens Gesture, Morph and three Matrix pages. Amount zero bypasses interpretation; Morph has its own amount.",
+    "Expression monitor: live Energy, Link, Open, Breath and phrase progress. EDIT selects the next curated preset, REC the previous. Knobs play Amount, Style, Notes and Variation. Notes groups four to twelve attacks for expression; Phrase Length separately counts shared bars for question and answer. SELECT opens Gesture, Morph and three Matrix pages. Amount zero bypasses interpretation even with an ExprAmt LFO; Morph has its own amount.",
     "Gesture: how interpretation remembers its character and listens to the other voices.",
     "Morph: A is the current preset. Color borrows B's envelopes and levels while keeping A's FM structure; Compatible requires a matching structure. New notes take the blend.",
     "Matrix: eight musical relationships per voice. Route chooses one; Source, Target and Depth define its direction.",
     "Matrix timing: a note or phrase captures the relationship; continuous updates are for level, cutoff and index.",
     "Matrix limits: constrain this route's contribution. They do not rewrite the base preset.",
     [V_MAIN + NSUB] = "Sequence: Motif controls how often Evolve transforms a loop. Rotation and Accent weight rhythmic and dynamic transformations. Passing controls bass chord tones between roots. Evolve zero keeps the patterns stable.",
-    [V_MAIN + NSUB + 2] = "Phrase: Dialogue preserves a motif, asks a question near the end, then restores it and favors the current chord. Length sets two to eight loop passes; Tension and Resolve shape the question and answer. Evolve zero disables dialogue.",
+    [V_MAIN + NSUB + 2] = "Phrase: Dialogue coordinates opening, question, tension and answer across the voices. Memory recalls motifs and Link borrows a partner contour. Length sets two to eight shared bars; Tension and Resolve shape the question and answer. Evolve zero disables dialogue.",
     [V_MAIN + NSUB + 1] = "Seq 2: Humanize gives bounded note delays; Space skips notes without erasing the motif; Range limits scale-step register. Swing keeps the clock steady.  the rhythm's Swing, from straight (50%) to 75%: the second of each pair of sixteenths or eighths arrives late, on the loops and the bass. The song player stays straight.",
 };
 static const char *const TOM_KNOB[(V_MAIN + 3 + NSUB) * 4] = {
@@ -2724,7 +2724,7 @@ static const char *const TOM_KNOB[(V_MAIN + 3 + NSUB) * 4] = {
     "Spread: 100, each note moves its own way; 0, the voice's notes move as one.",
     "Fade: the modulation comes in after each note, at once (Off) to 8 s.",
     0,
-    "Amount: the depth of musical interpretation. At 0 the original articulation is kept.",
+    "Amount: the depth of musical interpretation. Zero is a hard bypass, including ExprAmt LFOs. Above zero, an ExprAmt LFO can vary its effective depth.",
     "Style: Natural, Breath, Pluck, Legato or Cloud; a tendency, not a physical instrument model.",
     "Phrase: how many attacks form this voice's phrase; independent loops keep their rhythm.",
     "Variation: bounded changes to the gesture, with its own random stream.",
@@ -2753,7 +2753,7 @@ static const char *const TOM_KNOB[(V_MAIN + 3 + NSUB) * 4] = {
     [(V_MAIN + NSUB + 1) * 4 + 2] = "Space: up to 80 percent of loop attacks become rests; the stored motif is preserved.",
     [(V_MAIN + NSUB + 1) * 4 + 3] = "Range: one to four octaves of scale steps above each loop's base register.",
     [(V_MAIN + NSUB + 2) * 4] = "Dialogue: probability that the next phrase preserves, questions and answers its motif. Evolve must be above zero.",
-    [(V_MAIN + NSUB + 2) * 4 + 1] = "Length: two to eight loop passes per phrase, captured at its beginning.",
+    [(V_MAIN + NSUB + 2) * 4 + 1] = "Length: two to eight bars per shared phrase, captured at its beginning.",
     [(V_MAIN + NSUB + 2) * 4 + 2] = "Tension: chance of transforming the motif on the penultimate pass.",
     [(V_MAIN + NSUB + 2) * 4 + 3] = "Resolve: chance of moving answer notes to the nearest tone of the current chord.",
     [(V_MAIN + NSUB + 1) * 4] = "Swing: 50% straight, up to 75%: the off-beat arrives up to half a step late, on the loops and the bass.",
@@ -2957,7 +2957,7 @@ static const char *tom_value(int k, int val, char *b)
         if (off >= EX_N) {
             const int rk = (off - EX_N) % XR_N;
             if (rk == XR_SOURCE) {
-                static const char *const TOM_V_XSRC[14] = {
+                static const char *const TOM_V_XSRC[XS_N] = {
                     "Off: this modulation route is disconnected.",
                     "Energy: total musical tension from velocity, pitch and density.",
                     "Link: interaction and conversation with the other two voices.",
@@ -2967,11 +2967,15 @@ static const char *tom_value(int k, int val, char *b)
                     "Duration: average sounded age of this voice's active notes. Four seconds fill it; silence clears it.",
                     "Accent: dynamic emphasis on rhythmic stress points.",
                     "Arch: melodic contour rising and falling over time.",
-                    "Silence: rests and space between musical phrases.",
+                    "Silence: inverse of this voice's measured audio level, independent of the other voices and the tide.",
                     "Leap: pitch distance and interval jumps between notes.",
                     "Register: octave placement and pitch height in the scale.",
                     "Other: melodic activity from the sibling voice.",
-                    "Memory: accumulated melodic and harmonic history over time."
+                    "Memory: recent energy history. The Memory knob also weights motif recall when Dialogue is active.",
+                    "Call: active for the leading voice during the shared opening and question.",
+                    "Tension: the shared phrase is preparing its answer.",
+                    "Answer: all voices are in the shared answer phase.",
+                    "Recall: this voice has borrowed a remembered melodic contour in this phrase."
                 };
                 return TV(TOM_V_XSRC);
             }
@@ -2988,11 +2992,11 @@ static const char *tom_value(int k, int val, char *b)
                     "Index: FM modulation depth and harmonic brightness.",
                     "Morph: blend position towards preset B.",
                     "Density: varies this layer's sequence density.", "Evolve: varies musical evolution.",
-                    "Drift: varies the next chord's duration.", "Motif: varies transformation probability at loop boundaries.",
-                    "Rotation: varies the weight of rhythm rotation.", "Accent: varies dynamic transformation weight.",
-                    "Passing: varies bass chord-tone probability before returning to root.", "Swing: varies the next offbeat delay, bounded to 75 percent.",
-                    "Humanize: bounded random timing.", "Space: temporary musical rests.", "Range: scale-preserving register limits.",
-                    "Dialogue: phrase probability.", "Length: phrase length captured at its start.", "Tension: variation before the answer.", "Resolve: attraction to the current chord in the answer."
+                    "Drift: varies the next chord's duration.", "Motif: for Loops, varies transformation probability at loop boundaries.",
+                    "Rotation: for Loops, varies the weight of rhythm rotation.", "Accent: varies dynamic transformation weight.",
+                    "Passing: for Bass, varies chord-tone probability before returning to root.", "Swing: varies the next offbeat delay, bounded to 75 percent.",
+                    "Humanize: for Loops, bounded random timing.", "Space: for Loops, temporary musical rests.", "Range: scale-preserving register limits.",
+                    "Dialogue: for Loops, phrase probability.", "Length: phrase length captured at its start.", "Tension: variation before the answer.", "Resolve: attraction to the current chord in the answer."
                 };
                 return TV(TOM_V_XTGT);
             }
@@ -5654,7 +5658,12 @@ static void draw_expression(int v, int sub)
         const int preset = expression_preset_index(v);
         cv_text(8, 2, &FONT_XS, "PRESET", K_DIM);
         cv_text(56, 0, &FONT_S, preset >= 0 ? EXPRESSION_PRESET[preset].name : "Custom", K_ACC);
-        cv_text(8, 22, &FONT_XS, "EDIT / REC   PRESET ROUTING", K_TEXT);
+        if(en_phrase_active) {
+            static const char *const stages[4]={"OPEN", "QUESTION", "TENSION", "ANSWER"};
+            cv_text(8,22,&FONT_XS,stages[en_phrase_stage&3u],K_ACC);
+            cv_text(116,22,&FONT_XS,"LEAD VOICE",K_DIM);
+            itoa_u((uint32_t)en_phrase_leader+1,t); cv_text(188,22,&FONT_XS,t,K_TEXT);
+        } else cv_text(8, 22, &FONT_XS, "EDIT / REC   PRESET ROUTING", K_TEXT);
         for (r = 0; r < 4; r++) {
             const int value = expression_meter(en_expression[v][r]), y = 44 + r * 16;
             cv_text(8, y - 3, &FONT_XS, METER[r], K_TEXT);
@@ -5664,7 +5673,7 @@ static void draw_expression(int v, int sub)
             itoa_u((uint32_t)value, t);
             cv_text(204, y - 3, &FONT_XS, t, K_TEXT);
         }
-        cv_text(8, 108, &FONT_XS, "PHRASE", K_DIM);
+        cv_text(8, 108, &FONT_XS, "NOTES", K_DIM);
         cv_rect(68, 112, 128, 4, K_LINE);
         cv_rect(68, 112, expression_meter(en_expr_phase[v]) * 128 / 100, 4, K_ACC);
         itoa_u((uint32_t)active, t);
@@ -5679,9 +5688,7 @@ static void draw_expression(int v, int sub)
         cv_text(8, 0, &FONT_XS, "ROUTE", K_DIM);
         itoa_u((uint32_t)(route + 1), t);
         cv_text(52, 0, &FONT_XS, t, K_ACC);
-        itoa_u((uint32_t)active, t);
-        cv_text(144, 0, &FONT_XS, t, K_ACC);
-        cv_text(156, 0, &FONT_XS, "OF 8 ACTIVE", K_DIM);
+        cv_text(132, 0, &FONT_XS, en_expr_target_scope(proj.par[p+XR_TARGET],proj.par[P_PL(v,PL_ROLE)]), K_DIM);
         for (r = 0; r < EN_XROUTES; r++) {
             const int on = proj.par[P_XR(v,r,XR_SOURCE)] && proj.par[P_XR(v,r,XR_TARGET)] && proj.par[P_XR(v,r,XR_DEPTH)];
             cv_round(8 + r * 28, 19, 25, 15, 3, r == route ? K_ACC : K_PANEL);
@@ -5939,13 +5946,16 @@ static void leds(void)
     plat_leds(b, k);
 }
 
-/* AUTOSAVE: a few seconds after a change, while resting and quiet, nothing touched (a flash erase
- * silences the audio for a moment: never while the garden grows; SAVE saves then) */
+/* AUTOSAVE: a few seconds after a change, while resting and silent, nothing touched. A flash erase masks the
+ * interrupts for up to a few hundred ms (the audio stalls, the lights' scan freezes): never while anything
+ * sounds, the garden, the reel playing or recording, a voice, an echo or plate tail (the mix's peak under
+ * ~-50 dBFS); SAVE saves then */
 #define AUTOSAVE_QUIET 4000u
 static void autosave(void)
 {
     uint32_t now = plat_ms();
-    if (!ui.dirty || en_playing || ui.btn || ui.keys || now - ui.act_t < AUTOSAVE_QUIET || en_pad_level > 0.01f)
+    if (!ui.dirty || en_playing || en_tape_playing || en_reel_state || ui.btn || ui.keys ||
+        now - ui.act_t < AUTOSAVE_QUIET || en_master_level > 0.003f)
         return;
     if (project_save() == 0) {
         ui.dirty = 0;
@@ -6087,9 +6097,14 @@ static void sp_page(int all)
         sp_cat(nm);
     }
     sp_cat(" page");
+
     for (i = 0; i < 4; i++) {
         sp_cat(i ? ", " : ": ");
         sp_knob(ui.view, i);
+    }
+    if(view_sub(ui.view)>=S_MOD && view_sub(ui.view)<=S_MOD3) {
+        int v=view_vox(ui.view), d=proj.par[P_MS(v,ui.slot[v],MS_DEST)]-1;
+        if(d>=MOD_SEQ && d<MOD_EXPR) { sp_cat(". "); sp_cat(en_expr_target_scope(XT_DENSITY+d-MOD_SEQ,proj.par[P_PL(v,PL_ROLE)])); }
     }
     if (view_sub(ui.view) == S_EXPR || view_sub(ui.view) == S_GESTURE) {
         const int v = view_vox(ui.view), preset = expression_preset_index(v);
@@ -6098,6 +6113,8 @@ static void sp_page(int all)
         sp_cat(". EDIT next, REC previous. PRESET: routing");
     } else if (view_sub(ui.view) >= S_MATRIX) {
         const int v = view_vox(ui.view), r = ui.xslot[v], contribution = en_expr_route[v][r];
+        sp_cat(". ");
+        sp_cat(en_expr_target_scope(proj.par[P_XR(v,r,XR_TARGET)],proj.par[P_PL(v,PL_ROLE)]));
         sp_cat(". Source ");
         sp_value(P_XR(v, r, XR_SOURCE));
         sp_cat(" to ");
@@ -6197,7 +6214,12 @@ static void sp_expression_stats(void)
         sp_int(en_expression[v][i]);
         sp_cat(" percent");
     }
-    sp_cat(". Phrase progress ");
+    if(en_phrase_active) {
+        static const char *const phases[4]={"opening","question","tension","answer"};
+        sp_cat(". Shared phrase "); sp_cat(phases[en_phrase_stage&3u]);
+        sp_cat(", leader voice "); sp_int((uint32_t)en_phrase_leader+1);
+    }
+    sp_cat(". Phrase progress (expression notes) ");
     sp_int(en_expr_phase[v]);
     sp_cat(" percent");
 }

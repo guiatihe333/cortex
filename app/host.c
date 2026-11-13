@@ -345,9 +345,9 @@ int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, c
         app_sysex(f, 5);
         return 1;
     }
-    if (!strcmp(cmd, "storev30") || !strcmp(cmd, "storev31") || !strcmp(cmd, "storev32")) {
-        const uint32_t old_format = !strcmp(cmd, "storev30") ? 30u : !strcmp(cmd, "storev31") ? 31u : 32u;
-        const int old_end = old_format == 30u ? P_SEQ : P_SEQ + 4;
+    if (!strcmp(cmd, "storev30") || !strcmp(cmd, "storev31") || !strcmp(cmd, "storev32") || !strcmp(cmd, "storev33")) {
+        const uint32_t old_format = !strcmp(cmd, "storev30") ? 30u : !strcmp(cmd, "storev31") ? 31u : !strcmp(cmd, "storev32") ? 32u : 33u;
+        const int old_end = old_format == 30u ? P_SEQ : old_format <= 32u ? P_SEQ + 4 : P_NPARAMS;
         uint32_t bit = 0;
         int i, p;
         project_save();

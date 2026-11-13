@@ -356,11 +356,11 @@ GLO on Setup opens **MIDI**, then **Song**, then back to Setup.
 
 ### ENV, ARP or LFO again: a voice's own pages
 
-Each voice has a six-operator DX7 patch, five modulators and a musical interpretation matrix. Preset is knob 3 on the main voice page; Octave is knob 1 on Patch. Repeated voice-button presses visit **Expression → Gen → Patch → Operator → Mod → main voice**. SELECT visits the subpages.
+Each voice has a six-operator DX7 patch, five modulators and a musical interpretation matrix. Preset is knob 3 on the main voice page; Octave is knob 1 on Patch. Repeated voice-button presses visit **Gen → Patch → Operator → main voice**. Expression and Mod are in the shared area after Voice 3. SELECT visits the subpages.
 
 **PARAMETER GENERATIVITY**
 
-The second press opens Expression, separate from the patch generator Gen. The monitor shows live Energy, Link, Open and Breath, phrase progress and active route count. Amount 0 bypasses interpretation; A/B morph remains independent.
+Expression is a separate area after Voice 3; SELECT reaches it from the main pages. Within it, ENV / ARP / LFO select the voice. The monitor shows live Energy, Link, Open and Breath, phrase progress and active route count. Amount 0 bypasses interpretation; A/B morph remains independent.
 
 | Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
 | --- | --- | --- | --- | --- |
@@ -371,7 +371,7 @@ The second press opens Expression, separate from the patch generator Gen. The mo
 | Matrix 2 | Route | When | Curve | Smooth |
 | Matrix 3 | Route | Minimum | Maximum | — |
 
-The matrix draws **source → target** and a signed live contribution meter. Note captures each attack; Phrase holds a value across the phrase; Live continuously follows Level, Cutoff and Index. Envelopes, Gate and Morph latch at the next attack. Smooth is an approximate response time and remains responsive at 100. Minimum/Maximum constrain the source window without rewriting the base preset.
+The matrix draws **source → target** and a signed live contribution meter. Note captures each attack; Phrase holds a value across the phrase; Live continuously follows Level, Cutoff, Index and the sequencer targets. Envelopes, Gate and Morph latch at the next attack. Smooth is an approximate response time and remains responsive at 100. Minimum/Maximum constrain the source window without rewriting the base preset.
 
 On Expression or Gesture, **EDIT selects the next interpretation preset; REC selects the previous one**; the
 PRESET encoder steps through the seven routing recipes. Hold SEL to undo. Manual edits show Custom; saving retains the actual controls and routes per piece. Applying a preset replaces all eight routes and interpretation controls while preserving the base patch, tuning, filter and A/B morph settings.
@@ -783,9 +783,34 @@ Sequence modulation (1.5.28): LFO and expression targets now include Density, Ev
 
 HOME within Sequence cycles Sequence → Seq 2 → Phrase → Sequence.
 Seq 2: Swing, Humanize (0..40 ms, also capped to one fifth of a sixteenth), Space (0..80% skipped loop attacks, motif kept), Range (one to four octaves of scale steps per loop).
-Phrase: Dialogue (probability of using a coordinated phrase), Length (two to eight loop passes, captured at phrase start), Tension (chance of transforming the penultimate pass), Resolve (probability of pulling answer notes toward the current chord).
+Phrase: Dialogue (probability of using a coordinated phrase), Length (two to eight shared bars, captured at phrase start), Tension (chance of transforming the penultimate pass), Resolve (probability of pulling answer notes toward the current chord).
 Opening passes preserve the motif. The penultimate pass creates a question; the last restores the original shape and favors chord tones. Dialogue and Evolve must be above zero. Each unequal loop has its own phrase cycle. These controls have LFO and expression destinations with signed bounded offsets. None changes the master clock or the scale.
 
 HOME em Sequence alterna Sequence → Seq 2 → Phrase. Humanize desloca o ataque sem alterar o relógio; Space cria pausas sem apagar o motivo; Range limita a região melódica. Em Phrase, Dialogue inicia frases, Length escolhe de duas a oito voltas, Tension controla a pergunta e Resolve favorece notas do acorde na resposta. As voltas iniciais preservam o motivo e a última recupera a forma original.
 
 Drift: nominal minimum is now 2 seconds; values from 25 upward keep their previous duration. Phrase jitter and Drift modulation can vary the actual chord duration.
+
+
+Release behavior: Amount 0 is a hard interpretation bypass, even if an LFO targets ExprAmt. A/B morph and direct LFO-to-sequencer routes remain independent. Above zero, ExprAmt offsets may vary effective Amount within 0..100. Tide captures Gate per note; continuous Gate is not supported. Voice-button navigation is Gen → Patch → Operator → main voice; Expression and Mod are reached after Voice 3, using SELECT. Within that shared area ENV / ARP / LFO select voices 1 / 2 / 3. PRESET selects routing recipes; EDIT/REC select interpretation recipes. Slow Orbit and other LFO routing recipes replace modulator 5; Undo restores its prior settings.
+
+
+### Expression notes versus sequence phrases
+
+Expression's Notes control groups 4..12 note attacks for When=Phrase captures. It does not count bars or loop repetitions. Sequence Phrase Length groups 2..8 shared bars for question/answer. Dialogue now uses a shared conductor across voices.
+Silence now follows the selected voice's measured level: a silent voice reads 100 even when other voices or the tide are active. Existing Smooth settings filter this source per route.
+The Matrix header shows target scope: ALL ROLES, LOOPS ONLY, BASS ONLY, GLOBAL HARMONY (Drift), GLOBAL GROOVE (Swing), or INACTIVE with the required role. A source in a Chord layer can still drive global Drift/Swing, but local Motif/Space/Dialogue require Loops. Passing requires Bass. Role is never changed silently by a preset.
+Dialogue clears any inherited whole-loop rest when it takes ownership of a pass; Space can still omit individual attacks without deleting the motif.
+
+Notes na expressividade agrupa ataques de notas; Length em Phrase conta voltas dos loops. Silence mede o silêncio da própria voz, sem depender da maré ou das outras vozes. O topo da Matrix informa quando um destino precisa de Loops ou Bass, ou quando afeta a harmonia/groove global. Dialogue agora compartilha as fases entre as três vozes.
+
+
+### Shared musical dialogue and motif recall (1.5.36)
+
+When Dialogue and Evolve are above zero and no MIDI song is playing, a shared cycle of 2..8 bars coordinates opening, question, tension and answer. Length is captured at the cycle start; LFO/expressive offsets for shared Length, Dialogue and Evolve are averaged across layers. Dialogue selects whether a cycle uses coordination. Existing controls and roles are preserved.
+Loops voices take turns leading. On the tension boundary, Loops motifs can transform according to Tension. At the answer, each voice restores its local rhythmic reference; Memory sets its chance of recalling a stored contour, while Link sets the chance of borrowing the leader's contour. Memory also weights the older of two recent motifs. Reply notes retain the listener's rhythm and register, use scale offsets in the current key, and Resolve favors the current chord. Bass resolves toward the root during the shared answer. Chord voices retain their voicing role and can share the timbral phase sources.
+Memory keeps its original smoothed-energy source as well: musical motif recall is an additional use of the same control, not a replacement. Motif memories are runtime musical state in RAM, cleared on piece/regrow/restart; they are not written to flash. With Dialogue zero or Evolve zero, the normal generative path is used. MIDI song playback disables this conductor rather than rewriting song phrases.
+New expression sources: Call (leader's opening/question), Tension (shared build), Answer (shared reply), Recall (a layer recalled a contour). They work with existing envelope, FM, morph and sequencer destinations and existing Note/Phrase/Live timing. The Conversation routing recipe maps Call→Index, Tension→Cutoff, Answer→Release and Recall→Morph, with bounded depths and slow smoothing. Enable Dialogue to hear the phase relationships; a valid B patch is required for Morph. The monitor and reader announce the active phase and leader.
+
+Com Dialogue e Evolve acima de zero, as vozes compartilham abertura, pergunta, tensão e resposta num ciclo de 2 a 8 compassos. As vozes em Loops alternam a liderança. Memory permite recuperar um de dois motivos recentes; Link permite responder com o contorno da líder, preservando ritmo, função e registro da voz que responde. As lembranças são relativas à escala atual e ficam na RAM. O baixo resolve na fundamental e as vozes Chord mantêm sua função harmônica. Call, Tension, Answer e Recall permitem ligar os roteamentos de timbre existentes à frase compartilhada. Conversation é uma receita pronta para esses quatro vínculos.
+
+Motif recall is scaled by effective expression Amount: Amount zero disables recall and partner borrowing, while the separately enabled Dialogue conductor can still coordinate phases.

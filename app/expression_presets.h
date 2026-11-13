@@ -54,7 +54,7 @@ static const expression_preset_t EXPRESSION_PRESET[] = {
         XROUTE(XS_ACCENT,XT_ATTACK,-26,XW_NOTE,XC_LINEAR,10),
         XROUTE(XS_REGISTER,XT_CUTOFF,18,XW_LIVE,XC_CENTER,35)}},
     {"Tide", {60,XSTYLE_LEGATO,55,6,92,70}, {
-        XROUTE(XS_OTHER,XT_GATE,34,XW_LIVE,XC_SOFT,92),
+        XROUTE(XS_OTHER,XT_GATE,34,XW_NOTE,XC_SOFT,92),
         XROUTE(XS_LINK,XT_LEVEL,20,XW_PHRASE,XC_SOFT,90),
         XROUTE(XS_SILENCE,XT_RELEASE,26,XW_NOTE,XC_SOFT,80)}},
     {"Flow", {55,XSTYLE_NATURAL,65,6,85,25}, {
@@ -82,7 +82,12 @@ static const expression_preset_t EXPRESSION_PRESET[] = {
         XROUTE(XS_MEMORY,XT_DIALOGUE,40,XW_LIVE,XC_SOFT,88)}},
     {"Compass", {44,XSTYLE_NATURAL,75,12,88,35}, {
         XROUTE(XS_REGISTER,XT_RANGE,35,XW_LIVE,XC_CENTER,60),
-        XROUTE(XS_ARCH,XT_MOTIF,20,XW_PHRASE,XC_SOFT,85)}}
+        XROUTE(XS_ARCH,XT_MOTIF,20,XW_PHRASE,XC_SOFT,85)}},
+    {"Conversation", {50,XSTYLE_NATURAL,60,5,90,75}, {
+        XROUTE(XS_CALL,XT_INDEX,20,XW_LIVE,XC_SOFT,80),
+        XROUTE(XS_TENSION,XT_CUTOFF,30,XW_LIVE,XC_SOFT,85),
+        XROUTE(XS_ANSWER,XT_RELEASE,25,XW_NOTE,XC_SOFT,75),
+        XROUTE(XS_RECALL,XT_MORPH,15,XW_NOTE,XC_SOFT,80)}}
 };
 #undef XROUTE
 #define NEXPRESSION_PRESET ((int)(sizeof EXPRESSION_PRESET / sizeof *EXPRESSION_PRESET))
@@ -99,6 +104,7 @@ static const int16_t ROUTING_LFO[NROUTING_PRESET][MS_N] = {
     {35,100,SHAPE_SH,MOD_SEQ + XT_ACCENT-XT_DENSITY + 1,0,0,SYNC_TEMPO,20},       /* Ratchet: an accent a 1/16 */
     {40,9,SHAPE_SINE,MOD_SEQ + XT_SWING-XT_DENSITY + 1,0,20,SYNC_TEMPO,95},       /* Swing Tide: 4 bars */
     {45,17,SHAPE_WALK,MOD_SEQ + XT_LENGTH-XT_DENSITY + 1,0,30,SYNC_TEMPO,90},     /* Bicker: phrase length */
-    {50,25,SHAPE_TRI,MOD_SEQ + XT_RANGE-XT_DENSITY + 1,0,40,SYNC_TEMPO,88}        /* Compass: octave range */
+    {50,25,SHAPE_TRI,MOD_SEQ + XT_RANGE-XT_DENSITY + 1,0,40,SYNC_TEMPO,88}        /* Compass: octave range */,
+    {0} /* Conversation: phase sources, no LFO replacement */
 };
 _Static_assert(sizeof ROUTING_LFO / sizeof *ROUTING_LFO == NROUTING_PRESET, "a routing recipe an LFO row");

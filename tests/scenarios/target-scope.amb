@@ -1,0 +1,21 @@
+wait 3500
+turn SELECT 5 150
+expect view 96
+listen
+where
+said Notes
+turn SELECT 3 150
+expect view 99
+spin K3 -100
+wait 600
+turn K3 13 150
+where
+said INACTIVE: LOOPS
+shot scope-chord.png
+tap ARP
+spin K3 -100
+wait 600
+turn K3 13 150
+where
+said LOOPS ONLY
+shot scope-loops.png

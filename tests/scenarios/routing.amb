@@ -43,6 +43,10 @@ said Preset Compass
 turn PRESET 1 150
 wait 300
 where
+said Preset Conversation
+turn PRESET 1 150
+wait 300
+where
 said Preset Flow
 # Slow Orbit: the fifth modulator aimed at the sequencer's Rotation
 turn PRESET 1 150

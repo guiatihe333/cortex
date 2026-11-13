@@ -295,6 +295,8 @@ static unsigned expression_width(int p)
 }
 static unsigned stored_expression_width(int p, uint32_t format)
 {
+    if (format <= 33u && p < P_SEQ && (p-P_EXPR)%EN_XSTRIDE>=EX_N &&
+        ((p-P_EXPR)%EN_XSTRIDE-EX_N)%XR_N==XR_SOURCE) return 4;
     if (format <= 31u && p < P_SEQ && (p - P_EXPR) % EN_XSTRIDE >= EX_N &&
         ((p - P_EXPR) % EN_XSTRIDE - EX_N) % XR_N == XR_TARGET) return 4;
     return expression_width(p);
@@ -372,7 +374,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
     memset(&tst, 0, sizeof tst);
     loaded = plat_store_load(OBJ_TAPE, &tst, sizeof tst);
     if (loaded < 8 || tst.magic != PROJ_MAGIC ||
-        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 32u))) {
+        (tst.format != PROJ_FORMAT && (tst.format < 13u || tst.format > 33u))) {
         for (i = 0; i < NPIECES; i++) {
             recipe(i, &r);
             for (p = P_SPLIT; p < P_NPARAMS; p++)
@@ -404,7 +406,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
                 if (par[P_ST(AR1T) + 3 * s] == all)
                     par[P_ST(AR1T) + 3 * s] = EN_AR_NTGT;
         }
-    } else if (tst.format != PROJ_FORMAT && tst.format != 32u && tst.format != 31u && tst.format != 30u && tst.format != 29u) {      /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to
+    } else if (tst.format != PROJ_FORMAT && tst.format != 33u && tst.format != 32u && tst.format != 31u && tst.format != 30u && tst.format != 29u) {      /* 13, 14 (to the songs'), 15 (to MIDI's), 16 (to
                                                   * the visual's): the
                                                   * rest from the recipes */
         const int upto = tst.format == 28u ? P_VCF : tst.format == 23u ? P_ST(VOFREQ) : tst.format == 22u ? P_ST(VFOLD) : tst.format == 21u ? P_ST(VMOSH) : tst.format == 20u ? P_ST(VMORPH) : tst.format == 19u ? P_ST(VLAYER) : tst.format == 18u ? P_ST(VGEO) : tst.format == 17u ? P_ST(VFEED) : tst.format == 16u ? P_ST(VMODE)
@@ -429,7 +431,7 @@ static void tape_from_store(void)               /* the reel's settings from OBJ_
         for (p = P_SPLIT; p < P_EXPR; p++)
             proj.par[p] = tst.par[NPIECES][p - P_SPLIT];
     }
-    if ((tst.format == PROJ_FORMAT || tst.format == 32u || tst.format == 31u || tst.format == 30u) && expression_from_store(loaded))
+    if ((tst.format == PROJ_FORMAT || tst.format == 33u || tst.format == 32u || tst.format == 31u || tst.format == 30u) && expression_from_store(loaded))
         expression_defaults();
     if (tst.format == 26u) {                     /* (26: SHIFT Y's place is TARGET now: Feedback, as before) */
         for (i = 0; i < NPIECES; i++)
@@ -494,7 +496,7 @@ int project_load(void)
         keep_fmt = 12u;
         from_project_v12(&buf.v12);
     } else if (n >= 8 && buf.now.magic == PROJ_MAGIC &&
-               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 32u))) {
+               (buf.now.format == PROJ_FORMAT || (buf.now.format >= 13u && buf.now.format <= 33u))) {
         if (buf.now.format != PROJ_FORMAT)
             keep_fmt = buf.now.format;           /* (its patches as they are) */
         from_projstore(&buf.now);                /* (its settings to P_SPLIT; then the reel's from OBJ_TAPE) */
