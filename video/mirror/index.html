@@ -1,0 +1,550 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- CORTEX VIDEO: the mirror and recorder. The FM-1 plays the video synth; this page follows it over USB-MIDI (the
+     same engine in WebAssembly, frame by frame) and records the picture with the sound into a video file.
+     mirror/build.sh puts the WebAssembly in (one file: it opens from the disk, nothing to install). -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CORTEX VIDEO · Espelho</title>
+<style>
+:root { --bg:#0b0a10; --panel:#15131d; --line:#2a2638; --text:#ece8f5; --dim:#8e88a3; --hi:#ffb347; --ok:#50dc78; --rec:#e62828; --acc:#b8325a; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display:flex; align-items:center; gap:12px; padding:10px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+header h1 { font-size:16px; letter-spacing:.12em; margin:0 8px 0 0; }
+header h1 span { color:var(--acc); }
+main { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:16px; padding:16px; }
+@media (max-width:900px) { main { grid-template-columns:1fr; } }
+.left { display:flex; flex-direction:column; gap:16px; min-width:0; }
+.controls { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+.controls h2 { margin:12px 0 8px; font-size:12px; letter-spacing:.1em; color:var(--dim); text-transform:uppercase; }
+#groups button[aria-selected="true"] { background:var(--acc); border-color:var(--acc); color:#fff; }
+#pages { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:12px; margin-top:12px; }
+.page { border:1px solid var(--line); border-radius:6px; padding:8px 10px; }
+.page h3 { margin:0 0 6px; font-size:12px; letter-spacing:.08em; }
+.knob { display:grid; grid-template-columns:76px 1fr 72px; align-items:center; gap:6px; margin:4px 0; font-size:12px; }
+.knob span:first-child { color:var(--dim); }
+.knob output { text-align:right; font-variant-numeric:tabular-nums; }
+.knob input { width:100%; accent-color:var(--hi); }
+#scenes button { min-width:38px; }
+.stage { background:#000; border:1px solid var(--line); border-radius:8px; display:flex; align-items:center; justify-content:center; min-height:300px; position:relative; overflow:hidden; }
+#out { max-width:100%; max-height:78vh; display:block; }
+.badge { position:absolute; top:10px; left:10px; padding:3px 8px; border-radius:4px; background:rgba(0,0,0,.6); font-size:12px; }
+.badge.rec { background:var(--rec); color:#fff; left:auto; right:10px; display:none; }
+aside { display:flex; flex-direction:column; gap:12px; }
+section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+section h2 { margin:0 0 8px; font-size:12px; letter-spacing:.1em; color:var(--dim); text-transform:uppercase; }
+label { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:6px 0; color:var(--dim); }
+select, button { background:#1e1b29; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; }
+select { max-width:190px; }
+button { cursor:pointer; }
+button:hover { border-color:var(--hi); }
+button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
+button.recbtn { background:#3a1414; border-color:var(--rec); }
+button.recbtn.on { background:var(--rec); color:#fff; }
+.row { display:flex; gap:8px; flex-wrap:wrap; }
+.stat { display:grid; grid-template-columns:1fr auto; gap:2px 10px; font-variant-numeric:tabular-nums; }
+.stat span:nth-child(odd) { color:var(--dim); }
+.dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--dim); margin-right:6px; }
+.dot.ok { background:var(--ok); } .dot.bad { background:var(--rec); }
+meter { width:100%; height:10px; }
+#takes a { color:var(--hi); display:block; margin:4px 0; word-break:break-all; }
+.note { color:var(--dim); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CORTEX <span>VIDEO</span> · espelho</h1>
+  <button id="connect" class="primary">Conectar ao FM-1</button>
+  <span id="linkState"><span class="dot"></span>desconectado</span>
+</header>
+<main>
+  <div class="left">
+  <div class="stage">
+    <canvas id="out" width="1080" height="1080" aria-label="O vídeo do FM-1, refeito aqui quadro a quadro"></canvas>
+    <div class="badge" id="sync">aguardando o FM-1</div>
+    <div class="badge rec" id="recBadge">● REC 0:00</div>
+  </div>
+  <section class="controls">
+    <div class="row" id="groups" role="tablist" aria-label="Grupos de páginas"></div>
+    <div id="pages"></div>
+    <h2>Cenas</h2>
+    <div class="row" id="scenes"></div>
+    <div class="row" style="margin-top:8px"><button id="undo">Desfazer (ENV)</button></div>
+    <p class="note">Os controles mexem no FM-1, que manda as mudanças de volta com os quadros. As cenas tocam como as teclas (com o Launch e o Morph do FM-1).</p>
+  </section>
+  </div>
+  <aside>
+    <section>
+      <h2>Conexão</h2>
+      <label>MIDI de entrada <select id="midiIn"></select></label>
+      <label>MIDI de saída <select id="midiOut"></select></label>
+      <p class="note">Escolha as portas do FM-1 (CORTEX VIDEO). O FM-1 recomeça a imagem quando o espelho conecta, para os dois desenharem o mesmo.</p>
+    </section>
+    <section>
+      <h2>Áudio para o FM-1</h2>
+      <label>Entrada <select id="routeIn"></select></label>
+      <label>Tocar em <select id="routeOut"></select></label>
+      <label>Ouvir no PC também <select id="routeMon"><option value="0">não</option><option value="1">sim</option></select></label>
+      <meter id="routeLevel" min="0" max="1" value="0"></meter>
+      <p class="note">O FM-1 só recebe áudio pelo USB. Para usar uma placa ou um gravador (Zoom R20, microfone), escolha a entrada dele aqui: a página a toca no FM-1 (“Alto-falantes (CORTEX VIDEO FM-1)”), que reage a ela.</p>
+    </section>
+    <section>
+      <h2>Áudio gravado</h2>
+      <label>Entrada <select id="audioIn"></select></label>
+      <meter id="level" min="0" max="1" value="0"></meter>
+      <label>Atraso do áudio <input id="avDelay" type="range" min="0" max="200" value="50" step="5"><output id="avDelayV">50 ms</output></label>
+      <p class="note">“A entrada enviada ao FM-1” grava o som da seção acima direto, na qualidade da placa, atrasado para cair junto com a imagem (o FM-1 leva uns 50 ms para reagir). Ou escolha “Linha (CORTEX VIDEO FM-1)”: o som que o FM-1 recebeu, de volta pelo USB.</p>
+    </section>
+    <section>
+      <h2>Vídeo</h2>
+      <label>Formato <select id="size">
+        <option value="1080x1080">1080 × 1080 (quadrado)</option>
+        <option value="1920x1080">1920 × 1080 (16:9)</option>
+        <option value="1080x1920">1080 × 1920 (vertical)</option>
+        <option value="720x720">720 × 720</option>
+        <option value="2160x2160">2160 × 2160</option>
+      </select></label>
+      <label>Resolução <select id="hd">
+        <option value="4">HD 960 (redesenhada)</option>
+        <option value="3" selected>HD 720 (redesenhada)</option>
+        <option value="2">HD 480 (redesenhada)</option>
+        <option value="0">240 (a tela do FM-1)</option>
+      </select></label>
+      <label>Ampliação <select id="smooth">
+        <option value="0">pixels nítidos</option>
+        <option value="1">suave</option>
+      </select></label>
+      <label>Preencher <select id="fit">
+        <option value="contain">imagem inteira (bordas pretas)</option>
+        <option value="cover">cortar para preencher</option>
+      </select></label>
+      <label>Arquivo <select id="mime"></select></label>
+      <label>Qualidade <select id="bitrate">
+        <option value="8000000">8 Mbit/s</option>
+        <option value="16000000" selected>16 Mbit/s</option>
+        <option value="32000000">32 Mbit/s</option>
+      </select></label>
+    </section>
+    <section>
+      <h2>Gravação</h2>
+      <label>Seguir o REC do FM-1 <select id="follow"><option value="1">sim</option><option value="0">não</option></select></label>
+      <div class="row">
+        <button id="recBtn" class="recbtn">● Gravar aqui</button>
+        <button id="shot">Foto (PNG)</button>
+      </div>
+      <div id="takes"></div>
+    </section>
+    <section>
+      <h2>Estado</h2>
+      <div class="stat">
+        <span>Quadros</span><span id="sFrames">0</span>
+        <span>Quadros/s</span><span id="sFps">0</span>
+        <span>Quadros perdidos</span><span id="sGaps">0</span>
+        <span>Divergências</span><span id="sMis">0</span>
+        <span>Ressincronizações</span><span id="sSync">0</span>
+        <span>Áudio</span><span id="sAudio">nenhum</span>
+      </div>
+    </section>
+  </aside>
+</main>
+<canvas id="lcd" width="720" height="720" hidden></canvas>
+<script>
+"use strict";
+const WASM_B64 = "/*WASM_BASE64*/";
+const $ = id => document.getElementById(id);
+const KEEP = [0xF0, 0x7D, 0x43, 0x56, 0x10, 0x00, 0x01, 0xF7];
+const OFF = [0xF0, 0x7D, 0x43, 0x56, 0x10, 0x00, 0x00, 0xF7];
+const RESYNC = [0xF0, 0x7D, 0x43, 0x56, 0x10, 0x00, 0x02, 0xF7];
+let wx, midi, inPort, outPort, keepTimer, lastResync = 0;
+let lcd = $("lcd").getContext("2d"), out = $("out").getContext("2d"), img = lcd.createImageData(240, 240);
+let resyncs = [], frameTimes = [], audioStream = null, audioCtx = null, analyser = null;
+let recorder = null, recChunks = [], recStart = 0, recByFM1 = false;
+
+async function loadWasm() {
+  const bin = Uint8Array.from(atob(WASM_B64), c => c.charCodeAt(0));
+  const { instance } = await WebAssembly.instantiate(bin, {});
+  wx = instance.exports;
+  if (wx._initialize) wx._initialize();
+}
+
+/* ---- MIDI */
+function fillPorts() {
+  const pick = (sel, ports) => {
+    const was = sel.value;
+    sel.innerHTML = "";
+    for (const p of ports.values()) {
+      const o = new Option(p.name, p.id);
+      sel.add(o);
+      if (/cortex|fm-1|felucca/i.test(p.name) && !was) o.selected = true;
+    }
+    if (was) sel.value = was;
+  };
+  pick($("midiIn"), midi.inputs);
+  pick($("midiOut"), midi.outputs);
+}
+function bindPorts() {
+  if (inPort) inPort.onmidimessage = null;
+  inPort = midi.inputs.get($("midiIn").value);
+  outPort = midi.outputs.get($("midiOut").value);
+  if (inPort) inPort.onmidimessage = onMidi;
+  send(KEEP);
+  send(RESYNC);                                    // (the FM-1 may still be linked from before: start both anew)
+  lastResync = performance.now();
+}
+function send(m) { try { outPort && outPort.send(m); } catch (e) {} }
+async function connect() {
+  if (!wx) await loadWasm();
+  if (!sliders.length) buildControls();
+  try {
+    midi = await navigator.requestMIDIAccess({ sysex: true });
+  } catch (e) {
+    $("linkState").innerHTML = '<span class="dot bad"></span>sem acesso ao MIDI (permita o MIDI com SysEx)';
+    return;
+  }
+  midi.onstatechange = fillPorts;
+  fillPorts();
+  bindPorts();
+  clearInterval(keepTimer);
+  keepTimer = setInterval(() => send(KEEP), 1000);
+  $("connect").textContent = "Reconectar";
+  await startAudio();
+}
+function onMidi(ev) {
+  const d = ev.data;
+  if (d[0] !== 0xF0 || d[1] !== 0x7D) return;
+  new Uint8Array(wx.memory.buffer, wx.mx_in(), d.length).set(d);
+  const r = wx.mx_msg(d.length);
+  if (r === 1) drawFrame();
+  if (wx.mx_stat(9)) return;                       // another version of the engine: nothing to follow (said on screen)
+  if (d[4] === 0x02 && !wx.mx_stat(0) && performance.now() - lastResync > 1500) {   // frames, but no SYNC seen: ask
+    lastResync = performance.now();
+    send(RESYNC);
+  }
+  if (wx.mx_stat(2) && performance.now() - lastResync > 3000) {   // a frame lost or disagreeing: start both again
+    lastResync = performance.now();
+    wx.mx_lost_clear();
+    resyncs.push(lastResync);
+    while (resyncs.length && lastResync - resyncs[0] > 30000) resyncs.shift();
+    if (resyncs.length <= 3) send(RESYNC);       // (more than 3 in 30 s: something else is wrong; said on screen)
+  }
+  const fm1Rec = wx.mx_stat(1) === 1;
+  if ($("follow").value === "1" && fm1Rec !== recByFM1) {
+    recByFM1 = fm1Rec;
+    if (fm1Rec && !recorder) startRec();
+    else if (!fm1Rec && recorder) stopRec();
+  }
+}
+
+/* ---- the picture */
+function layout() {
+  const [w, h] = $("size").value.split("x").map(Number);
+  $("out").width = w; $("out").height = h;
+  out.fillStyle = "#000"; out.fillRect(0, 0, w, h);
+}
+function setHD() {                                // (HD: the WebAssembly paints the frame again at 240 S)
+  wx.mx_set_hd(+$("hd").value);
+  const n = wx.mx_size();
+  $("lcd").width = $("lcd").height = n;
+  img = lcd.createImageData(n, n);
+}
+function drawFrame() {
+  const n = wx.mx_size();
+  if (img.width !== n) setHD();
+  img.data.set(new Uint8Array(wx.memory.buffer, wx.mx_rgba(), n * n * 4));
+  lcd.putImageData(img, 0, 0);
+  const W = $("out").width, H = $("out").height;
+  const s = $("fit").value === "cover" ? Math.max(W, H) / n : Math.min(W, H) / n;
+  out.imageSmoothingEnabled = $("smooth").value === "1" || n > 240;
+  out.imageSmoothingQuality = "high";
+  out.fillStyle = "#000";
+  out.fillRect(0, 0, W, H);
+  out.drawImage($("lcd"), (W - n * s) / 2, (H - n * s) / 2, n * s, n * s);
+  const now = performance.now();
+  frameTimes.push(now);
+  while (frameTimes.length && now - frameTimes[0] > 1000) frameTimes.shift();
+}
+function stats() {
+  if (wx) {
+    $("sFrames").textContent = wx.mx_stat(3);
+    $("sGaps").textContent = wx.mx_stat(4);
+    $("sMis").textContent = wx.mx_stat(5);
+    $("sSync").textContent = wx.mx_stat(6);
+    $("sFps").textContent = frameTimes.length;
+    const live = frameTimes.length && performance.now() - frameTimes[frameTimes.length - 1] < 1500;
+    $("linkState").innerHTML = live ? '<span class="dot ok"></span>FM-1 ligado' :
+      (midi ? '<span class="dot"></span>aguardando quadros do FM-1' : '<span class="dot"></span>desconectado');
+    $("sync").textContent = wx.mx_stat(9) ? "o FM-1 tem outra versão: abra a página nova (Downloads, cortex-video)" :
+      !wx.mx_stat(0) ? "aguardando o FM-1" : resyncs.length > 3 ? "divergindo do FM-1: me avise" :
+      wx.mx_stat(2) ? "ressincronizando" : "sincronizado";
+  }
+  if (routeAnalyser) {
+    const a = new Float32Array(routeAnalyser.fftSize);
+    routeAnalyser.getFloatTimeDomainData(a);
+    let p = 0; for (const v of a) p = Math.max(p, Math.abs(v));
+    $("routeLevel").value = p;
+  }
+  if (analyser) {
+    const a = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(a);
+    let p = 0; for (const v of a) p = Math.max(p, Math.abs(v));
+    $("level").value = p;
+  }
+  $("sAudio").textContent = audioStream ? (p => p > 0.001 ? "chegando" : "silêncio")($("level").value) : "nenhum";
+  if (recorder) {
+    const s = Math.floor((performance.now() - recStart) / 1000);
+    $("recBadge").textContent = `● REC ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+}
+
+/* ---- the sound */
+async function listAudio() {
+  const all = await navigator.mediaDevices.enumerateDevices();
+  const devs = all.filter(d => d.kind === "audioinput"), outs = all.filter(d => d.kind === "audiooutput");
+  const ri = $("routeIn"), ro = $("routeOut"), riWas = ri.value, roWas = ro.value;
+  ri.innerHTML = "";
+  ri.add(new Option("(nenhuma: o PC toca no FM-1 por conta própria)", ""));
+  for (const d of devs) if (!/cortex|fm-1/i.test(d.label)) ri.add(new Option(d.label || "entrada", d.deviceId));
+  if (riWas) ri.value = riWas;
+  ro.innerHTML = "";
+  for (const d of outs) {
+    const o = new Option(d.label || "saída", d.deviceId);
+    ro.add(o);
+    if (!roWas && /cortex|fm-1/i.test(d.label)) o.selected = true;
+  }
+  if (roWas) ro.value = roWas;
+  const sel = $("audioIn"), was = sel.value;
+  sel.innerHTML = "";
+  sel.add(new Option("(sem áudio)", ""));
+  sel.add(new Option("A entrada enviada ao FM-1 (direto, atrasada)", "__route"));
+  for (const d of devs) {
+    const o = new Option(d.label || "entrada " + (sel.length), d.deviceId);
+    sel.add(o);
+    if (!was && /cortex|fm-1/i.test(d.label)) o.selected = true;
+  }
+  if (was) sel.value = was;
+}
+async function startAudio() {
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });   // (asks once: then the names show)
+    s.getTracks().forEach(t => t.stop());
+  } catch (e) {}
+  await listAudio();
+  await openAudio();
+}
+/* the bridge: an input (the R20, a microphone) played into the FM-1 (and recorded from here, delayed) */
+let routeCtx = null, routeStream = null, routeAnalyser = null, routeDelay = null, routeDest = null;
+async function openRoute() {
+  if (routeStream) routeStream.getTracks().forEach(t => t.stop());
+  if (routeCtx) await routeCtx.close();
+  routeCtx = routeStream = routeAnalyser = routeDelay = routeDest = null;
+  const id = $("routeIn").value;
+  if (!id) { if ($("audioIn").value === "__route") openAudio(); return; }
+  routeStream = await navigator.mediaDevices.getUserMedia({ audio: {
+    deviceId: { exact: id }, echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+    channelCount: 2, sampleRate: 48000 } });
+  routeCtx = new AudioContext({ latencyHint: "interactive" });
+  const src = routeCtx.createMediaStreamSource(routeStream);
+  routeAnalyser = routeCtx.createAnalyser();
+  routeAnalyser.fftSize = 1024;
+  src.connect(routeAnalyser);
+  if ($("routeOut").value && routeCtx.setSinkId) {
+    try { await routeCtx.setSinkId($("routeOut").value); } catch (e) {}
+  }
+  src.connect(routeCtx.destination);              // (to the FM-1: the sink chosen)
+  if ($("routeMon").value === "1") {              // (and the computer's own speakers, by a second context)
+    const mon = new Audio();
+    mon.srcObject = routeStream;
+    mon.play().catch(() => {});
+  }
+  routeDelay = routeCtx.createDelay(1.0);
+  routeDelay.delayTime.value = +$("avDelay").value / 1000;
+  routeDest = routeCtx.createMediaStreamDestination();
+  src.connect(routeDelay).connect(routeDest);
+  if ($("audioIn").value === "__route") openAudio();
+}
+async function openAudio() {
+  if (audioStream && audioStream !== (routeDest && routeDest.stream)) audioStream.getTracks().forEach(t => t.stop());
+  audioStream = null; analyser = null;
+  const id = $("audioIn").value;
+  if (!id) return;
+  if (id === "__route") {                         // (the bridge's input, delayed: it falls with the picture)
+    if (!routeDest) return;
+    audioStream = routeDest.stream;
+    analyser = routeAnalyser;
+    return;
+  }
+  audioStream = await navigator.mediaDevices.getUserMedia({ audio: {
+    deviceId: { exact: id }, echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+    channelCount: 2, sampleRate: 48000 } });
+  audioCtx = audioCtx || new AudioContext();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  audioCtx.createMediaStreamSource(audioStream).connect(analyser);
+}
+
+/* ---- recording */
+function mimes() {
+  const c = [["video/mp4;codecs=avc1.640033,mp4a.40.2", "MP4 (H.264 + AAC)"], ["video/mp4", "MP4"],
+             ["video/webm;codecs=vp9,opus", "WebM (VP9 + Opus)"], ["video/webm;codecs=vp8,opus", "WebM (VP8 + Opus)"],
+             ["video/webm", "WebM"]];
+  for (const [m, n] of c) if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) $("mime").add(new Option(n, m));
+}
+function startRec() {
+  if (recorder) return;
+  const v = $("out").captureStream(30);
+  const tracks = [...v.getVideoTracks(), ...(audioStream ? audioStream.getAudioTracks() : [])];
+  if (!audioStream) {
+    const w = document.createElement("p");
+    w.className = "note";
+    w.style.color = "var(--rec)";
+    w.textContent = "Atenção: gravando SEM áudio. Escolha a entrada do FM-1 em “Áudio gravado”.";
+    $("takes").prepend(w);
+  }
+  const mime = $("mime").value;
+  recorder = new MediaRecorder(new MediaStream(tracks), { mimeType: mime, videoBitsPerSecond: +$("bitrate").value, audioBitsPerSecond: 256000 });
+  recChunks = [];
+  recorder.ondataavailable = e => e.data.size && recChunks.push(e.data);
+  recorder.onstop = () => saveTake(mime);
+  recorder.start(1000);
+  recStart = performance.now();
+  $("recBtn").classList.add("on"); $("recBtn").textContent = "■ Parar";
+  $("recBadge").style.display = "block";
+}
+function stopRec() {
+  if (!recorder) return;
+  recorder.stop();
+  recorder = null;
+  $("recBtn").classList.remove("on"); $("recBtn").textContent = "● Gravar aqui";
+  $("recBadge").style.display = "none";
+}
+function stamp() {
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+function saveTake(mime) {
+  const blob = new Blob(recChunks, { type: mime.split(";")[0] });
+  const name = `cortex-video-${stamp()}.${mime.includes("mp4") ? "mp4" : "webm"}`;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.textContent = `${name} (${(blob.size / 1048576).toFixed(1)} MB)`;
+  $("takes").prepend(a);
+  a.click();                                       // (saved to the Downloads folder at once; the link stays here too)
+}
+function snapshot() {
+  $("out").toBlob(b => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(b);
+    a.download = `cortex-video-${stamp()}.png`;
+    a.click();
+  });
+}
+
+/* ---- the controls: the FM-1's own pages (vpages.h, from the WebAssembly), sliders that send the FM-1 a setting */
+function pack7(bytes) {                           // vlink.h's packing: 7 bytes after a byte of their high bits
+  const out = [];
+  for (let i = 0; i < bytes.length; i += 7) {
+    const g = bytes.slice(i, i + 7);
+    out.push(g.reduce((h, b, k) => h | ((b >> 7) << k), 0));
+    for (const b of g) out.push(b & 127);
+  }
+  return out;
+}
+function cmd(bytes) { send([0xF0, 0x7D, 0x43, 0x56, 0x10, ...pack7(bytes), 0xF7]); }
+function cstr(p) { const m = new Uint8Array(wx.memory.buffer); let s = ""; while (m[p]) s += String.fromCharCode(m[p++]); return s; }
+let group = 0, slot = 0, sliders = [];
+function buildControls() {
+  const G = $("groups");
+  G.innerHTML = "";
+  for (let g = 0; g < wx.mx_ngroup(); g++) {
+    const b = document.createElement("button");
+    b.textContent = cstr(wx.mx_group_name(g));
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", g === group);
+    b.onclick = () => { group = g; buildControls(); };
+    G.appendChild(b);
+  }
+  const P = $("pages");
+  P.innerHTML = "";
+  sliders = [];
+  for (let p = 0; p < wx.mx_npage(); p++) {
+    if (wx.mx_page_group(p) !== group) continue;
+    const card = document.createElement("div");
+    card.className = "page";
+    card.innerHTML = `<h3>${cstr(wx.mx_page_name(p))}</h3>`;
+    for (let i = 0; i < 4; i++) {
+      let k = wx.mx_page_knob(p, i);
+      if (k === -1) {                               // (the React pages' slot: chosen here)
+        const row = document.createElement("label");
+        row.className = "knob";
+        row.innerHTML = `<span>Slot</span>`;
+        const s = document.createElement("select");
+        for (let j = 0; j < wx.mx_nslot(); j++) s.add(new Option(String(j + 1), j));
+        s.value = slot;
+        s.onchange = () => { slot = +s.value; buildControls(); };
+        row.appendChild(s);
+        card.appendChild(row);
+        continue;
+      }
+      if (k < 0) continue;                          // (the FM-1's own: scenes' settings, the matrix, the tempo)
+      if (k >= wx.mx_npar() - wx.mx_slot_w() * wx.mx_nslot()) k += wx.mx_slot_w() * slot;
+      const row = document.createElement("label");
+      row.className = "knob";
+      const name = document.createElement("span"), r = document.createElement("input"), o = document.createElement("output");
+      name.textContent = cstr(wx.mx_par_name(k)).replace(/ [1-8]$/, "");
+      r.type = "range"; r.min = wx.mx_par_lo(k); r.max = wx.mx_par_hi(k); r.value = wx.mx_par_get(k);
+      r.setAttribute("aria-label", name.textContent);
+      r.oninput = () => {
+        const v = +r.value & 0xFFFF;
+        cmd([3, k, v & 255, v >> 8]);
+        o.textContent = cstr(wx.mx_par_text(k, +r.value));
+      };
+      row.append(name, r, o);
+      card.appendChild(row);
+      sliders.push({ k, r, o });
+    }
+    P.appendChild(card);
+  }
+}
+function syncControls() {                          // (the FM-1's values, as the frames bring them; not the one held)
+  for (const s of sliders) {
+    if (document.activeElement === s.r && s.r.matches(":active")) continue;
+    const v = wx.mx_par_get(s.k);
+    if (+s.r.value !== v) s.r.value = v;
+    s.o.textContent = cstr(wx.mx_par_text(s.k, v));
+  }
+}
+function buildScenes() {
+  for (let i = 0; i < 16; i++) {
+    const b = document.createElement("button");
+    b.textContent = i + 1;
+    b.setAttribute("aria-label", "Cena " + (i + 1));
+    b.onclick = () => cmd([4, i]);
+    $("scenes").appendChild(b);
+  }
+  $("undo").onclick = () => cmd([5]);
+}
+loadWasm().then(() => { setHD(); buildControls(); buildScenes(); setInterval(syncControls, 200); });
+
+$("connect").onclick = connect;
+$("midiIn").onchange = $("midiOut").onchange = bindPorts;
+$("audioIn").onchange = openAudio;
+$("routeIn").onchange = $("routeOut").onchange = $("routeMon").onchange = openRoute;
+$("avDelay").oninput = () => {
+  $("avDelayV").textContent = $("avDelay").value + " ms";
+  if (routeDelay) routeDelay.delayTime.value = +$("avDelay").value / 1000;
+};
+$("hd").onchange = () => { if (wx) setHD(); };
+$("size").onchange = layout;
+$("recBtn").onclick = () => recorder ? stopRec() : startRec();
+$("shot").onclick = snapshot;
+window.addEventListener("beforeunload", () => send(OFF));
+mimes();
+layout();
+setInterval(stats, 250);
+</script>
+</body>
+</html>

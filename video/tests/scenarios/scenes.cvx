@@ -1,0 +1,44 @@
+# CORTEX VIDEO: scenes launched on the beat and morphed (LAUNCH, MORPH), chained by the bar (CHAIN), and a matrix key
+# that learns a knob (held, a knob turned: a Jump there, put back when let go). The tempo: 120 (a beat 500 ms)
+wait 500
+press SEL
+key 0 down
+key 0 up
+release SEL
+spin K1 2
+spin K3 20
+expect par0 7
+expect par2 100
+press SEL
+key 1 down
+key 1 up
+release SEL
+expect scenes 3
+turn SELECT 18
+expect page 18
+spin K2 1
+spin K3 2
+key 0 down
+key 0 up
+expect par0 7
+wait 600
+expect par0 5
+wait 2000
+expect par2 60
+expect scene 0
+spin K4 1
+wait 2300
+expect scene 1
+spin K4 -1
+turn SELECT -18
+expect page 0
+key 16 down
+spin K2 3
+expect par1 3
+key 16 up
+expect par1 0
+key 16 down
+expect par1 3
+key 16 up
+expect par1 0
+shot scenes.png

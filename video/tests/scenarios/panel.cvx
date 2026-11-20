@@ -1,0 +1,39 @@
+# CORTEX VIDEO: the pages, a look, the scenes (SEL + key stores, a key recalls), the tempo, saving, a reboot keeps it
+wait 500
+expect page 0
+tap OCT+
+expect page 1
+turn SELECT 2
+expect page 3
+tap OCT-
+tap OCT-
+tap OCT-
+expect page 0
+spin K1 2
+expect par0 7
+press SEL
+key 3 down
+key 3 up
+release SEL
+expect scenes 8
+spin K1 -4
+expect par0 3
+key 3 down
+key 3 up
+expect par0 7
+expect scene 3
+tap FX
+wait 418
+tap FX
+wait 418
+tap FX
+expect bpm 120
+spin PRESET 1
+expect look 1
+expect par0 4
+tap SAVE
+reboot
+wait 500
+expect par0 4
+expect scenes 8
+shot panel.png

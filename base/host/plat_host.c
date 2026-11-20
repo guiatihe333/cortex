@@ -1588,6 +1588,18 @@ uint32_t plat_usb_audio_in(const int16_t **mono)
     return APP_BLOCK;
 }
 
+static int16_t usb_buf2[2 * APP_BLOCK];
+uint32_t plat_usb_audio_in_lr(const int16_t **lr)   /* (CORTEX VIDEO) the same tone, on both sides */
+{
+    const int16_t *m;
+    const uint32_t n = plat_usb_audio_in(&m);
+    uint32_t i;
+    for (i = 0; i < n; i++)
+        usb_buf2[2 * i] = usb_buf2[2 * i + 1] = m[i];
+    *lr = usb_buf2;
+    return n;
+}
+
 /* -------------------------------------------------------------- app --- */
 #define ANN_NAME APP_NAME " " APP_VERSION
 #include "ann_words.h"                                  /* the words file's link (tools/gen_words.py) */

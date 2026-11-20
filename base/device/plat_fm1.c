@@ -498,3 +498,12 @@ uint32_t plat_usb_audio_in(const int16_t **mono)
     return 0;
 #endif
 }
+uint32_t plat_usb_audio_in_lr(const int16_t **lr)   /* (CORTEX VIDEO) */
+{
+#if FELUCCA_UAC_OUT
+    return uac_out_tap2(lr);
+#else
+    *lr = 0;
+    return 0;
+#endif
+}

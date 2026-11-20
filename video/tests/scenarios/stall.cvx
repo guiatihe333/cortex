@@ -1,0 +1,23 @@
+# CORTEX VIDEO: the computer stops reading the FM-1's SysEx for a while (busy, a screen reader's words in the way):
+# the frames wait and go in order after, the same ones; no SYNC again, nothing for the mirror to lose
+# (tests/follow_test.c reads out:stall.syx: one SYNC, no gap, no disagreement)
+wait 500
+usbaudio 220
+sysex_log out:stall.syx
+sysex F0 7D 43 56 10 00 01 F7
+wait 600
+turn SELECT 3
+spin K1 8
+usb stall
+wait 400
+usb read
+wait 600
+sysex F0 7D 43 56 10 00 01 F7
+usb stall
+spin K2 10
+wait 250
+usb read
+wait 1200
+sysex F0 7D 43 56 10 00 01 F7
+wait 600
+sysex_log off

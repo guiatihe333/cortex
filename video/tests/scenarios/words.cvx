@@ -1,0 +1,14 @@
+# CORTEX VIDEO: a screen reader asks for the whole screen (fm1_remote.py screen): the page, its knobs and the frame's
+# timing, in full (the words once overflowed their buffer: the FM-1 crashed)
+wait 600
+listen
+wait 300
+where
+wait 300
+said Audio blocks
+turn SELECT 3
+spin K1 8
+wait 300
+where
+wait 300
+said OBJECT

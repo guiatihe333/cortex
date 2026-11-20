@@ -227,6 +227,7 @@ static volatile uint32_t uo_w, uo_r;
 #define UO_TAPN HALF_FRAMES
 static int16_t uo_tap[UO_TAPN] __attribute__((section(".pool")));
 static volatile uint32_t uo_tapn;
+static int16_t uo_tap2[2u * UO_TAPN] __attribute__((section(".pool")));   /* (CORTEX VIDEO) the same, stereo */
 static uint32_t ep4rx[UO_MAXF + 1u] __attribute__((aligned(4)));
 static struct {
     volatile uint8_t alt;        /* the output's streaming interface: 1 = the host plays */
@@ -1949,12 +1950,21 @@ static __attribute__((noinline)) void uac_play(int32_t *out, uint32_t n, uint32_
         out[2u * i + 1u] += (int32_t)(rr * g);
         if (i < UO_TAPN)
             uo_tap[i] = (int16_t)((l + rr) * 0.5f);
+        if (i < UO_TAPN) {
+            uo_tap2[2u * i] = (int16_t)l;
+            uo_tap2[2u * i + 1u] = (int16_t)rr;
+        }
         pos += step;
     }
     RING_PUBLISH();
     uo_r = r + (pos >> 16);
     uo.pos = pos & 0xFFFFu;
     uo_tapn = n < UO_TAPN ? n : UO_TAPN;
+}
+static uint32_t uac_out_tap2(const int16_t **lr)  /* (CORTEX VIDEO) the last render's USB audio, stereo, as sent */
+{
+    *lr = uo_tap2;
+    return uo_tapn;
 }
 static uint32_t uac_out_tap(const int16_t **mono) /* (AMB-1 FM6) the last render's USB audio, mono, as sent */
 {

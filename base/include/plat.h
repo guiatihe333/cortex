@@ -487,6 +487,8 @@ uint32_t plat_xruns(void);
 /* (AMB-1 FM6) the audio a computer or a phone plays into the FM-1 (FM1B_UAC_OUT): the last render's, mono, 16-bit, as
  * sent (before MASTER), for a recorder; its frames (0: nothing playing, or no USB audio output). From the render. */
 uint32_t plat_usb_audio_in(const int16_t **mono);
+/* (CORTEX VIDEO) the same, stereo: lr[2 i], lr[2 i + 1] */
+uint32_t plat_usb_audio_in_lr(const int16_t **lr);
 
 /* a free-running count of PLAT_TICKS_PER_US ticks a microsecond, for timing spans shorter than plat_ms can: a part of
  * the render, say. Device: TIMER4, from the 24 MHz crystal (one register read); host: its monotonic clock, at the same

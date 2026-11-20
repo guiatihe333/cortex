@@ -1,0 +1,17 @@
+# CORTEX VIDEO's build settings (fm1-base's tools/build.py: ./build_video.sh)
+name = "CORTEX-VIDEO"          # the build's files: cortex-video.fwsc, cortex-video-X.Y.fwsc
+id_prefix = "FM-1_77"          # package identity, its own (CORTEX's is FM-1_76): releases FM-1_77XXYYZZ
+usb_manufacturer = "CORTEX"
+usb_product = "CORTEX VIDEO FM-1"
+ble = false                    # no radio: the USB carries the sound and the mirror
+usb_audio_in = true            # what the FM-1 passes on, recordable over USB (the mirror records it)
+usb_audio_out = true           # a computer or a phone plays into it: what the video synth hears
+words = "words.tsv"
+# the site
+tagline = "An audio-reactive video synth for the FM-1"
+repo = "https://github.com/guiatihe333/cortex"
+licence = "MPL-2.0"
+credits = "CORTEX's video synth on its own. Built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (Hugelton Instruments)."
+author = "guiatihe333"
+description = "CORTEX VIDEO turns the M-VAVE FM-1 into an audio-reactive video synth. It hears what a computer or a phone plays into it over USB, follows MIDI notes, CC and clock, and plays CORTEX's video synth: ten pictures, sixteen geometries, an oscillator, feedback, data moshing, chroma, an eight-slot react matrix, twenty-two looks and sixteen scenes. A mirror on the computer follows it frame by frame and records the video with the sound."
+tags = ["experimental", "generative", "utility"]

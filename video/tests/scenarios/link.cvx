@@ -1,0 +1,43 @@
+# CORTEX VIDEO: sound over USB, the mirror linked, a few knobs and keys, REC; every SysEx the FM-1 sends is logged
+# (out:link.syx) for tests/follow_test.c, which replays it through its own engine and checks every frame's sum
+wait 500
+usbaudio 110
+expect link 0
+tap REC
+expect rec 0
+sysex_log out:link.syx
+sysex F0 7D 43 56 10 00 01 F7
+wait 200
+expect link 1
+spin K1 3
+wait 300
+turn SELECT 3
+spin K1 8
+spin K2 -20
+wait 300
+sysex F0 7D 43 56 10 00 01 F7
+key 18 down
+wait 60
+key 18 up
+key 20 down
+wait 300
+key 20 up
+tap REC
+expect rec 1
+midi 90 3C 64
+midi 90 40 50
+wait 400
+usbaudio 440
+spin PRESET 4
+wait 500
+sysex F0 7D 43 56 10 00 01 F7
+tap PLAY
+expect held 1
+midi C0 02 00
+wait 500
+tap REC
+expect rec 0
+shot link.png
+usbaudio 0
+sysex_log off
+wait 100
