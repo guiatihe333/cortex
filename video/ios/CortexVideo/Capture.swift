@@ -27,9 +27,14 @@ final class FrameSampler {
                                bounds: bounds, format: .RGBA8, colorSpace: color)
             }
         }
-        return stride(from: 0, to: rgba.count, by: 4).map { index in
-            (rgba[index] & 224) | ((rgba[index + 1] & 224) >> 3) | (rgba[index + 2] >> 6)
+        var pixels = [UInt8](repeating: 0, count: VideoWire.side * VideoWire.side)
+        for index in 0..<pixels.count {          // RGBA to RGB332, a plane at a time (typed: quick to compile)
+            let red: UInt8 = rgba[index * 4] & 0xE0
+            let green: UInt8 = (rgba[index * 4 + 1] & 0xE0) >> 3
+            let blue: UInt8 = rgba[index * 4 + 2] >> 6
+            pixels[index] = red | green | blue
         }
+        return pixels
     }
 }
 
