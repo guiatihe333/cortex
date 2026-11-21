@@ -30,10 +30,10 @@ tap FX
 expect bpm 120
 spin PRESET 1
 expect look 1
-expect par0 4
+expect par0 5
 tap SAVE
 reboot
 wait 500
-expect par0 4
+expect par0 5
 expect scenes 8
 shot panel.png

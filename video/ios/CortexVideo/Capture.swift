@@ -13,9 +13,10 @@ final class FrameSampler {
         let image = CIImage(cvPixelBuffer: buffer).transformed(by: transform)
         let extent = image.extent
         guard extent.width > 0, extent.height > 0 else { return [] }
-        let scale = min(bounds.width / extent.width, bounds.height / extent.height)
+        // fill the square, cut at the long sides (the middle kept): the whole screen, all 60 x 60 points used
+        let scale = max(bounds.width / extent.width, bounds.height / extent.height)
         let centered = image.transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY))
-            .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            .applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: scale, kCIInputAspectRatioKey: 1.0])
             .transformed(by: CGAffineTransform(
                 translationX: (bounds.width - extent.width * scale) / 2,
                 y: (bounds.height - extent.height * scale) / 2))
@@ -28,10 +29,15 @@ final class FrameSampler {
             }
         }
         var pixels = [UInt8](repeating: 0, count: VideoWire.side * VideoWire.side)
-        for index in 0..<pixels.count {          // RGBA to RGB332, a plane at a time (typed: quick to compile)
-            let red: UInt8 = rgba[index * 4] & 0xE0
-            let green: UInt8 = (rgba[index * 4 + 1] & 0xE0) >> 3
-            let blue: UInt8 = rgba[index * 4 + 2] >> 6
+        let bayer: [Int] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
+        for index in 0..<pixels.count {          // RGBA to RGB332, dithered (4 x 4 Bayer): no bands
+            let d: Int = bayer[(index / VideoWire.side % 4) * 4 + index % 4]
+            let r: Int = min(255, Int(rgba[index * 4]) + d * 2)
+            let g: Int = min(255, Int(rgba[index * 4 + 1]) + d * 2)
+            let b: Int = min(255, Int(rgba[index * 4 + 2]) + d * 4)
+            let red: UInt8 = UInt8(r) & 0xE0
+            let green: UInt8 = (UInt8(g) & 0xE0) >> 3
+            let blue: UInt8 = UInt8(b) >> 6
             pixels[index] = red | green | blue
         }
         return pixels

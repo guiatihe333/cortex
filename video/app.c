@@ -200,6 +200,10 @@ static const struct {
     int16_t v[15];
 } LOOKS[] = {
     {"Default", 0, {0}, {0}},
+    {"Clean", 11, {ST_VFEED, ST_VRGB, ST_VHUE, ST_VSYNC, ST_VMUTATE, ST_VCHAOS, ST_VFLOW, ST_VPULSE, ST_AR1S + 2,
+                   ST_AR1S + 2 + VS_SLOT_W, ST_AR1S + 2 + 2 * VS_SLOT_W}, {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {"Clean Camera", 10, {ST_VMODE, ST_VBARS, ST_VFEED, ST_VRGB, ST_VHUE, ST_VSYNC, ST_VPULSE, ST_AR1S + 2,
+                          ST_AR1S + 2 + VS_SLOT_W, ST_AR1S + 2 + 2 * VS_SLOT_W}, {VS_LIVE_VIDEO, 2, 0, 0, 0, 0, 0, 0, 0, 0}},
     {"Tunnel", 12, {ST_VMODE, ST_VFEED, ST_VTRAIL, ST_VXTGT, ST_VXZOOM, ST_VXROT, ST_VPAL, ST_VHUE, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {4, 85, 80, 0, 45, 25, 2, 20, 0, 0, 0, 0}},
     {"LZX Grid", 13, {ST_VMODE, ST_VOFREQ, ST_VOSHAPE, ST_VOFREQ2, ST_VOCOMB, ST_VOSPEED, ST_VFEED, ST_VFOLD, ST_VPAL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {8, 45, 3, 45, 1, 25, 15, 55, 3, 0, 0, 0, 0}},
     {"Hydra", 13, {ST_VMODE, ST_VOFREQ, ST_VOSHAPE, ST_VOCOMB, ST_VOWARP, ST_VFEED, ST_VXROT, ST_VXZOOM, ST_VFOLD, ST_VHUE, ST_VMOSH, ST_VSORT, ST_VCORRUPT}, {8, 30, 0, 4, 65, 75, 12, 15, 35, 40, 0, 0, 10}},
@@ -1408,6 +1412,7 @@ static uint32_t ear_blocks_seen_t(void)
     return ear_seen_t;
 }
 static uint16_t external_palette[256];
+static uint32_t external_rgb[256];          /* (the same, 8 bits a plane: 0xRRGGBB, for the smooth picture) */
 
 /* Grade the incoming 3:3:2 colours on the FM-1. The Cortex palette keeps the source in colour. */
 static void prepare_video_palette(void)
@@ -1421,6 +1426,7 @@ static void prepare_video_palette(void)
         const unsigned luma = (r * 54u + g * 183u + b * 19u) >> 8;
         if (luma < key) {
             external_palette[pixel] = 0;
+            external_rgb[pixel] = 0;
             continue;
         }
         if (VPAR(VPAL)) {
@@ -1444,6 +1450,54 @@ static void prepare_video_palette(void)
         g = (g * (256u - vinv) + (255u - g) * vinv) >> 8;
         b = (b * (256u - vinv) + (255u - b) * vinv) >> 8;
         external_palette[pixel] = swap16(RGB(r, g, b));
+        external_rgb[pixel] = r << 16 | g << 8 | b;
+    }
+}
+
+/* the camera's picture smooth: each screen pixel between the four nearest of the 60 x 60 (bilinear, a quarter-pixel's
+ * precision), its colour graded (the palette above), dithered into the screen's 5:6:5 (no bands). MIRROR folds the
+ * screen first; PIXEL asks for the blocks (paint_video_band's old path) */
+static inline unsigned blend4(uint32_t a, uint32_t b, uint32_t c, uint32_t d, int wx, int wy, int s)
+{                                                /* (one plane of four colours, between them by wx, wy in 256ths) */
+    const unsigned top = ((a >> s & 255u) * (256u - (unsigned)wx) + (b >> s & 255u) * (unsigned)wx) >> 8,
+                   bot = ((c >> s & 255u) * (256u - (unsigned)wx) + (d >> s & 255u) * (unsigned)wx) >> 8;
+    return (top * (256u - (unsigned)wy) + bot * (unsigned)wy) >> 8;
+}
+static void paint_video_smooth(int y0, int h, const uint8_t *image)
+{
+    static const uint8_t BAYER[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
+    const int size = VLINK_VIDEO_SIDE, mirror = VPAR(VMIRROR);
+    int y, x;
+    for (y = 0; y < h; ++y) {
+        int Y = y + y0;
+        uint16_t *p = cv_px + y * 240;
+        if (mirror >= 2 && Y >= 120)
+            Y = 239 - Y;
+        for (x = 0; x < 240; ++x) {
+            int X = x, sy = Y, fx, fy, ix, iy, wx, wy, ix1, iy1;
+            uint32_t a, b, c, d;
+            unsigned r, g, bl;
+            if (mirror != 0 && mirror != 2 && X >= 120)
+                X = 239 - X;
+            if (mirror == 4 && X > sy) {
+                const int s = X;
+                X = sy, sy = s;
+            }
+            fx = X * 64 - 96, fy = sy * 64 - 96;   /* (the source's coordinate in 256ths: (2 x + 1) / 8 - 1 / 2) */
+            ix = fx < 0 ? 0 : fx >> 8, wx = fx < 0 ? 0 : fx & 255;
+            iy = fy < 0 ? 0 : fy >> 8, wy = fy < 0 ? 0 : fy & 255;
+            ix1 = ix + 1 < size ? ix + 1 : size - 1, iy1 = iy + 1 < size ? iy + 1 : size - 1;
+            a = external_rgb[image[iy * size + ix]], b = external_rgb[image[iy * size + ix1]];
+            c = external_rgb[image[iy1 * size + ix]], d = external_rgb[image[iy1 * size + ix1]];
+            r = blend4(a, b, c, d, wx, wy, 16), g = blend4(a, b, c, d, wx, wy, 8), bl = blend4(a, b, c, d, wx, wy, 0);
+            {
+                const unsigned k = BAYER[Y & 3][x & 3];
+                r = r + (k >> 1) > 255u ? 255u : r + (k >> 1);
+                g = g + (k >> 2) > 255u ? 255u : g + (k >> 2);
+                bl = bl + (k >> 1) > 255u ? 255u : bl + (k >> 1);
+            }
+            p[x] = swap16((uint16_t)((r >> 3) << 11 | (g >> 2) << 5 | (bl >> 3)));
+        }
     }
 }
 
@@ -1453,6 +1507,10 @@ static void paint_video_band(int y0, int h, const uint8_t *image)
     int y, x;
     if (!image) {
         memset(cv_px, 0, (uint32_t)h * 240u * sizeof *cv_px);
+        return;
+    }
+    if (block == 1) {                            /* (no PIXEL: smooth) */
+        paint_video_smooth(y0, h, image);
         return;
     }
     for (y = 0; y < h; ++y) {
@@ -1566,6 +1624,16 @@ static void speak(void)
     int i;
     t[0] = 0;
     cat_n(t, APP_NAME ". ");
+    if (vs_get(ST_VMODE) >= VS_NMODE) {          /* (first: a screen reader's message is cut near 240 characters) */
+        const int source = vs_get(ST_VMODE) - VS_NMODE + 1;
+        char u2[12];
+        cat_n(t, "Video frames ");
+        vs_itoa((int)video_rx.frames, u2);
+        cat_n(t, u2);
+        cat_n(t, ", ");
+        cat_n(t, preview_message(source, preview_state(source, plat_ms())));
+        cat_n(t, ". ");
+    }
     cat_n(t, PAGES[set.page].name);
     for (i = 0; i < 4; i++) {
         knob_text(i, n, v);
@@ -1587,12 +1655,6 @@ static void speak(void)
     SPK(", waited ", lk.waited);
     SPK(", syncs ", lk.syncs);
     SPK(". Audio blocks ", ear_blocks_in);
-    if (vs_get(ST_VMODE) >= VS_NMODE) {
-        const int source = vs_get(ST_VMODE) - VS_NMODE + 1;
-        cat_n(t, ". ");
-        cat_n(t, preview_message(source, preview_state(source, plat_ms())));
-        SPK(". Video frames ", video_rx.frames);
-    }
 #undef SPK
     ann_say(t, 0, ANN_NOW);
 }

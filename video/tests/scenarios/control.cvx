@@ -8,7 +8,8 @@ tap ENV
 expect par0 5
 spin PRESET 1
 expect look 1
-expect par0 4
+expect par0 5
+expect par4 0
 tap ENV
 expect par0 5
 sysex F0 7D 43 56 10 00 01 F7
@@ -26,7 +27,7 @@ sysex F0 7D 43 56 10 00 04 00 F7
 expect par0 5
 sysex F0 7D 43 56 10 00 06 02 F7
 expect look 2
-expect par0 8
+expect par0 9
 press SEL
 turn ALGO 1
 release SEL
