@@ -37,9 +37,9 @@ enum { VLINK_OFF = 0, VLINK_ON = 1, VLINK_RESYNC = 2, VLINK_SET = 3, VLINK_SCENE
 enum { VLINK_VIDEO_SIDE = 60, VLINK_VIDEO_PART = 180, VLINK_VIDEO_PARTS = 20 };
 /* the sharp picture (Bluetooth, the source byte's top bit set): a coded frame (app.c codec_decode, the iPhone's
  * VideoCodec): 8 x 8 blocks of the light (120 x 120) as JPEG codes them, only those that changed, each with its
- * colour (2 x 2 of the 30 x 30). Decoded: the light 120 x 120, then Cb 30 x 30, then Cr (128 = none) */
-enum { VLINK_HQ_SIDE = 120, VLINK_HQ_CSIDE = 30, VLINK_HQ_LUMA = 120 * 120,
-       VLINK_HQ_BYTES = 120 * 120 + 2 * 30 * 30, VLINK_CODEC_MAX = 8192, VLINK_BLE_PAYLOAD = 240 };
+ * colour (4 x 4 of the 60 x 60, coded too). Decoded: the light 120 x 120, then Cb 60 x 60, then Cr (128 = none) */
+enum { VLINK_HQ_SIDE = 120, VLINK_HQ_CSIDE = 60, VLINK_HQ_LUMA = 120 * 120,
+       VLINK_HQ_BYTES = 120 * 120 + 2 * 60 * 60, VLINK_CODEC_MAX = 8192, VLINK_BLE_PAYLOAD = 240 };
 #define VLINK_NCHG 24                             /* settings changed a frame, at most (the rest wait a frame) */
 #define VLINK_RAW_MAX (2 + 1 + 4 + 4 + 4 * 8 + 9 + 3 * VS_NNOTE + VS_WAVE_N + VS_NSPEC + 4 + 1 + 3 * VLINK_NCHG)
 #define VLINK_MAX (5 + (VLINK_RAW_MAX * 8 + 6) / 7 + 1)

@@ -179,7 +179,7 @@ static int vcam_on(void) { return VPAR(VMODE) >= VS_NMODE && vcam; }
 void vs_camera(const uint8_t *pic, int sharp) { vcam = pic, vcam_hq = sharp; }
 static void vis_cam_hq(void)                     /* the sharp picture: its light as it is, its colour 30 -> 120 */
 {
-    const uint8_t *cb = vcam + 120 * 120, *cr = cb + 30 * 30;
+    const uint8_t *cb = vcam + 120 * 120, *cr = cb + 60 * 60;
     int x, y, k;
     memcpy(vcy, vcam, sizeof vcy);
     /* the code's 8 x 8 edges smoothed where the step across is small (the code's, not the picture's), as video
@@ -202,13 +202,13 @@ static void vis_cam_hq(void)                     /* the sharp picture: its light
         for (x = 0; x < VF_W; x++)
             EDGE(&vcy[k][x], VF_W);
 #undef EDGE
-    for (y = 0; y < VF_H; y++) {
-        const int fy = y * 64 - 96, i0 = fy < 0 ? 0 : fy >> 8, i1 = i0 + 1 < 30 ? i0 + 1 : 29, wy = fy < 0 ? 0 : fy & 255;
+    for (y = 0; y < VF_H; y++) {                 /* (the colour 60 -> 120: between the two nearest, a half each way) */
+        const int fy = y * 128 - 64, i0 = fy < 0 ? 0 : fy >> 8, i1 = i0 + 1 < 60 ? i0 + 1 : 59, wy = fy < 0 ? 0 : fy & 255;
         for (x = 0; x < VF_W; x++) {
-            const int fx = x * 64 - 96, j0 = fx < 0 ? 0 : fx >> 8, j1 = j0 + 1 < 30 ? j0 + 1 : 29,
+            const int fx = x * 128 - 64, j0 = fx < 0 ? 0 : fx >> 8, j1 = j0 + 1 < 60 ? j0 + 1 : 59,
                       wx = fx < 0 ? 0 : fx & 255;
-#define BQ(P) ((((P[i0 * 30 + j0] * (256 - wx) + P[i0 * 30 + j1] * wx) >> 8) * (256 - wy) + \
-                ((P[i1 * 30 + j0] * (256 - wx) + P[i1 * 30 + j1] * wx) >> 8) * wy) >> 8)
+#define BQ(P) ((((P[i0 * 60 + j0] * (256 - wx) + P[i0 * 60 + j1] * wx) >> 8) * (256 - wy) + \
+                ((P[i1 * 60 + j0] * (256 - wx) + P[i1 * 60 + j1] * wx) >> 8) * wy) >> 8)
             vcb[y][x] = (int8_t)((BQ(cb) - 128) >> 1);
             vcr[y][x] = (int8_t)((BQ(cr) - 128) >> 1);
 #undef BQ

@@ -179,8 +179,8 @@ struct CameraPreview: UIViewRepresentable {
 
 // The sharp picture's code (video/app.c codec_decode on the FM-1): the light 120 x 120 in 8 x 8 blocks as JPEG codes
 // them, only the blocks that changed since the FM-1's copy (every block each 30 frames, and after a frame not
-// answered), each with its colour (four cells of the 30 x 30, a byte each: Cb, Cr nibbles, steps of 8). The scale
-// follows the size: about 11 bytes a block.
+// answered), each with its colour when it moved (its 4 x 4 of the 60 x 60, Cb and Cr each a 4 x 4 DCT). The scale
+// follows the radio: coarser while frames wait for answers, finer while the link is free.
 private struct BitWriter {                         // the first bit the highest; Exp-Golomb codes
     var bytes: [UInt8] = []
     private var acc: UInt32 = 0
@@ -226,10 +226,15 @@ final class VideoCodec {
                                14, 13, 16, 24, 40, 57, 69, 56, 14, 17, 22, 29, 51, 87, 80, 62,
                                18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81, 104, 113, 92,
                                49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99]
+    static let zigzag4: [Int] = [0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15]
+    static let qchroma: [Int] = [17, 18, 24, 47, 18, 21, 26, 66, 24, 26, 56, 99, 47, 66, 99, 99]
     private let table: [Float]                       // [x * 8 + u]: C(u) / 2 cos((2x + 1) u pi / 16)
+    private let table4: [Float]                      // [x * 4 + u]: the 4 x 4's (the colour's)
     private var refLuma = [Float](repeating: -1000, count: 14400)
-    private var refChroma = [UInt8](repeating: 0, count: 900)
-    private var scale = 16
+    private var refChroma = [Float](repeating: -1000, count: 7200)   // (Cb 60 x 60, then Cr: as the FM-1 has them)
+    private var scale = 12
+    private var busy = 0, calm = 0
+    var congested = false                            // (set by the sender: the frames before not answered yet)
     private var count = 0
     var forceKey = true
 
@@ -242,6 +247,14 @@ final class VideoCodec {
             }
         }
         table = t
+        var t4 = [Float](repeating: 0, count: 16)
+        for x in 0..<4 {
+            for u in 0..<4 {
+                let angle: Double = Double((2 * x + 1) * u) * Double.pi / 8.0
+                t4[x * 4 + u] = u == 0 ? 0.5 : Float(0.70710678 * cos(angle))
+            }
+        }
+        table4 = t4
     }
 
     func encode(_ rgba: [UInt8]) -> [UInt8] {
@@ -255,34 +268,37 @@ final class VideoCodec {
         }
         refLuma = result.luma
         refChroma = result.chroma
-        if result.coded > 40 {                       // (about 7 bytes a block: quality and pace together)
-            let perBlock: Int = (result.bytes.count - 33) / result.coded
-            if perBlock > 9 { scale = min(64, scale + scale / 8 + 1) }
-            else if perBlock < 5 { scale = max(6, scale - scale / 10 - 1) }
+        // the quality follows the radio: frames piling up (the sender waits for answers) code coarser; a free link
+        // finer, down to scale 4 (JPEG's quality ~87)
+        if congested { busy += 1 } else { calm += 1 }
+        if busy + calm >= 15 {
+            if busy > 6 { scale = min(64, scale + scale / 8 + 1) }
+            else if busy < 2 { scale = max(4, scale - scale / 10 - 1) }
+            busy = 0
+            calm = 0
         }
         return result.bytes
     }
 
-    private func encodeFrame(_ rgba: [UInt8], key: Bool, scale: Int) -> (bytes: [UInt8], luma: [Float], chroma: [UInt8], coded: Int) {
+    private func encodeFrame(_ rgba: [UInt8], key: Bool, scale: Int) -> (bytes: [UInt8], luma: [Float], chroma: [Float], coded: Int) {
         var luma = [Float](repeating: 0, count: 14400)
-        var cbSum = [Int](repeating: 0, count: 900)
-        var crSum = [Int](repeating: 0, count: 900)
+        var chroma = [Float](repeating: 0, count: 7200)   // (Cb 60 x 60 then Cr, each the mean of 2 x 2)
         for i in 0..<14400 {
             let r: Int = Int(rgba[i * 4]), g: Int = Int(rgba[i * 4 + 1]), b: Int = Int(rgba[i * 4 + 2])
             let y: Int = (77 * r + 150 * g + 29 * b) >> 8
             luma[i] = Float(y)
-            let cell: Int = (i / 480) * 30 + (i % 120) / 4
-            cbSum[cell] += (-43 * r - 85 * g + 128 * b) >> 8
-            crSum[cell] += (128 * r - 107 * g - 21 * b) >> 8
-        }
-        var chroma = [UInt8](repeating: 0x88, count: 900)
-        for c in 0..<900 {
-            let cbN: Int = max(0, min(15, Int((Double(cbSum[c]) / 128.0).rounded()) + 8))
-            let crN: Int = max(0, min(15, Int((Double(crSum[c]) / 128.0).rounded()) + 8))
-            chroma[c] = UInt8(cbN << 4 | crN)
+            let cell: Int = (i / 240) * 60 + (i % 120) / 2
+            chroma[cell] += Float((-43 * r - 85 * g + 128 * b) >> 8) * 0.25
+            chroma[3600 + cell] += Float((128 * r - 107 * g - 21 * b) >> 8) * 0.25
         }
         var step = [Int](repeating: 1, count: 64)
         for k in 0..<64 { step[k] = max(1, (VideoCodec.qbase[k] * scale + 8) / 16) }
+        var cstep = [Int](repeating: 1, count: 16)
+        for k in 0..<16 { cstep[k] = max(1, (VideoCodec.qchroma[k] * scale + 8) / 16) }
+        var prevC = [0, 0]
+        var f4 = [Float](repeating: 0, count: 16)
+        var t4 = [Float](repeating: 0, count: 16)
+        var q4 = [Int](repeating: 0, count: 16)
         var out: [UInt8] = [0, 0, key ? 1 : 0, UInt8(scale)]
         out.append(contentsOf: [UInt8](repeating: 0, count: 29))
         var newLuma = refLuma
@@ -304,23 +320,73 @@ final class VideoCodec {
                     sad += abs(luma[index] - refLuma[index])
                 }
             }
-            var cells = [Int](repeating: 0, count: 4)
-            var colourMoved = false
-            for k in 0..<4 {
-                let c: Int = (2 * by + k / 2) * 30 + 2 * bx + k % 2
-                cells[k] = c
-                let a = Int(chroma[c]), o = Int(refChroma[c])
-                if abs((a >> 4) - (o >> 4)) > 1 || abs((a & 15) - (o & 15)) > 1 { colourMoved = true }
+            var colourDiff: Float = 0                // (its 4 x 4 colour cells against the FM-1's)
+            for comp in 0..<2 {
+                for y in 0..<4 {
+                    for x in 0..<4 {
+                        let c: Int = comp * 3600 + (by * 4 + y) * 60 + bx * 4 + x
+                        colourDiff += abs(chroma[c] - refChroma[c])
+                    }
+                }
             }
+            let colourMoved = colourDiff > Float(4 + scale / 4) * 32
             if !key && sad < threshold && !colourMoved { continue }
             coded += 1
             out[4 + (b >> 3)] |= UInt8(1 << (b & 7))
-            let colour = key || colourMoved || newChroma[cells[0]] == 0   // (the colour only when it moved)
+            let colour = key || colourMoved || refChroma[(by * 4) * 60 + bx * 4] < -500
             writer.put(colour ? 1 : 0, 1)
-            if colour {
-                for c in cells {
-                    writer.put(Int(chroma[c]), 8)
-                    newChroma[c] = chroma[c]
+            if colour {                              // (each plane's 4 x 4 as the light: DCT, quantizer, runs)
+                for comp in 0..<2 {
+                    for y in 0..<4 {
+                        for x in 0..<4 { f4[y * 4 + x] = chroma[comp * 3600 + (by * 4 + y) * 60 + bx * 4 + x] }
+                    }
+                    for y in 0..<4 {
+                        for u in 0..<4 {
+                            var s: Float = 0
+                            for x in 0..<4 { s += table4[x * 4 + u] * f4[y * 4 + x] }
+                            t4[y * 4 + u] = s
+                        }
+                    }
+                    for v in 0..<4 {
+                        for u in 0..<4 {
+                            var s: Float = 0
+                            for y in 0..<4 { s += table4[y * 4 + v] * t4[y * 4 + u] }
+                            let k = v * 4 + u
+                            if k == 0 {
+                                q4[k] = Int((s / Float(cstep[k])).rounded())
+                            } else {
+                                let a = min(1023, Int(abs(s) / Float(cstep[k]) + 0.35))
+                                q4[k] = s >= 0 ? a : -a
+                            }
+                        }
+                    }
+                    writer.seg(q4[0] - prevC[comp])
+                    prevC[comp] = q4[0]
+                    var nz4: [Int] = []
+                    for p in 1..<16 where q4[VideoCodec.zigzag4[p]] != 0 { nz4.append(p) }
+                    writer.eg(nz4.count)
+                    var last4 = 0
+                    for p in nz4 {
+                        let v = q4[VideoCodec.zigzag4[p]]
+                        writer.eg(p - last4 - 1)
+                        writer.eg(abs(v) - 1)
+                        writer.put(v < 0 ? 1 : 0, 1)
+                        last4 = p
+                    }
+                    for v in 0..<4 {                 // (the FM-1's copy: back, as it decodes)
+                        for x in 0..<4 {
+                            var s: Float = 0
+                            for u in 0..<4 { s += table4[x * 4 + u] * Float(q4[v * 4 + u] * cstep[v * 4 + u]) }
+                            t4[v * 4 + x] = s
+                        }
+                    }
+                    for y in 0..<4 {
+                        for x in 0..<4 {
+                            var s: Float = 0
+                            for v in 0..<4 { s += table4[y * 4 + v] * t4[v * 4 + x] }
+                            newChroma[comp * 3600 + (by * 4 + y) * 60 + bx * 4 + x] = max(-128, min(127, s.rounded()))
+                        }
+                    }
                 }
             }
             for y in 0..<8 {                         // forward: across, then down

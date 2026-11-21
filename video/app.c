@@ -262,7 +262,8 @@ static struct {
 static uint8_t lk_buf[VLINK_SYNC_MAX > VLINK_MAX ? VLINK_SYNC_MAX : VLINK_MAX];
 static uint8_t lk_raw[VLINK_SYNC_RAW > VLINK_RAW_MAX ? VLINK_SYNC_RAW : VLINK_RAW_MAX];
 
-static uint8_t video_pixels[2][VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE] PLAT_POOL;
+static uint8_t video_pixels[1][VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE] PLAT_POOL;   /* (one: the room the sharp
+                                                  * picture's colour took) */
 static struct {
     uint32_t shown_ms, part_ms, frames;
     uint8_t front, shown_kind, loading_kind, frame_id, next_part;
@@ -286,7 +287,7 @@ static void receive_video(const uint8_t *p, uint32_t n)
         packet[2] != video_rx.next_part || packet[2] >= VLINK_VIDEO_PARTS)
         return;
     video_rx.part_ms = plat_ms();
-    memcpy(video_pixels[video_rx.front ^ 1u] + packet[2] * VLINK_VIDEO_PART, packet + 3, VLINK_VIDEO_PART);
+    memcpy(video_pixels[0] + packet[2] * VLINK_VIDEO_PART, packet + 3, VLINK_VIDEO_PART);
     if (++video_rx.next_part == VLINK_VIDEO_PARTS) {
         video_rx.front ^= 1u;
         video_rx.shown_kind = packet[0];
@@ -314,7 +315,12 @@ static unsigned video_ble_size;
  * scale (16: JPEG's quality 50), 29 bytes a bit a block (15 x 15, which are in it); then bits, the first the highest,
  * each block in it: a bit (its colour follows: four cells of 30 x 30, 8 bits each, Cb Cr nibbles, steps of 8); its DC
  * against the block before in this frame (signed Exp-Golomb); how many others are not zero (Exp-Golomb); each: the
- * zeros before it in zigzag (Exp-Golomb), its size less one (Exp-Golomb), its sign (a bit) */
+ * zeros before it in zigzag (Exp-Golomb), its size less one (Exp-Golomb), its sign (a bit). The colour (3): its
+ * 4 x 4 cells of the 60 x 60, Cb then Cr, each coded as the light is: a 4 x 4 DCT, JPEG's colour quantizer, DC
+ * against the block before, the rest as runs */
+static const uint8_t ZZ4[16] = {0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15};
+static const uint8_t QC4[16] = {17, 18, 24, 47, 18, 21, 26, 66, 24, 26, 56, 99, 47, 66, 99, 99};
+static float idct4[4][4];
 static const uint8_t ZZ[64] = {0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48,
                                41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23,
                                30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63};
@@ -360,8 +366,8 @@ static int codec_decode(const uint8_t *p, unsigned n)
 {
     static const float C[9] = {1.0f, 0.98078528f, 0.92387953f, 0.83146961f, 0.70710678f, 0.55557023f, 0.38268343f,
                                0.19509032f, 0.0f};
-    uint8_t *luma = video_sharp, *cb = video_sharp + VLINK_HQ_LUMA, *cr = cb + 900;
-    int step[64], b, k, dc = 0;
+    uint8_t *luma = video_sharp, *cb = video_sharp + VLINK_HQ_LUMA, *cr = cb + 3600;
+    int step[64], cstep[16], b, k, dc = 0, cdc[2] = {0, 0};
     if (idct_t[0][0] == 0.0f) {
         int x, u;
         for (x = 0; x < 8; x++)
@@ -371,11 +377,24 @@ static int codec_decode(const uint8_t *p, unsigned n)
                 idct_t[x][u] = u ? 0.5f * c : 0.35355339f;
             }
     }
+    if (idct4[0][0] == 0.0f) {
+        int x, u;
+        for (x = 0; x < 4; x++)
+            for (u = 0; u < 4; u++) {
+                const int m = ((2 * x + 1) * u * 2) & 31;   /* (in 16ths of pi) */
+                const float c = m <= 8 ? C[m] : m <= 16 ? -C[16 - m] : m <= 24 ? -C[m - 16] : C[32 - m];
+                idct4[x][u] = u ? 0.70710678f * c : 0.5f;
+            }
+    }
     if (n < 33 || (unsigned)(p[0] | p[1] << 8) != n || !p[3])
         return 0;
     for (k = 0; k < 64; k++) {
         const int s = (QBASE[k] * p[3] + 8) / 16;
         step[k] = s < 1 ? 1 : s;
+    }
+    for (k = 0; k < 16; k++) {
+        const int s = (QC4[k] * p[3] + 8) / 16;
+        cstep[k] = s < 1 ? 1 : s;
     }
     cbits.p = p + 33, cbits.pos = 0, cbits.end = (n - 33u) * 8u, cbits.bad = 0;
     for (b = 0; b < 225; b++) {
@@ -384,13 +403,44 @@ static int codec_decode(const uint8_t *p, unsigned n)
         int pos = 0, x, y, u, nz;
         if (!(p[4 + (b >> 3)] >> (b & 7) & 1u))
             continue;
-        if (cb_get(1))
-            for (k = 0; k < 4; k++) {           /* (its colour: Cb's nibble, Cr's; 8 = none, steps of 8) */
-                const int c = (2 * by + (k >> 1)) * 30 + 2 * bx + (k & 1);
-                const uint32_t v = cb_get(8);
-                cb[c] = (uint8_t)(128 + ((int)(v >> 4) - 8) * 8);
-                cr[c] = (uint8_t)(128 + ((int)(v & 15u) - 8) * 8);
+        if (cb_get(1)) {                         /* (its colour, coded) */
+            int comp;
+            for (comp = 0; comp < 2; comp++) {
+                uint8_t *pl = comp ? cr : cb;
+                float G[16], H[16];
+                int p4 = 0, n4, x4, y4, u4;
+                memset(G, 0, sizeof G);
+                cdc[comp] += cb_seg();
+                G[0] = (float)(cdc[comp] * cstep[0]);
+                n4 = (int)cb_eg();
+                while (n4-- > 0) {
+                    int v;
+                    p4 += 1 + (int)cb_eg();
+                    v = 1 + (int)cb_eg();
+                    if (cb_get(1))
+                        v = -v;
+                    if (cbits.bad || p4 > 15)
+                        return 0;
+                    G[ZZ4[p4]] = (float)(v * cstep[ZZ4[p4]]);
+                }
+                for (y4 = 0; y4 < 4; y4++)
+                    for (x4 = 0; x4 < 4; x4++) {
+                        float s = 0.0f;
+                        for (u4 = 0; u4 < 4; u4++)
+                            s += idct4[x4][u4] * G[y4 * 4 + u4];
+                        H[y4 * 4 + x4] = s;
+                    }
+                for (y4 = 0; y4 < 4; y4++)
+                    for (x4 = 0; x4 < 4; x4++) {
+                        float s = 128.0f;
+                        int v;
+                        for (u4 = 0; u4 < 4; u4++)
+                            s += idct4[y4][u4] * H[u4 * 4 + x4];
+                        v = (int)(s + 0.5f);
+                        pl[(by * 4 + y4) * 60 + bx * 4 + x4] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+                    }
             }
+        }
         memset(F, 0, sizeof F);
         dc += cb_seg();
         F[0] = (float)(dc * step[0]);
@@ -1910,7 +1960,7 @@ static const uint8_t *live_image(void)
     const int preview = source ? preview_state(source, plat_ms()) : 0;
     live_hq = preview == 4 && video_ble_hq[video_ble_front];
     return preview == 4 ? (live_hq ? video_sharp : video_ble_pixels[0]) :
-           preview == 3 ? video_pixels[video_rx.front] : 0;
+           preview == 3 ? video_pixels[0] : 0;
 }
 
 static void draw_frame(void)                     /* the picture, the bars over it (unless hidden) */

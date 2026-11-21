@@ -274,6 +274,7 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
     // two frames on their way at most (the radio busy while the FM-1 answers the one before); the next goes out as
     // soon as an answer comes (ready)
     private var inFlight: [(id: UInt8, at: TimeInterval)] = []
+    private var blocked = false
     var ready: (() -> Void)?
     private var acks: [TimeInterval] = []
     private let codec = VideoCodec()
@@ -326,6 +327,7 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
         inFlight.removeAll { now - $0.at > 0.5 }
         if inFlight.count < before { codec.forceKey = true }   // (one not answered: every block again)
         if pending.isEmpty && inFlight.count >= 4 {
+            blocked = true
             return (sharpFrame ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
         }
         let limit = min(VideoWire.blePayload, peripheral.maximumWriteValueLength(for: .withoutResponse) - 4)
@@ -334,6 +336,8 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
         while sent < 16 && peripheral.canSendWriteWithoutResponse {   // (as much as the link takes this tick)
             if pending.isEmpty {
                 sharpFrame = pixels.count == VideoWire.sharpRGBA
+                codec.congested = blocked         // (it waited for answers since the last frame)
+                blocked = false
                 pending = sharpFrame ? codec.encode(pixels) : pixels
                 offset = 0
                 frameID &+= 1
