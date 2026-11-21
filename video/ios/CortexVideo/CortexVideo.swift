@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 import AVFoundation
 import AVKit
+import CoreImage
 import CoreTransferable
 import Photos
 import PhotosUI
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct ImportedMovie: Transferable {
@@ -52,8 +54,12 @@ final class Studio: ObservableObject {
     private var nextSample: TimeInterval = 0
     private var active = true
     private var microphoneAllowed = false
+    private var clipBuffer: CVPixelBuffer?
+    private let photoContext = CIContext()
 
     init() {
+        midi.command = { [weak self] cc in self?.remote(cc) }
+        bluetooth.command = { [weak self] cc in self?.remote(cc) }
         camera.frame = { [weak self] frame in
             guard let self, self.source == .camera, !frame.isEmpty else { return }
             self.pixels = frame
@@ -194,6 +200,61 @@ final class Studio: ObservableObject {
         } catch { message = error.localizedDescription }
     }
 
+    // the FM-1's buttons (FM1Remote): REC records, EDIT takes a photo, PLAY starts or stops the camera / the clip
+    func remote(_ cc: UInt8) {
+        switch cc {
+        case FM1Remote.record:
+            if source == .camera { toggleRecording() } else { message = "FM-1: para gravar, abra a câmera." }
+        case FM1Remote.photo: takePhoto()
+        case FM1Remote.run: toggleRunning()
+        default: break
+        }
+    }
+
+    func toggleRunning() {
+        if source == .camera {
+            camera.stop()
+            recording = false
+            changeSource(nil)
+            message = "Câmera parada pelo FM-1."
+        } else if source == .clip, let player {
+            if player.rate == 0 { player.play() } else { player.pause() }
+        } else {
+            Task { await openCamera() }
+        }
+    }
+
+    func takePhoto() {
+        if source == .camera {
+            camera.snapshot { [weak self] buffer in self?.savePhoto(buffer, transform: .identity) }
+        } else if source == .clip {
+            savePhoto(clipBuffer, transform: movieTransform)
+        } else { message = "Abra a câmera ou um vídeo para tirar foto." }
+    }
+
+    private func savePhoto(_ buffer: CVPixelBuffer?, transform: CGAffineTransform) {
+        guard let buffer else { message = "Ainda sem imagem para a foto."; return }
+        let picture = CIImage(cvPixelBuffer: buffer).transformed(by: transform)
+        guard let cgImage = photoContext.createCGImage(picture, from: picture.extent) else {
+            message = "A foto não pôde ser feita."
+            return
+        }
+        let image = UIImage(cgImage: cgImage)
+        Task {
+            let permission = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard permission == .authorized || permission == .limited else {
+                message = "Permita adicionar a Fotos nos Ajustes do iPhone."
+                return
+            }
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                }
+                message = "Foto salva em Fotos."
+            } catch { message = "Fotos não conseguiu salvar a foto. " + error.localizedDescription }
+        }
+    }
+
     func saveToPhotos() async {
         guard let url = lastRecording else { return }
         let permission = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
@@ -217,6 +278,7 @@ final class Studio: ObservableObject {
             let itemTime = videoOutput.itemTime(forHostTime: now)
             if videoOutput.hasNewPixelBuffer(forItemTime: itemTime),
                let buffer = videoOutput.copyPixelBuffer(forItemTime: itemTime, itemTimeForDisplay: nil) {
+                clipBuffer = buffer
                 let sample = sampler.pixels(buffer, transform: movieTransform)
                 if !sample.isEmpty { pixels = sample }
             }
@@ -283,6 +345,9 @@ struct StudioView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(studio.busy || studio.recording)
+                if studio.source != nil {
+                    Button("Tirar foto") { studio.takePhoto() }.buttonStyle(.bordered).disabled(studio.busy)
+                }
                 if studio.source == .camera {
                     Button(studio.recording ? "Parar gravação" : "Gravar vídeo") { studio.toggleRecording() }
                         .buttonStyle(.borderedProminent).tint(.red).disabled(studio.busy)
@@ -294,6 +359,8 @@ struct StudioView: View {
                     }
                     .buttonStyle(.bordered)
                 }
+                Text("No FM-1 (Live Video / Video import): REC grava · EDIT tira foto · PLAY inicia ou para · FX mostra as fotos guardadas no FM-1.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if !studio.message.isEmpty {
                     Text(studio.message).font(.footnote).foregroundStyle(.secondary)
                 }

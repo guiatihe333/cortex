@@ -52,6 +52,7 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private let sampler = FrameSampler()
     private var configured = false
     private var lastFrame: TimeInterval = -.infinity
+    private var latest: CVPixelBuffer?
     var frame: (([UInt8]) -> Void)?
     var finished: ((URL, Error?) -> Void)?
 
@@ -77,6 +78,14 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 && !self.movies.isRecording
             if ready { self.movies.startRecording(to: url, recordingDelegate: self) }
             DispatchQueue.main.async { completion(ready) }
+        }
+    }
+
+    // the newest camera frame (full size, for a photo), handed over on the main queue
+    func snapshot(_ done: @escaping (CVPixelBuffer?) -> Void) {
+        queue.async {
+            let buffer = self.latest
+            DispatchQueue.main.async { done(buffer) }
         }
     }
 
@@ -123,6 +132,7 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         let now = CACurrentMediaTime()
         guard now - lastFrame >= 0.18, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lastFrame = now
+        latest = buffer
         let pixels = sampler.pixels(buffer)
         DispatchQueue.main.async { self.frame?(pixels) }
     }

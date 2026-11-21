@@ -775,8 +775,115 @@ static void undo(void)
     undo_knob = -100;
     say_int("UNDO", undo_n);
 }
+/* the iPhone app's remote (Live Video, Video import): Control Changes on channel 16, over USB and Bluetooth MIDI;
+ * the app answers 102 (its recording on / off), 103 (a photo), 104 (its camera or clip started / stopped) */
+enum { PHONE_REC = 102, PHONE_PHOTO = 103, PHONE_RUN = 104 };
+static void phone_cmd(int cc)
+{
+    plat_midi_send(0x0Bu | 0xBFu << 8 | (uint32_t)cc << 16 | 127u << 24, TO_USB | TO_BLE);
+}
+static int video_mode(void) { return vs_get(ST_VMODE) >= VS_NMODE; }
+
+/* the photos kept on the FM-1: the 60 x 60 picture as it came (RGB332), one a sector of PLAT_XDATA0 (four), the
+ * oldest written over; a sector: "CVP1", its number (the newest the highest), the pixels */
+#define PHOTO_BASE PLAT_XDATA0_LO
+#define PHOTO_N 4
+#define PHOTO_MAGIC 0x31505643u
+#define PHOTO_PIX (VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE)
+_Static_assert(8 + PHOTO_PIX <= 0xF00 && PHOTO_BASE + PHOTO_N * 0x1000u <= PLAT_XDATA0_HI, "photos in XDATA0");
+static uint8_t photo_view;                       /* 0: the live picture; 1 .. : a kept photo (the newest first) */
+static const uint8_t *photo_at(int slot, uint32_t *seq)
+{
+    const uint8_t *f = plat_data(PHOTO_BASE + (uint32_t)slot * 0x1000u);
+    uint32_t m, s;
+    if (!f)
+        return 0;
+    memcpy(&m, f, 4), memcpy(&s, f + 4, 4);
+    if (m != PHOTO_MAGIC)
+        return 0;
+    if (seq)
+        *seq = s;
+    return f + 8;
+}
+static int photo_count(void)
+{
+    int k, n = 0;
+    for (k = 0; k < PHOTO_N; k++)
+        n += photo_at(k, 0) != 0;
+    return n;
+}
+static const uint8_t *photo_nth(int nth)         /* (0: the newest) */
+{
+    int order[PHOTO_N], n = 0, k, j;
+    uint32_t seq[PHOTO_N];
+    for (k = 0; k < PHOTO_N; k++)
+        if (photo_at(k, &seq[n]))
+            order[n++] = k;
+    for (k = 1; k < n; k++)                      /* (newest first) */
+        for (j = k; j > 0 && seq[j] > seq[j - 1]; j--) {
+            const uint32_t s = seq[j]; const int o = order[j];
+            seq[j] = seq[j - 1], order[j] = order[j - 1];
+            seq[j - 1] = s, order[j - 1] = o;
+        }
+    return nth < n ? photo_at(order[nth], 0) : 0;
+}
+static int photo_keep(const uint8_t *pix)
+{
+    static uint8_t buf[8 + PHOTO_PIX] PLAT_POOL;
+    uint32_t best = 0xFFFFFFFFu, top = 0, s, m = PHOTO_MAGIC;
+    int k, slot = 0;
+    for (k = 0; k < PHOTO_N; k++) {
+        if (!photo_at(k, &s)) {
+            if (best) slot = k, best = 0;
+            continue;
+        }
+        if (s > top) top = s;
+        if (s < best) slot = k, best = s;
+    }
+    memcpy(buf, &m, 4);
+    s = top + 1;
+    memcpy(buf + 4, &s, 4);
+    memcpy(buf + 8, pix, PHOTO_PIX);
+    return plat_data_erase(PHOTO_BASE + (uint32_t)slot * 0x1000u) == 0 &&
+           plat_data_write(PHOTO_BASE + (uint32_t)slot * 0x1000u, buf, sizeof buf) == 0;
+}
+static const uint8_t *live_image(void);
+static void phone_photo(void)
+{
+    const uint8_t *pix = live_image();
+    phone_cmd(PHONE_PHOTO);
+    if (!pix) {
+        app_say("PHOTO", "ON THE IPHONE");
+        return;
+    }
+    app_say("PHOTO", photo_keep(pix) ? "IPHONE + FM-1" : "FM-1 FAILED");
+}
+static void photo_next(void)                     /* FX in the video modes: the kept photos, then live again */
+{
+    const int n = photo_count();
+    char t[16] = "PHOTO ";
+    photo_view = (uint8_t)(n ? (photo_view + 1) % (n + 1) : 0);
+    if (!photo_view) {
+        app_say("LIVE", n ? "FX: THE PHOTOS" : "NO PHOTOS KEPT");
+        return;
+    }
+    t[6] = (char)('0' + photo_view), t[7] = 0;
+    cat(t, " OF ");
+    { char d[2] = {(char)('0' + n), 0}; cat(t, d); }
+    app_say(t, "FX: NEXT");
+}
+
 static void rec_toggle(void)
 {
+    if (video_mode()) {                          /* the iPhone records (and the mirror, if it is open) */
+        phone_cmd(PHONE_REC);
+        if (lk.on) {
+            lk.rec = (uint8_t)!lk.rec;
+            lk.rec_ms = plat_ms();
+        }
+        app_say("REC", lk.on ? (lk.rec ? "IPHONE + PC ON" : "IPHONE + PC OFF") : "IPHONE");
+        return;
+    }
     if (!lk.on) {
         app_say("NO MIRROR", "OPEN IT ON THE PC");
         return;
@@ -925,13 +1032,24 @@ static void input(void)
         ui.act_t = now;
         switch (k) {
         case B_REC: rec_toggle(); break;
-        case B_PLAY: ui.hold = (uint8_t)!ui.hold; app_say("STRUCTURE", ui.hold ? "HELD" : "FREE"); break;
-        case B_EDIT: ui.mutate = 3; app_say("VISUAL", "NEW STRUCTURE"); break;
+        case B_PLAY:
+            if (video_mode()) {
+                phone_cmd(PHONE_RUN);
+                app_say("VIDEO", "IPHONE: START / STOP");
+                break;
+            }
+            ui.hold = (uint8_t)!ui.hold; app_say("STRUCTURE", ui.hold ? "HELD" : "FREE"); break;
+        case B_EDIT:
+            if (video_mode()) {
+                phone_photo();
+                break;
+            }
+            ui.mutate = 3; app_say("VISUAL", "NEW STRUCTURE"); break;
         case B_LFO: ui.mutate = 1; app_say("MUTATE", "A NUDGE"); break;
         case B_ENV: undo(); break;
         case B_GLO: ui.glo_t = now, ui.glo_used = 0; break;
         case B_SAVE: save_all(); break;
-        case B_FX: tap(); break;
+        case B_FX: if (video_mode()) photo_next(); else tap(); break;
         case B_HOME: ui.home_t = now, ui.home_done = 0; break;
         case B_OCTDN: page_go(-1); break;
         case B_OCTUP: page_go(1); break;
@@ -1561,6 +1679,13 @@ static const char *preview_message(int source, int state)
     }
 }
 
+static const uint8_t *live_image(void)
+{
+    const int source = video_mode() ? vs_get(ST_VMODE) - VS_NMODE + 1 : 0;
+    const int preview = source ? preview_state(source, plat_ms()) : 0;
+    return preview == 4 ? video_ble_pixels[video_ble_front] : preview == 3 ? video_pixels[video_rx.front] : 0;
+}
+
 static void draw_frame(void)                     /* the picture, the bars over it (unless hidden) */
 {
     static const int16_t BY[4] = {0, HDR_H, HDR_H + 72, KNB_Y}, BH[4] = {HDR_H, 72, 72, KNB_H};
@@ -1570,8 +1695,9 @@ static void draw_frame(void)                     /* the picture, the bars over i
                                      (bars == 2 ? idle > 1500u : bars == 1 ? idle > (uint32_t)vs_get(ST_VDELAY) * 1000u : 0));
     const int source = vs_get(ST_VMODE) >= VS_NMODE ? vs_get(ST_VMODE) - VS_NMODE + 1 : 0;
     const int preview = source ? preview_state(source, plat_ms()) : 0;
-    const uint8_t *image = preview == 4 ? video_ble_pixels[video_ble_front] :
-                           preview == 3 ? video_pixels[video_rx.front] : 0;
+    const uint8_t *image = source && photo_view ? photo_nth(photo_view - 1) : 0;
+    if (!image)
+        image = preview == 4 ? video_ble_pixels[video_ble_front] : preview == 3 ? video_pixels[video_rx.front] : 0;
     int b;
     uint32_t t = plat_ticks24(), lw, pt = 0;
     if (image)
