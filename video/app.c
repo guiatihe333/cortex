@@ -305,6 +305,8 @@ static uint16_t video_ble_offset;
 static uint8_t video_ble_id, video_ble_kind, video_ble_front;
 static uint8_t video_ble_pixels[2][VLINK_HQ_BYTES] PLAT_POOL;   /* (60 x 60 RGB332, or the sharp picture) */
 static uint8_t video_ble_hq[2], video_ble_sharp;
+static volatile uint32_t video_ble_taken, video_ble_full;   /* (diagnostics: packets queued, refused: the queue full) */
+static uint32_t video_ble_bad;                   /* (packets out of order: a frame lost) */
 static uint8_t video_ble_shown_kind;
 static uint32_t video_ble_part_ms;
 
@@ -316,8 +318,13 @@ int app_ble_video_write(const uint8_t *data, uint16_t length)
 {
     const uint8_t w = video_ble_write, next = (w + 1u) & (VIDEO_BLE_QUEUE - 1u);
     if (!video_ble_mode || length <= VIDEO_BLE_HEADER || length > sizeof video_ble_queue[w].data ||
-        (data[0] & 0x7Fu) != video_ble_mode || next == video_ble_read)
+        (data[0] & 0x7Fu) != video_ble_mode)
         return 0;
+    if (next == video_ble_read) {
+        video_ble_full++;
+        return 0;
+    }
+    video_ble_taken++;
     memcpy(video_ble_queue[w].data, data, length);
     video_ble_queue[w].size = (uint8_t)length;
     __asm__ volatile("" ::: "memory");
@@ -351,6 +358,8 @@ static void video_ble_poll(uint32_t now)
                 video_ble_id = data[1];
                 video_ble_offset = 0;
             }
+            if (offset && !(video_ble_kind == mode && data[1] == video_ble_id && offset == video_ble_offset))
+                video_ble_bad++;
             if (video_ble_kind == mode && data[1] == video_ble_id && offset == video_ble_offset) {
                 memcpy(video_ble_pixels[video_ble_front ^ 1u] + offset, data + VIDEO_BLE_HEADER, count);
                 video_ble_offset = (uint16_t)(offset + count);
@@ -358,6 +367,9 @@ static void video_ble_poll(uint32_t now)
                 if (video_ble_offset == size && video_ble_sharp == data[0] >> 7) {
                     video_ble_hq[video_ble_front ^ 1u] = video_ble_sharp;
                     video_ble_front ^= 1u;
+                    /* the frame whole: the app may send the next (CC 105, its number; flow control: no queue
+                     * piles up between the phone and the picture, so no delay) */
+                    plat_midi_send(0x0Bu | 0xBFu << 8 | 105u << 16 | (uint32_t)(video_ble_id & 127u) << 24, TO_BLE_HOST);
                     video_ble_shown_kind = mode;
                     video_rx.frames++;
                 }
@@ -1851,6 +1863,20 @@ static void speak(void)
         cat_n(t, u2);
         cat_n(t, ", ");
         cat_n(t, preview_message(source, preview_state(source, plat_ms())));
+        {
+            uint32_t v[7];
+            plat_ble_link_info(v);
+            cat_n(t, ". BLE packets ");
+            vs_itoa((int)video_ble_taken, u2), cat_n(t, u2);
+            cat_n(t, " full ");
+            vs_itoa((int)video_ble_full, u2), cat_n(t, u2);
+            cat_n(t, " lost ");
+            vs_itoa((int)video_ble_bad, u2), cat_n(t, u2);
+            cat_n(t, " interval ");
+            vs_itoa((int)v[2], u2), cat_n(t, u2);
+            cat_n(t, " mtu ");
+            vs_itoa((int)v[1], u2), cat_n(t, u2);
+        }
         cat_n(t, ". ");
     }
     cat_n(t, PAGES[set.page].name);

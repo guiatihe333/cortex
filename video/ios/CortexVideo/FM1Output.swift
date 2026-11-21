@@ -269,6 +269,11 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
     private let midiDataID = CBUUID(string: "7772E5DB-3868-4112-A1A9-F2669D106BF3")
     var command: ((UInt8) -> Void)?
     var receivedBLE: (([UInt8]) -> Void)?
+    // flow control: after a whole frame, wait for the FM-1's CC 105 (that frame's number) before the next, so no
+    // queue piles up between the camera and the picture; an old FM-1 (none) after 0.4 s
+    private var waitingAck: UInt8?
+    private var sentAt: TimeInterval = 0
+    private var acks: [TimeInterval] = []
     private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var characteristic: CBCharacteristic?
@@ -310,6 +315,13 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
             return "Buscando FM-1 · selecione Live Video ou Video import. no aparelho."
         }
         guard let pixels else { return "FM-1 conectado por Bluetooth." }
+        let now = CACurrentMediaTime()
+        acks.removeAll { now - $0 > 2 }
+        let rate = String(format: " · %.1f q/s", Double(acks.count) / 2)
+        if waitingAck != nil, pending.isEmpty, now - sentAt < 0.4 {
+            return (pixels.count == VideoWire.sharpBytes ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
+        }
+        waitingAck = nil
         let limit = min(VideoWire.partSize, peripheral.maximumWriteValueLength(for: .withoutResponse) - 4)
         guard limit > 0 else { return "O FM-1 não aceitou pacotes de vídeo Bluetooth." }
         var sent = 0
@@ -326,10 +338,14 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
             peripheral.writeValue(payload, for: characteristic, type: .withoutResponse)
             offset += count
             sent += 1
-            if offset == pending.count { pending = []; break }
+            if offset == pending.count {
+                pending = []
+                waitingAck = frameID & 127
+                sentAt = now
+                break
+            }
         }
-        return pixels.count == VideoWire.sharpBytes ? "Enviando por Bluetooth · nítido 120 × 120."
-                                                     : "Enviando por Bluetooth · 60 × 60."
+        return (pixels.count == VideoWire.sharpBytes ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
     }
 
     private func scan() {
@@ -400,6 +416,14 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil, characteristic.uuid == midiDataID, let value = characteristic.value else { return }
         let bytes = [UInt8](value)
+        if bytes.count >= 3 {
+            for index in 0..<(bytes.count - 2) where bytes[index] == 0xBF && bytes[index + 1] == 105 {
+                if let waiting = waitingAck, bytes[index + 2] == waiting {
+                    waitingAck = nil
+                    acks.append(CACurrentMediaTime())
+                }
+            }
+        }
         receivedBLE?(bytes)
         FM1Remote.commands(bytes).forEach { command?($0) }
     }
