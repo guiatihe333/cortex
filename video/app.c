@@ -2006,8 +2006,19 @@ static void speak(void)
             plat_ble_link_info(v);
             cat_n(t, ". BLE packets ");
             vs_itoa((int)video_ble_taken, u2), cat_n(t, u2);
-            cat_n(t, " full ");
-            vs_itoa((int)video_ble_full, u2), cat_n(t, u2);
+#ifndef PLAT_HOST
+            {
+                extern uint32_t ble_hw_rx_data, ble_hw_rx_md, ble_hw_multi_evt, ble_hw_most_evt;
+                cat_n(t, " md ");
+                vs_itoa((int)ble_hw_rx_md, u2), cat_n(t, u2);
+                cat_n(t, "/");
+                vs_itoa((int)ble_hw_rx_data, u2), cat_n(t, u2);
+                cat_n(t, " multi ");
+                vs_itoa((int)ble_hw_multi_evt, u2), cat_n(t, u2);
+                cat_n(t, " most ");
+                vs_itoa((int)ble_hw_most_evt, u2), cat_n(t, u2);
+            }
+#endif
             cat_n(t, " lost ");
             vs_itoa((int)video_ble_bad, u2), cat_n(t, u2);
             cat_n(t, " interval ");

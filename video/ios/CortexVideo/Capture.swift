@@ -140,7 +140,7 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         let now = CACurrentMediaTime()
-        guard now - lastFrame >= 0.06, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        guard now - lastFrame >= 0.03, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lastFrame = now
         latest = buffer
         let pixels = sampler.pixels(buffer)

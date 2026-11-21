@@ -929,6 +929,10 @@ static void hw_rx_adv_late(void)
 }
 
 /* new packets in the RX buffers, in the engine's order (HW §8 IRQ 29 steps 2-4) */
+/* (diagnostics for an app: good data PDUs received, those whose MD said the central had more, events with two or
+ * more of them, the most in one event) */
+uint32_t ble_hw_rx_data, ble_hw_rx_md, ble_hw_multi_evt, ble_hw_most_evt;
+static uint32_t hw_rx_in_evt;
 static void hw_rx_service(void)
 {
     uint8_t g = drv.gen;
@@ -975,6 +979,11 @@ static void hw_rx_service(void)
             BLE_DG(ble_dg.rx_repeat++);
         } else {
             uint8_t *pdu = &bb.rx[b].buf[HW_SWHDR - 2u];
+            if (dh >> 8) {
+                ble_hw_rx_data++;
+                ble_hw_rx_md += dh >> 4 & 1u;
+            }
+            hw_rx_in_evt++;
             drv.rx_sn ^= 1u;
             ble_hw_stat.rx++;
             BLE_DG(ble_dg.rx_good++);
@@ -1070,6 +1079,11 @@ static void hw_event_service(void)
         ble_diag_ev(BDE_FIRST_EVT, counter);
     }
     drv.last_evt = counter;
+    if (hw_rx_in_evt >= 2u)
+        ble_hw_multi_evt++;
+    if (hw_rx_in_evt > ble_hw_most_evt)
+        ble_hw_most_evt = hw_rx_in_evt;
+    hw_rx_in_evt = 0;
     ble_hw_stat.events++;
     BLE_DG(ble_dg.conn_events++);
     BLE_DG(ble_dg.last_evt = counter);

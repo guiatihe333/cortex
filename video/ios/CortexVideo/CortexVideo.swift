@@ -292,7 +292,7 @@ final class Studio: ObservableObject {
         guard active else { return }
         let now = CACurrentMediaTime()
         if source == .clip, now >= nextSample, let videoOutput {
-            nextSample = now + 0.06
+            nextSample = now + 0.03
             let itemTime = videoOutput.itemTime(forHostTime: now)
             if videoOutput.hasNewPixelBuffer(forItemTime: itemTime),
                let buffer = videoOutput.copyPixelBuffer(forItemTime: itemTime, itemTimeForDisplay: nil) {
