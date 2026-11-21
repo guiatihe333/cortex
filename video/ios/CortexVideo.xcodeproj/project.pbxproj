@@ -17,6 +17,7 @@
 INFOPLIST_KEY_CFBundleDisplayName = "Cortex Video";
 INFOPLIST_KEY_NSCameraUsageDescription = "A câmera fornece vídeo ao Cortex Video e ao FM-1.";
 INFOPLIST_KEY_NSMicrophoneUsageDescription = "Use o microfone no áudio das gravações.";
+INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Envie a prévia de vídeo ao FM-1 sem cabo.";
 INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Salve gravações na biblioteca de Fotos.";
 INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -27,6 +28,7 @@ SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; TARGETED_DEVICE_FAMILY = 1;}; 
 INFOPLIST_KEY_CFBundleDisplayName = "Cortex Video";
 INFOPLIST_KEY_NSCameraUsageDescription = "A câmera fornece vídeo ao Cortex Video e ao FM-1.";
 INFOPLIST_KEY_NSMicrophoneUsageDescription = "Use o microfone no áudio das gravações.";
+INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Envie a prévia de vídeo ao FM-1 sem cabo.";
 INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Salve gravações na biblioteca de Fotos.";
 INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;

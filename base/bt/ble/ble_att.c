@@ -27,7 +27,28 @@ static const uint8_t ATT_BASE[16] = {0xFB, 0x34, 0x9B, 0x5F, 0x80, 0x00, 0x00, 0
                                      0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 enum { H_GAP = 1, H_NAME_D, H_NAME, H_APP_D, H_APP, H_PPCP_D, H_PPCP, H_GATT, H_SC_D, H_SC, H_SC_CCC, H_MIDI,
-       H_MIDI_D, H_MIDI_IO, H_MIDI_CCC, H_LAST = H_MIDI_CCC };
+       H_MIDI_D, H_MIDI_IO, H_MIDI_CCC,
+#ifdef APP_BLE_VIDEO
+       H_VIDEO, H_VIDEO_D, H_VIDEO_IO, H_LAST = H_VIDEO_IO
+#else
+       H_LAST = H_MIDI_CCC
+#endif
+};
+#ifdef APP_BLE_VIDEO
+static const uint8_t ATT_UUID_VIDEO_IO[16] = {APP_BLE_VIDEO_VALUE};
+static const uint8_t V_VIDEO[] = {APP_BLE_VIDEO_SERVICE};
+static const uint8_t V_VIDEO_D[] = {0x0C, H_VIDEO_IO, 0, APP_BLE_VIDEO_VALUE};
+#endif
+
+static const uint8_t *att_uuid128(uint16_t handle)
+{
+#ifdef APP_BLE_VIDEO
+    if (handle == H_VIDEO_IO) return ATT_UUID_VIDEO_IO;
+#else
+    (void)handle;
+#endif
+    return ATT_UUID_MIDI_IO;
+}
 enum { A_R = 1, A_W = 2, A_SVC = 4, A_128 = 8 };   /* readable, writable, a service declaration, 128-bit type */
 enum { ATT_ERR_HANDLE = 0x01, ATT_ERR_READ = 0x02, ATT_ERR_WRITE = 0x03, ATT_ERR_PDU = 0x04, ATT_ERR_AUTHEN = 0x05,
        ATT_ERR_NOT_SUPP = 0x06, ATT_ERR_OFFSET = 0x07, ATT_ERR_NOT_FOUND = 0x0A, ATT_ERR_VAL_LEN = 0x0D,
@@ -65,6 +86,11 @@ static const struct {
     {0x2803, A_R, 19, V_MIDI_D},
     {0, A_R | A_W | A_128, 0, 0},
     {0x2902, A_R | A_W, 2, 0},
+#ifdef APP_BLE_VIDEO
+    {0x2800, A_R | A_SVC, 16, V_VIDEO},
+    {0x2803, A_R, 19, V_VIDEO_D},
+    {0, A_W | A_128, 0, 0},
+#endif
 };
 
 static struct {
@@ -145,7 +171,7 @@ static uint16_t att_uuid16(const uint8_t *u, uint16_t n)
 static int att_type_is(uint16_t h, const uint8_t *u, uint16_t n)
 {
     if (ATT_DB[h].flags & A_128)
-        return n == 16u && ble_eq(u, ATT_UUID_MIDI_IO, 16);
+        return n == 16u && ble_eq(u, att_uuid128(h), 16);
     return ATT_DB[h].type == att_uuid16(u, n) && ATT_DB[h].type;
 }
 
@@ -183,7 +209,7 @@ static void att_find_info(const uint8_t *p)
             break;
         ble_wr16(batt.buf + k, h);
         if (fmt == 2u)
-            ble_cpy(batt.buf + k + 2u, ATT_UUID_MIDI_IO, 16);
+            ble_cpy(batt.buf + k + 2u, att_uuid128(h), 16);
         else
             ble_wr16(batt.buf + k + 2u, ATT_DB[h].type);
         k = (uint16_t)(k + 2u + ul);
@@ -331,6 +357,15 @@ static uint8_t att_write(uint16_t h, const uint8_t *v, uint16_t n)
         return ATT_ERR_WRITE;
     if (att_need_enc(h))
         return ATT_ERR_AUTHEN;
+#ifdef APP_BLE_VIDEO
+    if (h == H_VIDEO_IO) {
+        if (!app_ble_video_write(v, n))
+            return ATT_ERR_VAL_LEN;
+        if (!v[2] && !v[3])
+            ble_sig_want_fast();
+        return 0;
+    }
+#endif
     if (h == H_MIDI_IO) {
         ble_att_midi_packet(v, n);
         return 0;

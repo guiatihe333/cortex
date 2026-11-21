@@ -37,6 +37,12 @@ final class Studio: ObservableObject {
 
     let camera = CameraCapture()
     private let midi = FM1Output()
+    private let bluetooth = BluetoothVideoOutput()
+    @Published var useBluetooth = true {
+        didSet {
+            if useBluetooth { midi.stop() } else { bluetooth.stop() }
+        }
+    }
     private let sampler = FrameSampler()
     private var videoOutput: AVPlayerItemVideoOutput?
     private var movieURL: URL?
@@ -164,6 +170,7 @@ final class Studio: ObservableObject {
         pixels = nil
         nextSample = 0
         midi.changeSource(newSource)
+        bluetooth.changeSource(newSource)
     }
 
     func toggleRecording() {
@@ -214,7 +221,7 @@ final class Studio: ObservableObject {
                 if !sample.isEmpty { pixels = sample }
             }
         }
-        let current = midi.step(pixels, now: now)
+        let current = useBluetooth ? bluetooth.step(pixels) : midi.step(pixels, now: now)
         if current != status { status = current }
     }
 
@@ -228,6 +235,7 @@ final class Studio: ObservableObject {
             player?.pause()
             camera.stop()
             midi.stop()
+            bluetooth.stop()
             pixels = nil
         }
     }
@@ -252,6 +260,11 @@ struct StudioView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("CORTEX VIDEO").font(.title2.bold())
+                Picker("Conexão com FM-1", selection: $studio.useBluetooth) {
+                    Text("Bluetooth").tag(true)
+                    Text("USB").tag(false)
+                }
+                .pickerStyle(.segmented)
                 Text(studio.status).font(.subheadline).foregroundStyle(.secondary)
                 ZStack {
                     Rectangle().fill(.black)

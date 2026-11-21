@@ -36,5 +36,14 @@ void app_say(const char *a, const char *b);
 int app_sysex(const uint8_t *p, uint32_t n);
 
 /* the host simulator's checks (expect): page, parN (a setting), link, rec, frames, sent, held, scene, bpm */
+/* The Cortex preview service is advertised only while an external Visual is selected. */
+#define APP_BLE_VIDEO
+#define APP_BLE_AT_BOOT 0
+#define APP_BLE_STORE
+#define BLE_DEVICE_NAME "Cortex Video"
+#define APP_BLE_VIDEO_SERVICE 0x01,0x4E,0x3B,0x22,0xF7,0x78,0x06,0x9C,0xE1,0x47,0x64,0xA8,0x2E,0x15,0x5F,0xC0
+#define APP_BLE_VIDEO_VALUE   0x02,0x4E,0x3B,0x22,0xF7,0x78,0x06,0x9C,0xE1,0x47,0x64,0xA8,0x2E,0x15,0x5F,0xC0
+int app_ble_video_write(const uint8_t *data, uint16_t length);
+
 #define APP_HOST_EXPECT
 int app_expect(const char *what, int *got);

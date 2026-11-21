@@ -258,7 +258,7 @@ static uint8_t lk_raw[VLINK_SYNC_RAW > VLINK_RAW_MAX ? VLINK_SYNC_RAW : VLINK_RA
 
 static uint8_t video_pixels[2][VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE] PLAT_POOL;
 static struct {
-    uint32_t shown_ms;
+    uint32_t shown_ms, part_ms, frames;
     uint8_t front, shown_kind, loading_kind, frame_id, next_part;
 } video_rx;
 
@@ -279,11 +279,83 @@ static void receive_video(const uint8_t *p, uint32_t n)
     if (packet[0] != video_rx.loading_kind || packet[1] != video_rx.frame_id ||
         packet[2] != video_rx.next_part || packet[2] >= VLINK_VIDEO_PARTS)
         return;
+    video_rx.part_ms = plat_ms();
     memcpy(video_pixels[video_rx.front ^ 1u] + packet[2] * VLINK_VIDEO_PART, packet + 3, VLINK_VIDEO_PART);
     if (++video_rx.next_part == VLINK_VIDEO_PARTS) {
         video_rx.front ^= 1u;
         video_rx.shown_kind = packet[0];
-        video_rx.shown_ms = plat_ms();
+        video_rx.shown_ms = video_rx.part_ms;
+        video_rx.frames++;
+    }
+}
+
+/* Cortex BLE preview: source, frame ID, little-endian byte offset, up to 180 RGB332 pixels. */
+#define VIDEO_BLE_QUEUE 8u
+#define VIDEO_BLE_HEADER 4u
+static struct {
+    uint8_t size, data[VIDEO_BLE_HEADER + VLINK_VIDEO_PART];
+} video_ble_queue[VIDEO_BLE_QUEUE] PLAT_POOL;
+static volatile uint8_t video_ble_write, video_ble_read, video_ble_mode;
+static uint16_t video_ble_offset;
+static uint8_t video_ble_id, video_ble_kind, video_ble_front;
+static uint8_t video_ble_pixels[2][VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE] PLAT_POOL;
+static uint8_t video_ble_shown_kind;
+static uint32_t video_ble_part_ms;
+
+int app_ble_load(struct plat_ble_rec *record) { (void)record; return 0; }
+int app_ble_save(const struct plat_ble_rec *record) { (void)record; return 0; }
+
+/* BLE IRQ writes to the queue. Frame assembly and rendering stay in the main loop. */
+int app_ble_video_write(const uint8_t *data, uint16_t length)
+{
+    const uint8_t w = video_ble_write, next = (w + 1u) & (VIDEO_BLE_QUEUE - 1u);
+    if (!video_ble_mode || length <= VIDEO_BLE_HEADER || length > sizeof video_ble_queue[w].data ||
+        data[0] != video_ble_mode || next == video_ble_read)
+        return 0;
+    memcpy(video_ble_queue[w].data, data, length);
+    video_ble_queue[w].size = (uint8_t)length;
+    __asm__ volatile("" ::: "memory");
+    video_ble_write = next;
+    return 1;
+}
+static void video_ble_poll(uint32_t now)
+{
+    const int visual = vs_get(ST_VMODE);
+    const uint8_t mode = visual >= VS_NMODE ? (uint8_t)(visual - VS_NMODE + 1) : 0;
+    unsigned budget = VIDEO_BLE_QUEUE;
+    if (mode != video_ble_mode) {
+        const int radio_change = (mode == 0) != (video_ble_mode == 0);
+        video_ble_mode = mode;
+        video_ble_read = video_ble_write;
+        video_ble_kind = video_ble_shown_kind = 0;
+        if (radio_change)
+            plat_ble_enable(mode != 0);
+    }
+    while (budget-- && video_ble_read != video_ble_write) {
+        const uint8_t r = video_ble_read;
+        const uint8_t *data = video_ble_queue[r].data;
+        const unsigned offset = (unsigned)data[2] | (unsigned)data[3] << 8;
+        const unsigned count = video_ble_queue[r].size - VIDEO_BLE_HEADER;
+        __asm__ volatile("" ::: "memory");
+        if (data[0] == mode && offset + count <= sizeof video_ble_pixels[0]) {
+            if (!offset) {
+                video_ble_kind = mode;
+                video_ble_id = data[1];
+                video_ble_offset = 0;
+            }
+            if (video_ble_kind == mode && data[1] == video_ble_id && offset == video_ble_offset) {
+                memcpy(video_ble_pixels[video_ble_front ^ 1u] + offset, data + VIDEO_BLE_HEADER, count);
+                video_ble_offset = (uint16_t)(offset + count);
+                video_ble_part_ms = now;
+                if (video_ble_offset == sizeof video_ble_pixels[0]) {
+                    video_ble_front ^= 1u;
+                    video_ble_shown_kind = mode;
+                    video_rx.frames++;
+                }
+            }
+        }
+        __asm__ volatile("" ::: "memory");
+        video_ble_read = (r + 1u) & (VIDEO_BLE_QUEUE - 1u);
     }
 }
 
@@ -1375,12 +1447,11 @@ static void prepare_video_palette(void)
     }
 }
 
-static void paint_video_band(int y0, int h, int ready)
+static void paint_video_band(int y0, int h, const uint8_t *image)
 {
-    const uint8_t *image = video_pixels[video_rx.front];
     const int size = VLINK_VIDEO_SIDE, mirror = VPAR(VMIRROR), block = 1 + VPAR(VPIXEL) / 15;
     int y, x;
-    if (!ready) {
+    if (!image) {
         memset(cv_px, 0, (uint32_t)h * 240u * sizeof *cv_px);
         return;
     }
@@ -1405,6 +1476,33 @@ static void paint_video_band(int y0, int h, int ready)
     }
 }
 
+static int preview_state(int source, uint32_t now)
+{
+    const int ble_recent = video_ble_kind == source && now - video_ble_part_ms < 1500u;
+    if (video_ble_shown_kind == source && ble_recent)
+        return 4;
+    if (lk.on && video_rx.shown_kind == source && now - video_rx.shown_ms < 1500u)
+        return 3;
+    if (ble_recent)
+        return 2;
+    if (!lk.on)
+        return 0;
+    if (video_rx.loading_kind == source && now - video_rx.part_ms < 1500u)
+        return 2;                         /* the source is sending parts */
+    return 1;                             /* session, but no recent matching video */
+}
+
+static const char *preview_message(int source, int state)
+{
+    switch (state) {
+    case 0: return "Aguardando Bluetooth ou USB";
+    case 1: return source == 1 ? "USB: abra a camera" : "USB: importe um video";
+    case 2: return "Video: quadro incompleto";
+    case 4: return "Bluetooth: video ativo";
+    default: return "USB: video ativo";
+    }
+}
+
 static void draw_frame(void)                     /* the picture, the bars over it (unless hidden) */
 {
     static const int16_t BY[4] = {0, HDR_H, HDR_H + 72, KNB_Y}, BH[4] = {HDR_H, 72, 72, KNB_H};
@@ -1413,10 +1511,12 @@ static void draw_frame(void)                     /* the picture, the bars over i
               hide = ui.hide_now || (plat_ms() >= ui.msg_until &&
                                      (bars == 2 ? idle > 1500u : bars == 1 ? idle > (uint32_t)vs_get(ST_VDELAY) * 1000u : 0));
     const int source = vs_get(ST_VMODE) >= VS_NMODE ? vs_get(ST_VMODE) - VS_NMODE + 1 : 0;
-    const int video_ready = source && lk.on && video_rx.shown_kind == source && plat_ms() - video_rx.shown_ms < 1500u;
+    const int preview = source ? preview_state(source, plat_ms()) : 0;
+    const uint8_t *image = preview == 4 ? video_ble_pixels[video_ble_front] :
+                           preview == 3 ? video_pixels[video_rx.front] : 0;
     int b;
     uint32_t t = plat_ticks24(), lw, pt = 0;
-    if (video_ready)
+    if (image)
         prepare_video_palette();
     lcd_sync();
     lw = plat_ticks24() - t;
@@ -1424,7 +1524,7 @@ static void draw_frame(void)                     /* the picture, the bars over i
         t = plat_ticks24();
         cv_begin_pingpong(240, (uint32_t)BH[b], (uint32_t)b);
         if (source)
-            paint_video_band(BY[b], BH[b], video_ready);
+            paint_video_band(BY[b], BH[b], image);
         else
             vs_paint(BY[b], BH[b], cv_px);
         if (!hide && b == 0) {
@@ -1434,8 +1534,8 @@ static void draw_frame(void)                     /* the picture, the bars over i
             dim(cv_px, 240u * KNB_H);
             draw_knobs();
         } else if (b == 1 || b == 2) {
-            if (b == 1 && source && !video_ready && !ui.map_on)
-                cv_text(12, 24, &FONT_XS, source == 1 ? "PC: open camera" : "PC: import video", C_GRAY);
+            if (b == 1 && source && !image && !ui.map_on)
+                cv_text(12, 24, &FONT_XS, preview_message(source, preview), C_GRAY);
             draw_overlay(BY[b], BH[b]);
         }
         pt += plat_ticks24() - t;
@@ -1487,6 +1587,12 @@ static void speak(void)
     SPK(", waited ", lk.waited);
     SPK(", syncs ", lk.syncs);
     SPK(". Audio blocks ", ear_blocks_in);
+    if (vs_get(ST_VMODE) >= VS_NMODE) {
+        const int source = vs_get(ST_VMODE) - VS_NMODE + 1;
+        cat_n(t, ". ");
+        cat_n(t, preview_message(source, preview_state(source, plat_ms())));
+        SPK(". Video frames ", video_rx.frames);
+    }
 #undef SPK
     ann_say(t, 0, ANN_NOW);
 }
@@ -1545,6 +1651,7 @@ void app_frame(void)
 {
     const uint32_t now = plat_ms();
     input();
+    video_ble_poll(now);
     if (now - ui.frame_t >= 30u) {               /* every second pass of the main loop (16 ms): ~31 frames a second when
                                                   * a frame takes under 30 ms; the motion goes by the clock (vsynth.c) */
         int16_t saved[ST_N];

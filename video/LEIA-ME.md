@@ -32,6 +32,8 @@ O FM-1 como video synth reativo ao áudio, e só isso: sem vozes, sem fita, sem 
   Na página **VISUAL**, gire K1 até **Live Video** para câmera ou **Video import.** para clipe. Escolha a fonte
   correspondente no espelho. O PC aplica os efeitos da entrada e envia uma prévia colorida de 60 × 60 para
   a tela do FM-1. O espelho continua com a saída de gravação em resolução maior.
+  O mesmo envio USB-MIDI funciona com o app no iPhone ligado diretamente. A tela indica quando ainda não há
+  link MIDI, quando falta abrir a fonte ou quando estão chegando partes sem um quadro completo.
 - **Efeitos:** o espelhamento dobra a imagem em duas ou quatro partes. **Rastro de vídeo** realimenta a imagem
   anterior e **Zoom do rastro** faz o eco expandir ou contrair. Com o FM-1 conectado e sincronizado, a síntese
   forma uma segunda camada, com intensidade e mistura **Sobrepor**, **Trama**, **Diferença** ou **Multiplicar**.

@@ -19,3 +19,11 @@ A câmera e o player trabalham enquanto o app está em primeiro plano. Os efeito
 
 USB-MIDI SysEx conforme `video/vlink.h` do Cortex Video. O app ativa a sessão, seleciona o visual 9 ou 10, mantém a conexão e transmite quadros RGB332 divididos em 20 partes. O FM‑1 mostra o último quadro completo da fonte selecionada.
 
+
+
+## Bluetooth
+
+No FM-1 selecione VISUAL → Live Video para câmera ou Video import. para clipe. Isso abre o serviço Bluetooth
+Cortex Video enquanto a fonte externa estiver selecionada. No app escolha Bluetooth, permita o acesso e abra
+a câmera ou o clipe. A conexão é feita no próprio app. Em USB, continua valendo o cabo de dados e USB-MIDI.
+O desempenho da prévia Bluetooth depende do tamanho de pacote negociado e deve ser medido no aparelho.

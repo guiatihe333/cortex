@@ -67,7 +67,12 @@ BLE_API void ble_init(const uint8_t addr[6], uint8_t addr_random)
     ad[2] = 0x06;
     ad[3] = 17;                                /* complete list of 128-bit service UUIDs: BLE-MIDI */
     ad[4] = 0x07;
+#ifdef APP_BLE_VIDEO
+    static const uint8_t video_service[16] = {APP_BLE_VIDEO_SERVICE};
+    ble_cpy(ad + 5, video_service, 16);
+#else
     ble_cpy(ad + 5, BLE_UUID_MIDI_SVC, 16);
+#endif
     gap_name(addr);
     n = bgap.n;
     sr[0] = (uint8_t)(n + 1u);

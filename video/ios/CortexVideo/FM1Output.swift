@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import CoreMIDI
+import CoreBluetooth
 import Foundation
 
 // Owned by Studio on the main queue. Each timer tick writes at most one packet.
@@ -111,3 +112,122 @@ final class FM1Output {
     }
 }
 
+
+// Bluetooth preview service (UUIDs match video/app.h). This does not use Core MIDI.
+
+final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+    private let serviceID = CBUUID(string: "C05F152E-A864-47E1-9C06-78F7223B4E01")
+    private let dataID = CBUUID(string: "C05F152E-A864-47E1-9C06-78F7223B4E02")
+    private var central: CBCentralManager?
+    private var peripheral: CBPeripheral?
+    private var characteristic: CBCharacteristic?
+    private var source: VideoSource?
+    private var pending: [UInt8] = []
+    private var offset = 0
+    private var frameID: UInt8 = 0
+    private var active = false
+
+    func changeSource(_ newSource: VideoSource?) {
+        guard source != newSource else { return }
+        source = newSource
+        pending = []
+    }
+
+    func stop() {
+        active = false
+        central?.stopScan()
+        if let peripheral { central?.cancelPeripheralConnection(peripheral) }
+        peripheral = nil
+        characteristic = nil
+        pending = []
+    }
+
+    func step(_ pixels: [UInt8]?) -> String {
+        guard pixels != nil, let source else { return "Abra a câmera ou importe um vídeo." }
+        if !active {
+            active = true
+            if central == nil { central = CBCentralManager(delegate: self, queue: .main) }
+            else { scan() }
+        }
+        switch central?.state {
+        case .some(.poweredOff): return "Ative o Bluetooth do iPhone."
+        case .some(.unauthorized): return "Permita Bluetooth nos Ajustes do iPhone."
+        case .some(.unsupported): return "Bluetooth LE indisponível neste iPhone."
+        default: break
+        }
+        guard let peripheral, let characteristic else {
+            return "Buscando FM-1 · selecione Live Video ou Video import. no aparelho."
+        }
+        guard peripheral.canSendWriteWithoutResponse, let pixels else { return "FM-1 conectado por Bluetooth." }
+        let limit = min(VideoWire.partSize, peripheral.maximumWriteValueLength(for: .withoutResponse) - 4)
+        guard limit > 0 else { return "O FM-1 não aceitou pacotes de vídeo Bluetooth." }
+        if pending.isEmpty {
+            pending = pixels
+            offset = 0
+            frameID &+= 1
+        }
+        let count = min(limit, pending.count - offset)
+        var payload = Data([source.rawValue, frameID, UInt8(offset & 255), UInt8(offset >> 8)])
+        payload.append(contentsOf: pending[offset..<(offset + count)])
+        peripheral.writeValue(payload, for: characteristic, type: .withoutResponse)
+        offset += count
+        if offset == pending.count { pending = [] }
+        return "Enviando prévia por Bluetooth · 60 × 60."
+    }
+
+    private func scan() {
+        guard active, peripheral == nil, let central, central.state == .poweredOn, !central.isScanning else { return }
+        central.scanForPeripherals(withServices: [serviceID])
+    }
+
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        if central.state != .poweredOn {
+            peripheral = nil
+            characteristic = nil
+            pending = []
+        }
+        scan()
+    }
+
+    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
+                        advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        guard active, self.peripheral == nil else { return }
+        self.peripheral = peripheral
+        central.stopScan()
+        central.connect(peripheral)
+    }
+
+    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        guard self.peripheral == peripheral else { return }
+        peripheral.delegate = self
+        peripheral.discoverServices([serviceID])
+    }
+
+    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        guard self.peripheral == peripheral else { return }
+        self.peripheral = nil
+        characteristic = nil
+        pending = []
+        scan()
+    }
+
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        centralManager(central, didDisconnectPeripheral: peripheral, error: error)
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard self.peripheral == peripheral else { return }
+        if error == nil, let service = peripheral.services?.first(where: { $0.uuid == serviceID }) {
+            peripheral.discoverCharacteristics([dataID], for: service)
+        } else { central?.cancelPeripheralConnection(peripheral) }
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        guard self.peripheral == peripheral else { return }
+        if error == nil, let value = service.characteristics?.first(where: {
+            $0.uuid == dataID && $0.properties.contains(.writeWithoutResponse)
+        }) {
+            characteristic = value
+        } else { central?.cancelPeripheralConnection(peripheral) }
+    }
+}
