@@ -15,6 +15,10 @@
 #ifndef VS_RAM
 #define VS_RAM
 #endif
+#ifndef VS_TICKS
+#define VS_TICKS() 0u                           /* (a clock for the paint's parts: the FM-1's) */
+#endif
+uint32_t vs_prof[4];                             /* (the last paint's rows, geometry, objects, post: ticks) */
 #ifndef VS_FAR
 #define VS_FAR(fn) (fn)
 #endif
@@ -340,10 +344,16 @@ void vs_paint(int y0, int h, uint16_t *out)
     vs_out = out;
     if (h > 240)
         h = 240;
+    uint32_t t0 = VS_TICKS(), t1, t2;
+    if (y0 == 0)
+        vs_prof[0] = vs_prof[1] = vs_prof[2] = vs_prof[3] = 0;
     vis_band(y0, h);
+    t1 = VS_TICKS();
     vobj_paint(y0, h, out);
+    t2 = VS_TICKS();
     if (VPAR(FXV))                               /* TARGETS Video All: the rows shifted and split, the objects with them */
         vis_post(y0, h, out);
+    vs_prof[2] += t2 - t1, vs_prof[3] += VS_TICKS() - t2, vs_prof[0] += t1 - t0;
 }
 
 uint32_t vs_sum(void)                            /* (FNV-1a over the field, then the randoms and the clock) */

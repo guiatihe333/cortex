@@ -8,6 +8,7 @@
 #define VS_POOL PLAT_POOL
 #define VS_RAM PLAT_RAM_CODE
 #define VS_FAR(fn) PLAT_FAR(fn)
+#define VS_TICKS() plat_ticks24()
 #include "vsynth.c"
 #include "vlink.h"
 #include "vpages.h"
@@ -542,7 +543,7 @@ int app_sysex(const uint8_t *p, uint32_t n)      /* (the bytes between F0 and F7
 /* --------------------------------------------------------------------- UI --- */
 static struct {
     uint32_t btn, keys, act_t, msg_until, frame_t, frame_us, frame_n, tap_t[4];
-    uint32_t gen_us, paint_us, lcd_us, gap_ms, gap_max;   /* (a frame's parts, averaged: generate, paint, the LCD's
+    uint32_t gen_us, paint_us, lcd_us, gap_ms, gap_max, vsp_us, wait_us;   /* (a frame's parts, averaged: generate, paint, the LCD's
                                                        * waits; the time between frames, its most) */
     char msg[2][24];
     uint8_t hold, mutate, strobe_key, hide_now, ntap;
@@ -1925,7 +1926,7 @@ static void draw_frame(void)                     /* the picture, the bars over i
                   *image = kept ? kept : live;   /* (live: through the engine, its effects; a kept photo as it is) */
     const int snap = photo_req && live && !kept;
     int b;
-    uint32_t t = plat_ticks24(), lw, pt = 0;
+    uint32_t t = plat_ticks24(), lw, pt = 0, tv = 0, tw = 0;
     if (image)
         prepare_video_palette();
     lcd_sync();
@@ -1933,10 +1934,15 @@ static void draw_frame(void)                     /* the picture, the bars over i
     for (b = 0; b < 4; b++) {
         t = plat_ticks24();
         cv_begin_pingpong(240, (uint32_t)BH[b], (uint32_t)b);
-        if (source && (kept || !live))
-            paint_video_band(BY[b], BH[b], kept);
-        else
-            vs_paint(BY[b], BH[b], cv_px);
+        tw += plat_ticks24() - t;                /* (the band's buffer free: the LCD's transfer before) */
+        {
+            const uint32_t t1 = plat_ticks24();
+            if (source && (kept || !live))
+                paint_video_band(BY[b], BH[b], kept);
+            else
+                vs_paint(BY[b], BH[b], cv_px);
+            tv += plat_ticks24() - t1;
+        }
         if (snap) {
             int y;
             for (y = 0; y < BH[b]; y++)
@@ -1959,6 +1965,8 @@ static void draw_frame(void)                     /* the picture, the bars over i
         lw += plat_ticks24() - t;
     }
     ui.paint_us += ((int32_t)(pt / 24u) - (int32_t)ui.paint_us) / 8;
+    ui.vsp_us += ((int32_t)(tv / 24u) - (int32_t)ui.vsp_us) / 8;
+    ui.wait_us += ((int32_t)(tw / 24u) - (int32_t)ui.wait_us) / 8;
     ui.lcd_us += ((int32_t)(lw / 24u) - (int32_t)ui.lcd_us) / 8;
     if (snap) {
         photo_req = 0;
@@ -2021,6 +2029,14 @@ static void speak(void)
     SPK(". Frame us ", ui.frame_us);
     SPK(", generate ", ui.gen_us);
     SPK(", paint ", ui.paint_us);
+    SPK(" (picture ", ui.vsp_us);
+    {
+        extern uint32_t vs_prof[4];
+        SPK(" r", vs_prof[0] / 24u);
+        SPK(" g", vs_prof[1] / 24u);
+        SPK(" o", vs_prof[2] / 24u);
+        SPK(" p", vs_prof[3] / 24u);
+    }
     SPK(", lcd ", ui.lcd_us);
     SPK(", every ms ", ui.gap_ms);
     SPK(", most ", ui.gap_max);

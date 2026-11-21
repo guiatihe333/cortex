@@ -1482,11 +1482,15 @@ static void vis_post(int y0, int h, uint16_t *out)   /* TARGETS Video All: each 
  * back; COLORAMA turns it to the palette's colour (all of it at 40); shifted by o, the RGB planes spr apart; PIXEL's
  * blocks when ps > 1 */
 #define VS_SW16(v) ((uint16_t)(((v) >> 8 & 0xFFu) | ((v) & 0xFFu) << 8))
+/* each plane's 8 bits (-256 .. 511, clamped) to its share of the screen's pixel, its bytes already swapped: a pixel
+ * is three loads and two ORs, no clamps */
+static uint16_t vcam_tr[768], vcam_tg[768], vcam_tb[768];
 static VS_RAM void vis_row_camr(const uint8_t *a, const uint8_t *b, const int8_t *ba, const int8_t *bb,
                                 const int8_t *ra, const int8_t *rb, int wb, const int8_t *dr, int dith,
                                 const uint8_t *lut, const uint16_t *pal, int pm, int neg, uint8_t *ly, uint16_t *row,
                                 uint16_t *out, int o, int spr)
 {
+    const uint16_t *TR = vcam_tr + 256, *TG = vcam_tg + 256, *TB = vcam_tb + 256;
     const int d0 = dr[0], d1 = dr[1], d2 = dr[2], d3 = dr[3];
     int x, c0, cl, pl;
     c0 = (a[0] * (4 - wb) + b[0] * wb) >> 2, cl = c0;
@@ -1529,13 +1533,7 @@ static VS_RAM void vis_row_camr(const uint8_t *a, const uint8_t *b, const int8_t
                 const int pr = (int)(P >> 11) << 3, pg = (int)(P >> 5 & 63u) << 2, pb = (int)(P & 31u) << 3;
                 r += ((pr - r) * pm) >> 8, g += ((pg - g) * pm) >> 8, bl += ((pb - bl) * pm) >> 8;
             }
-            r = r < 0 ? 0 : r > 255 ? 255 : r;
-            g = g < 0 ? 0 : g > 255 ? 255 : g;
-            bl = bl < 0 ? 0 : bl > 255 ? 255 : bl;
-            {
-                const uint32_t v565 = (uint32_t)((r >> 3) << 11 | (g >> 2) << 5 | (bl >> 3));
-                row[i] = VS_SW16(v565);
-            }
+            row[i] = (uint16_t)(TR[r] | TG[g] | TB[bl]);
         }
     }
     {
@@ -1562,17 +1560,88 @@ static VS_RAM void vis_row_camr(const uint8_t *a, const uint8_t *b, const int8_t
         }
     }
 }
-static void vis_row_cam(int ya, int yb, int wb, int ps, int fi, const int8_t *dr, int dith, uint16_t *out, int o,
-                        int spr)
+/* a screen row from the field's rows' colours (vis_row_camr's, each made once a frame): an even row is field row
+ * y / 2, an odd one the mean of it and the next (half the colour work); then shifted by o, the RGB planes spr apart */
+static VS_RAM void vis_cam_emit(const uint16_t *A, const uint16_t *B, uint16_t *out, int o, int spr)
+{
+    static uint16_t mix[240];
+    const uint16_t *s = A;
+    int x;
+    if (B) {
+        for (x = 0; x < 240; x++) {
+            const uint32_t a = VS_SW16(A[x]), b = VS_SW16(B[x]), m = ((a >> 1) & 0x7BEFu) + ((b >> 1) & 0x7BEFu);
+            mix[x] = VS_SW16(m);
+        }
+        s = mix;
+    }
+    {
+        int xg = -o, xr, xb;
+        while (xg < 0) xg += 240;
+        while (xg >= 240) xg -= 240;
+        if (!spr) {
+            for (x = 0; x < 240; x++) {
+                out[x] = s[xg];
+                if (++xg == 240) xg = 0;
+            }
+        } else {
+            xr = xg - spr, xb = xg + spr;
+            while (xr < 0) xr += 240;
+            while (xr >= 240) xr -= 240;
+            while (xb < 0) xb += 240;
+            while (xb >= 240) xb -= 240;
+            for (x = 0; x < 240; x++) {
+                out[x] = (uint16_t)((s[xr] & 0x00F8u) | (s[xg] & 0xE007u) | (s[xb] & 0x1F00u));
+                if (++xg == 240) xg = 0;
+                if (++xr == 240) xr = 0;
+                if (++xb == 240) xb = 0;
+            }
+        }
+    }
+}
+static int vcam_tag[3] = {-1, -1, -1};
+static uint16_t vcam_rows[3][240];
+static uint8_t vcam_next;
+static void vis_row_cam(int y, int ya, int yb, int wb, int ps, int fi, const int8_t *dr, int dith, uint16_t *out,
+                        int o, int spr)
 {
     static uint8_t ly[240];
     static int8_t lb[240], lr[240];
     static uint16_t row[240];
     const int pm = VPAR(VFOLD) >= 40 ? 256 : VPAR(VFOLD) * 256 / 40, neg = vinv > 128;
     int x, pl;
-    if (ps <= 1) {                               /* (the usual: in RAM code) */
-        VS_FAR(vis_row_camr)(vf[ya], vf[yb], vcb[ya], vcb[yb], vcr[ya], vcr[yb], wb, dr, dith, vlut, vpal, pm, neg,
-                             ly, row, out, o, spr);
+    if (!vcam_tr[767]) {                         /* (the tables, once) */
+        int i;
+        for (i = 0; i < 768; i++) {
+            const int v = i - 256 < 0 ? 0 : i - 256 > 255 ? 255 : i - 256;
+            vcam_tr[i] = VS_SW16((uint32_t)(v >> 3) << 11);
+            vcam_tg[i] = VS_SW16((uint32_t)(v >> 2) << 5);
+            vcam_tb[i] = VS_SW16((uint32_t)(v >> 3));
+        }
+    }
+    (void)ya, (void)yb, (void)wb;
+    if (ps <= 1) {                               /* (the usual: in RAM code, a field row's colours once a frame) */
+        const int k = y >> 1, k1 = k + 1 < VF_H ? k + 1 : VF_H - 1, want[2] = {k, k1};
+        const uint16_t *got[2] = {0, 0};
+        int j, i;
+        if (y == 0)
+            vcam_tag[0] = vcam_tag[1] = vcam_tag[2] = -1;
+        for (j = 0; j < ((y & 1) ? 2 : 1); j++) {
+            for (i = 0; i < 3 && vcam_tag[i] != want[j]; i++)
+                ;
+            if (i == 3) {
+                i = vcam_next;
+                vcam_next = (uint8_t)((vcam_next + 1) % 3);
+                if (got[0] == vcam_rows[i]) {    /* (never the one just found) */
+                    i = vcam_next;
+                    vcam_next = (uint8_t)((vcam_next + 1) % 3);
+                }
+                VS_FAR(vis_row_camr)(vf[want[j]], vf[want[j]], vcb[want[j]], vcb[want[j]], vcr[want[j]],
+                                     vcr[want[j]], 0, dr, dith, vlut, vpal, pm, neg, ly, row, vcam_rows[i], 0, 0);
+                vcam_tag[i] = want[j];
+            }
+            got[j] = vcam_rows[i];
+        }
+        VS_FAR(vis_cam_emit)(got[0], (y & 1) ? got[1] : 0, out, o, spr);
         return;
     }
     if (ps > 1) {
@@ -1644,6 +1713,7 @@ static void vis_row_cam(int ya, int yb, int wb, int ps, int fi, const int8_t *dr
         }
     }
 }
+static uint32_t vs_prof_geo0;
 static void vis_band(int y0, int h)
 {
     const float syn = (float)VPAR(VSYNC) * 0.01f, rgb = (float)VPAR(VRGB) * 0.01f;
@@ -1671,7 +1741,7 @@ static void vis_band(int y0, int h)
         static const int8_t BAYER2[4][4] = {{-3, 1, -2, 2}, {3, -1, 4, 0}, {-1, 2, -2, 1}, {4, 0, 3, 0}};
         const int8_t *dr = BAYER2[y & 3];
         if (vcam_on()) {
-            vis_row_cam(ya, yb, wb, ps, fi, dr, dith, out, o, spr);
+            vis_row_cam(y, ya, yb, wb, ps, fi, dr, dith, out, o, spr);
         } else if (ps <= 1) {                    /* (1.5.44: the row in RAM code) */
             VS_FAR(vis_row)(a, b, wb, col, ln, dr, dith, vlut, vpal_screen, out, o, spr, VF_W);
         } else {                                 /* PIXEL: blocks of ps cells (Fairlight's mosaic) */
@@ -1710,6 +1780,7 @@ static void vis_band(int y0, int h)
         if ((y & 1) && y >> 1 < VF_H)
             vtear[y >> 1] = (int8_t)(vtear[y >> 1] * 3 / 4);
     }
+    vs_prof_geo0 = VS_TICKS();
     {                                            /* the geometry: sharp, at the screen's resolution, two pixels wide;
                                                   * broken as the picture is */
         const int mo = VPAR(VMOSH), co = VPAR(VCORRUPT), q = ps > 1 ? ps * 2 : 1;
@@ -1743,6 +1814,7 @@ static void vis_band(int y0, int h)
             vis_seg(xa, ya, xb, yb, VPAR(VFOLD) || VPAR(VPOSTER) ? gcc : gc, y0, h);
         }
     }
+    vs_prof[1] += VS_TICKS() - vs_prof_geo0;
     if (vrutt) {                                 /* Rutt: 32 scanlines, each lifted by the picture's light under it
                                                   * (the Rutt/Etra scan processor), coloured by it */
         const float lift = 0.10f + 0.12f * vgain;
