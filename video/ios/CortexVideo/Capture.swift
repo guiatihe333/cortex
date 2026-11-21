@@ -232,7 +232,7 @@ final class VideoCodec {
     private let table4: [Float]                      // [x * 4 + u]: the 4 x 4's (the colour's)
     private var refLuma = [Float](repeating: -1000, count: 14400)
     private var refChroma = [Float](repeating: -1000, count: 7200)   // (Cb 60 x 60, then Cr: as the FM-1 has them)
-    private var scale = 12
+    private var scale = 10
     private var busy = 0, calm = 0
     var congested = false                            // (set by the sender: the frames before not answered yet)
     private var count = 0
@@ -272,7 +272,7 @@ final class VideoCodec {
         // finer, down to scale 4 (JPEG's quality ~87)
         if congested { busy += 1 } else { calm += 1 }
         if busy + calm >= 15 {
-            if busy > 6 { scale = min(64, scale + scale / 8 + 1) }
+            if busy > 6 { scale = min(32, scale + scale / 8 + 1) }   // (never coarser than 32: half JPEG's 50)
             else if busy < 2 { scale = max(4, scale - scale / 10 - 1) }
             busy = 0
             calm = 0

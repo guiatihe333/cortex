@@ -275,6 +275,8 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
     // soon as an answer comes (ready)
     private var inFlight: [(id: UInt8, at: TimeInterval)] = []
     private var blocked = false
+    private var lastPixels: [UInt8] = []             // (the picture last coded: a frame goes only for a new one)
+    private var lastFrameAt: TimeInterval = 0
     var ready: (() -> Void)?
     private var acks: [TimeInterval] = []
     private let codec = VideoCodec()
@@ -326,8 +328,11 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
         let before = inFlight.count
         inFlight.removeAll { now - $0.at > 0.5 }
         if inFlight.count < before { codec.forceKey = true }   // (one not answered: every block again)
-        if pending.isEmpty && inFlight.count >= 4 {
-            blocked = true
+        // a new frame only for a new picture (or each half second, to keep the FM-1's copy fresh): the same picture
+        // again would fill the link with frames of nothing and read as a congestion
+        let fresh = pixels != lastPixels || now - lastFrameAt > 0.5
+        if pending.isEmpty && (!fresh || inFlight.count >= 4) {
+            if fresh { blocked = true }               // (a new picture waits: the link is the limit)
             return (sharpFrame ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
         }
         let limit = min(VideoWire.blePayload, peripheral.maximumWriteValueLength(for: .withoutResponse) - 4)
@@ -339,6 +344,8 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
                 codec.congested = blocked         // (it waited for answers since the last frame)
                 blocked = false
                 pending = sharpFrame ? codec.encode(pixels) : pixels
+                lastPixels = pixels
+                lastFrameAt = now
                 offset = 0
                 frameID &+= 1
             }
@@ -352,7 +359,7 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
             if offset == pending.count {
                 pending = []
                 inFlight.append((id: frameID & 127, at: now))
-                break
+                break                                 // (one frame a call: the next waits for a new picture)
             }
         }
         return (sharpFrame ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate

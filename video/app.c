@@ -362,6 +362,7 @@ static int cb_seg(void)                          /* signed: 1, -1, 2, -2 .. as 1
     const uint32_t m = cb_eg();
     return m & 1u ? (int)((m + 1u) >> 1) : -(int)(m >> 1);
 }
+static uint8_t codec_scale;                      /* (diagnostics: the last frame's quantizer scale) */
 static int codec_decode(const uint8_t *p, unsigned n)
 {
     static const float C[9] = {1.0f, 0.98078528f, 0.92387953f, 0.83146961f, 0.70710678f, 0.55557023f, 0.38268343f,
@@ -388,6 +389,7 @@ static int codec_decode(const uint8_t *p, unsigned n)
     }
     if (n < 33 || (unsigned)(p[0] | p[1] << 8) != n || !p[3])
         return 0;
+    codec_scale = p[3];
     for (k = 0; k < 64; k++) {
         const int s = (QBASE[k] * p[3] + 8) / 16;
         step[k] = s < 1 ? 1 : s;
@@ -2087,6 +2089,8 @@ static void speak(void)
 #endif
             cat_n(t, " lost ");
             vs_itoa((int)video_ble_bad, u2), cat_n(t, u2);
+            cat_n(t, " q ");
+            vs_itoa((int)codec_scale, u2), cat_n(t, u2);
             cat_n(t, " interval ");
             vs_itoa((int)v[2], u2), cat_n(t, u2);
             cat_n(t, " mtu ");
