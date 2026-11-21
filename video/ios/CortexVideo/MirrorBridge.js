@@ -81,8 +81,124 @@
   const audioButton = button("Capturar áudio do Zoom R20", audio, openZoom);
   audio.append(audioState);
   let usbAudio = null;
+
+  const networkForm = document.createElement("div");
+  networkForm.className = "row";
+  const address = document.createElement("input");
+  address.placeholder = "IP do PC:porta";
+  address.setAttribute("aria-label", "Endereço do PC");
+  address.autocapitalize = "off";
+  address.autocomplete = "off";
+  const code = document.createElement("input");
+  code.placeholder = "Código da ponte";
+  code.setAttribute("aria-label", "Código da ponte R20");
+  code.autocapitalize = "off";
+  code.autocomplete = "off";
+  code.maxLength = 16;
+  networkForm.append(address, code);
+  const wifi = button("Conectar R20 por Wi-Fi", networkForm, toggleNetwork);
+  audio.append(networkForm);
+  let network = null;
+  let pendingZoom = false;
+
+  function releaseNetwork(message = "") {
+    if (!network) return;
+    const finished = network;
+    network = null;
+    native("r20Disconnect").catch(() => {});
+    if (audioStream === finished.destination.stream) {
+      if (recorder) stopRec();
+      audioStream = analyser = null;
+    }
+    finished.destination.stream.getTracks().forEach(track => track.stop());
+    finished.delay.disconnect();
+    const select = $("audioIn");
+    const option = [...select.options].find(item => item.value === "__r20wifi");
+    if (option) option.remove();
+    wifi.textContent = "Conectar R20 por Wi-Fi";
+    if (message) audioState.textContent = message;
+  }
+
+  async function toggleNetwork() {
+    if (network) { releaseNetwork("Áudio por Wi-Fi desligado."); return; }
+    if (recorder || pendingZoom) return;
+    const ctx = audioCtx || new AudioContext();
+    try { await ctx.resume(); }
+    catch (error) { audioState.textContent = error.message; return; }
+    if (network) return;
+    audioCtx = ctx;
+    const destination = ctx.createMediaStreamDestination();
+    const meter = ctx.createAnalyser();
+    const delay = ctx.createDelay(1);
+    delay.delayTime.value = Number($("avDelay").value) / 1000;
+    delay.connect(destination);
+    delay.connect(meter);
+    const state = {ctx, destination, delay, meter, next: 0, ready: false};
+    network = state;
+    wifi.textContent = "Desligar R20 por Wi-Fi";
+    audioState.textContent = "Conectando à ponte do R20…";
+    try {
+      await native("r20Connect", {address: address.value.trim(), code: code.value.trim().toLowerCase()});
+    } catch (error) {
+      if (network === state) releaseNetwork(error.message || "Não foi possível conectar ao PC.");
+    }
+  }
+
+  window.cortexNetworkAudio = (encoded, rate, channels) => {
+    const state = network;
+    if (!state || ![44100, 48000].includes(rate) || ![1, 2].includes(channels)) return;
+    const pcm = atob(encoded);
+    const frames = rate / 25;
+    if (pcm.length !== frames * channels * 2) return;
+    const now = state.ctx.currentTime;
+    if (state.next > now + 0.30) return;
+    // Keep a small jitter buffer. Late packets re-prime rather than accumulating delay.
+    if (state.next < now) state.next = now + 0.075;
+    const buffer = state.ctx.createBuffer(channels, frames, rate);
+    for (let channel = 0; channel < channels; channel++) {
+      const samples = buffer.getChannelData(channel);
+      for (let i = 0; i < frames; i++) {
+        const byte = 2 * (i * channels + channel);
+        const unsigned = pcm.charCodeAt(byte) | (pcm.charCodeAt(byte + 1) << 8);
+        samples[i] = ((unsigned << 16) >> 16) / 32768;
+      }
+    }
+    const audioSource = state.ctx.createBufferSource();
+    audioSource.buffer = buffer;
+    audioSource.connect(state.delay);
+    audioSource.onended = () => audioSource.disconnect();
+    audioSource.start(state.next);
+    state.next += frames / rate;
+    if (!state.ready) {
+      if (audioStream && audioStream !== routeDest?.stream) audioStream.getTracks().forEach(track => track.stop());
+      audioStream = state.destination.stream;
+      analyser = state.meter;
+      state.ready = true;
+      const select = $("audioIn");
+      if (!select.options.length) select.add(new Option("(sem áudio)", ""));
+      select.add(new Option("Zoom R20 (Wi-Fi)", "__r20wifi"));
+      select.value = "__r20wifi";
+      audioState.textContent = "Zoom R20 por Wi-Fi ativo. Confira o medidor e toque em Gravar aqui.";
+    }
+  };
+  window.cortexNetworkError = message => releaseNetwork(message);
+  $("avDelay").addEventListener("input", () => {
+    if (network) network.delay.delayTime.value = Number($("avDelay").value) / 1000;
+  });
+  const originalStartRecording = startRec;
+  startRec = () => {
+    if (network && !network.ready) {
+      audioState.textContent = "Aguarde o áudio do R20 antes de gravar.";
+      return;
+    }
+    originalStartRecording();
+  };
+
   async function openZoom() {
-    audioButton.disabled = true;
+    if (recorder || pendingZoom) return;
+    releaseNetwork();
+    pendingZoom = true;
+    audioButton.disabled = wifi.disabled = true;
     let input = null;
     try {
       await native("zoom");
@@ -118,20 +234,27 @@
     } catch (error) {
       if (input && input !== usbAudio) input.getTracks().forEach(track => track.stop());
       audioState.textContent = error.message || "Não foi possível abrir o R20.";
-    } finally { audioButton.disabled = false; }
+    } finally {
+      pendingZoom = false;
+      audioButton.disabled = wifi.disabled = Boolean(recorder);
+    }
   }
   $("audioIn").onchange = () => {
-    if ($("audioIn").value === "__zoom") openZoom();
+    const selected = $("audioIn").value;
+    if (selected === "__r20wifi") return;
+    releaseNetwork();
+    if (selected === "__zoom") openZoom();
     else openAudio().catch(error => { audioState.textContent = error.message; });
   };
   new MutationObserver(() => {
     const active = $("recBtn").classList.contains("on");
-    audioButton.disabled = active;
+    audioButton.disabled = wifi.disabled = active || pendingZoom;
     $("audioIn").disabled = active;
     native("recording", { active }).catch(() => {});
   }).observe($("recBtn"), { attributes: true, attributeFilter: ["class"] });
   window.cortexPause = () => {
     if (recorder) stopRec();
+    releaseNetwork();
     stopBluetooth();
     send(OFF);
     clearInterval(keepTimer);

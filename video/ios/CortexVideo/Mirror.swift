@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import AVFoundation
+import Network
 import Photos
 import SwiftUI
 import WebKit
@@ -103,6 +104,7 @@ struct MirrorWebView: UIViewRepresentable {
         var html: URL?
         private let midi = FM1Output()
         private let bluetooth = BluetoothVideoOutput()
+        private let r20Network = R20NetworkInput()
         private var midiBuffer: [UInt8] = []
         private var downloads: [ObjectIdentifier: URL] = [:]
         private var timer: Timer?
@@ -114,11 +116,21 @@ struct MirrorWebView: UIViewRepresentable {
             super.init()
             midi.received = { [weak self] bytes in self?.receive(bytes) }
             bluetooth.ready = { [weak self] in self?.sendBluetooth() }
+            r20Network.audio = { [weak self] pcm, rate, channels in
+                self?.view?.callAsyncJavaScript("window.cortexNetworkAudio?.(pcm, rate, channels)",
+                    arguments: ["pcm": pcm.base64EncodedString(), "rate": rate, "channels": channels],
+                    in: nil, in: .page, completionHandler: nil)
+            }
+            r20Network.problem = { [weak self] error in
+                self?.view?.callAsyncJavaScript("window.cortexNetworkError?.(message)",
+                    arguments: ["message": error], in: nil, in: .page, completionHandler: nil)
+            }
         }
 
         func background() {
             midi.stop()
             stopBluetooth()
+            r20Network.stop()
             view?.evaluateJavaScript("window.cortexPause?.()")
         }
 
@@ -185,6 +197,15 @@ struct MirrorWebView: UIViewRepresentable {
             case "stopBLE":
                 stopBluetooth()
                 parent.status = ""
+                replyHandler(true, nil)
+            case "r20Connect":
+                guard let address = request["address"] as? String, let code = request["code"] as? String else {
+                    replyHandler(nil, "Informe o endereço e o código do PC."); return
+                }
+                do { try r20Network.connect(address: address, code: code); replyHandler(true, nil) }
+                catch { replyHandler(nil, error.localizedDescription) }
+            case "r20Disconnect":
+                r20Network.stop()
                 replyHandler(true, nil)
             case "zoom":
                 Task { @MainActor in
@@ -259,4 +280,116 @@ struct MirrorWebView: UIViewRepresentable {
       }});
     })();
     """#
+}
+
+@MainActor
+private final class R20NetworkInput {
+    private var connection: NWConnection?
+    private var authenticated = false
+    var audio: ((Data, Int, Int) -> Void)?
+    var problem: ((String) -> Void)?
+
+    func connect(address: String, code: String) throws {
+        let parts = address.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: ":", omittingEmptySubsequences: false)
+        let port = parts.count == 1 ? UInt16(8771) : UInt16(parts.last ?? "")
+        guard (1...2).contains(parts.count), let host = parts.first, let ipv4 = IPv4Address(String(host)),
+              Self.isPrivate([UInt8](ipv4.rawValue)), let number = port, number > 0,
+              let endpointPort = NWEndpoint.Port(rawValue: number),
+              code.utf8.count == 16, code.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
+            throw NSError(domain: "CortexR20", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Informe o IPv4:porta do PC e o código de 16 caracteres da ponte."
+            ])
+        }
+
+        stop()
+        let stream = NWConnection(host: .ipv4(ipv4), port: endpointPort, using: .tcp)
+        connection = stream
+        stream.stateUpdateHandler = { [weak self, weak stream] state in
+            Task { @MainActor in
+                guard let self, let stream, self.connection === stream else { return }
+                switch state {
+                case .ready:
+                    stream.send(content: Data((code + "\n").utf8), completion: .contentProcessed { error in
+                        Task { @MainActor in
+                            if error == nil { self.readHeader(stream) }
+                            else { self.fail(stream, "Falha no envio do código. Verifique a ponte no PC.") }
+                        }
+                    })
+                case .failed:
+                    self.fail(stream, "Sem conexão com o PC. Confira o endereço, a rede local e a ponte.")
+                default: break
+                }
+            }
+        }
+        stream.start(queue: .main)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self, weak stream] in
+            guard let self, let stream, self.connection === stream, !self.authenticated else { return }
+            self.fail(stream, "Tempo esgotado. Confira a rede local, o firewall do PC e o código.")
+        }
+    }
+
+    func stop() {
+        let previous = connection
+        connection = nil
+        authenticated = false
+        previous?.stateUpdateHandler = nil
+        previous?.cancel()
+    }
+
+    private static func isPrivate(_ bytes: [UInt8]) -> Bool {
+        bytes.count == 4 && (bytes[0] == 10
+            || (bytes[0] == 172 && (16...31).contains(bytes[1]))
+            || (bytes[0] == 192 && bytes[1] == 168))
+    }
+
+    private func fail(_ stream: NWConnection, _ message: String) {
+        guard connection === stream else { return }
+        stop()
+        problem?(message)
+    }
+
+    private func read(_ stream: NWConnection, count: Int, reply: @escaping (Data) -> Void) {
+        stream.receive(minimumIncompleteLength: count, maximumLength: count) { [weak self] data, _, _, _ in
+            Task { @MainActor in
+                guard let self, self.connection === stream else { return }
+                guard let data, data.count == count else {
+                    self.fail(stream, "O áudio do R20 pela rede foi interrompido.")
+                    return
+                }
+                reply(data)
+            }
+        }
+    }
+
+    private func readHeader(_ stream: NWConnection) {
+        read(stream, count: 4) { [weak self] marker in
+            guard let self else { return }
+            switch String(decoding: marker, as: UTF8.self) {
+            case "CVR1": break
+            case "NOPE": self.fail(stream, "Código de conexão incorreto."); return
+            case "BUSY": self.fail(stream, "A ponte já está enviando áudio para outro dispositivo."); return
+            default: self.fail(stream, "Resposta inválida da ponte R20."); return
+            }
+            self.read(stream, count: 8) { [weak self] metadata in
+                guard let self else { return }
+                let bytes = [UInt8](metadata)
+                let rate = bytes.prefix(4).reduce(0) { ($0 << 8) | Int($1) }
+                let channels = Int(bytes[4])
+                guard [44_100, 48_000].contains(rate), (1...2).contains(channels) else {
+                    self.fail(stream, "A ponte enviou um formato de áudio incompatível.")
+                    return
+                }
+                self.authenticated = true
+                self.readAudio(stream, rate: rate, channels: channels)
+            }
+        }
+    }
+
+    private func readAudio(_ stream: NWConnection, rate: Int, channels: Int) {
+        read(stream, count: (rate / 25) * channels * 2) { [weak self] data in
+            guard let self else { return }
+            self.audio?(data, rate, channels)
+            self.readAudio(stream, rate: rate, channels: channels)
+        }
+    }
 }

@@ -45,3 +45,15 @@ o FM-1 pode receber a imagem por Bluetooth enquanto o R20 ocupa o USB.
 O espelho usa as APIs de câmera, áudio e gravação do WebKit. A visibilidade do R20 e os formatos de gravação
 dependem da versão do iOS e da rota USB. Para atualizar o espelho incorporado, rode `video/build.sh --test` e
 copie `video/build/mirror/cortex-video-mirror.html` para `video/ios/CortexVideo/Mirror.html`.
+
+### Áudio sem cabo no iPhone
+
+1. No R20 use **Audio Interface → Stereo Mix** e conecte-o por USB ao Windows.
+2. No PC abra **Abrir ponte R20.cmd**. O terminal mostra o endereço e o código desta sessão. Se o Windows
+   pedir permissão de firewall para Python, libere apenas em rede privada.
+3. Com PC e iPhone na mesma rede, abra **Espelho → Áudio gravado**, preencha o endereço e o código e toque
+   em **Conectar R20 por Wi-Fi**. Confira o medidor antes de gravar. A gravação salva vídeo e áudio no iPhone.
+4. Para enviar o vídeo ao FM-1, use **Enviar por Bluetooth** com Live Video ou Video import. no aparelho.
+
+O BTA-1 continua disponível para controle do R20. A ponte usa a entrada USB do R20 no Windows e envia PCM
+só após o código da sessão ser aceito. Use em rede local de confiança. Feche o terminal para parar a ponte.
