@@ -295,16 +295,115 @@ static void receive_video(const uint8_t *p, uint32_t n)
 }
 
 /* Cortex BLE preview: source, frame ID, little-endian byte offset, up to 180 RGB332 pixels. */
-#define VIDEO_BLE_QUEUE 32u
+#define VIDEO_BLE_QUEUE 16u
 #define VIDEO_BLE_HEADER 4u
 static struct {
-    uint8_t size, data[VIDEO_BLE_HEADER + VLINK_VIDEO_PART];
+    uint8_t size, data[VIDEO_BLE_HEADER + VLINK_BLE_PAYLOAD];
 } video_ble_queue[VIDEO_BLE_QUEUE] PLAT_POOL;
 static volatile uint8_t video_ble_write, video_ble_read, video_ble_mode;
 static uint16_t video_ble_offset;
 static uint8_t video_ble_id, video_ble_kind, video_ble_front;
-static uint8_t video_ble_pixels[2][VLINK_HQ_BYTES] PLAT_POOL;   /* (60 x 60 RGB332, or the sharp picture) */
+static uint8_t video_ble_rx[VLINK_CODEC_MAX] PLAT_POOL;          /* (a frame coming in: 60 x 60 RGB332, or coded) */
+static uint8_t video_ble_pixels[1][VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE] PLAT_POOL;   /* (one: a frame copied in whole) */
+static uint8_t video_sharp[VLINK_HQ_BYTES] PLAT_POOL;            /* (the sharp picture, decoded) */
 static uint8_t video_ble_hq[2], video_ble_sharp;
+static unsigned video_ble_size;
+
+/* the sharp picture's code (the iPhone's VideoCodec): 2 bytes its length, flags (1: every block), the quantizer's
+ * scale (16: JPEG's quality 50), 29 bytes a bit a block (15 x 15, which are in it); then each block in it: its colour
+ * (four cells, a byte each: Cb, Cr nibbles, 8 = none, steps of 8), its DC (int16), its other 63 in zigzag as JPEG's runs: 0x00 the end, 0xF0 sixteen zeros,
+ * else the zeros before (high nibble) and the value (1..7, 9..15 = -7..-1, 8: the next byte, int8) */
+static const uint8_t ZZ[64] = {0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48,
+                               41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23,
+                               30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63};
+static const uint8_t QBASE[64] = {16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55,
+                                  14, 13, 16, 24, 40, 57, 69, 56, 14, 17, 22, 29, 51, 87, 80, 62,
+                                  18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81, 104, 113, 92,
+                                  49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99};
+static float idct_t[8][8];                       /* [x][u]: C(u) / 2 cos((2x + 1) u pi / 16) */
+static int codec_decode(const uint8_t *p, unsigned n)
+{
+    static const float C[9] = {1.0f, 0.98078528f, 0.92387953f, 0.83146961f, 0.70710678f, 0.55557023f, 0.38268343f,
+                               0.19509032f, 0.0f};
+    uint8_t *luma = video_sharp, *cb = video_sharp + VLINK_HQ_LUMA, *cr = cb + 900;
+    unsigned i = 33;
+    int step[64], b, k;
+    if (idct_t[0][0] == 0.0f) {
+        int x, u;
+        for (x = 0; x < 8; x++)
+            for (u = 0; u < 8; u++) {
+                const int m = ((2 * x + 1) * u) & 31;
+                const float c = m <= 8 ? C[m] : m <= 16 ? -C[16 - m] : m <= 24 ? -C[m - 16] : C[32 - m];
+                idct_t[x][u] = u ? 0.5f * c : 0.35355339f;
+            }
+    }
+    if (n < 33 || (unsigned)(p[0] | p[1] << 8) != n || !p[3])
+        return 0;
+    for (k = 0; k < 64; k++) {
+        const int s = (QBASE[k] * p[3] + 8) / 16;
+        step[k] = s < 1 ? 1 : s;
+    }
+    for (b = 0; b < 225; b++) {
+        const int by = b / 15, bx = b - by * 15;
+        float F[64], T[64];
+        int pos = 1, x, y, u;
+        if (!(p[4 + (b >> 3)] >> (b & 7) & 1u))
+            continue;
+        if (i + 7 > n)
+            return 0;
+        for (k = 0; k < 4; k++) {               /* (each cell a byte: Cb's nibble, Cr's; 8 = none, steps of 8) */
+            const int c = (2 * by + (k >> 1)) * 30 + 2 * bx + (k & 1);
+            cb[c] = (uint8_t)(128 + ((p[i + k] >> 4) - 8) * 8);
+            cr[c] = (uint8_t)(128 + ((p[i + k] & 15) - 8) * 8);
+        }
+        i += 4;
+        memset(F, 0, sizeof F);
+        F[0] = (float)((int16_t)(p[i] | p[i + 1] << 8) * step[0]);
+        i += 2;
+        for (;;) {
+            uint8_t t;
+            int v;
+            if (i >= n)
+                return 0;
+            t = p[i++];
+            if (!t)
+                break;
+            if (t == 0xF0u) {
+                pos += 16;
+                continue;
+            }
+            pos += t >> 4;
+            v = t & 15;
+            if (v == 8) {
+                if (i >= n)
+                    return 0;
+                v = (int8_t)p[i++];
+            } else if (v > 8) {
+                v -= 16;
+            }
+            if (pos < 64)
+                F[ZZ[pos]] = (float)(v * step[ZZ[pos]]);
+            pos++;
+        }
+        for (y = 0; y < 8; y++)                  /* (rows: the frequencies across to x) */
+            for (x = 0; x < 8; x++) {
+                float s = 0.0f;
+                for (u = 0; u < 8; u++)
+                    s += idct_t[x][u] * F[y * 8 + u];
+                T[y * 8 + x] = s;
+            }
+        for (y = 0; y < 8; y++)                  /* (columns: down to y) */
+            for (x = 0; x < 8; x++) {
+                float s = 128.0f;
+                int v;
+                for (u = 0; u < 8; u++)
+                    s += idct_t[y][u] * T[u * 8 + x];
+                v = (int)(s + 0.5f);
+                luma[(by * 8 + y) * 120 + bx * 8 + x] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+            }
+    }
+    return 1;
+}
 static volatile uint32_t video_ble_taken, video_ble_full;   /* (diagnostics: packets queued, refused: the queue full) */
 static uint32_t video_ble_bad;                   /* (packets out of order: a frame lost) */
 static uint8_t video_ble_shown_kind;
@@ -350,8 +449,11 @@ static void video_ble_poll(uint32_t now)
         const unsigned offset = (unsigned)data[2] | (unsigned)data[3] << 8;
         const unsigned count = video_ble_queue[r].size - VIDEO_BLE_HEADER;
         __asm__ volatile("" ::: "memory");
-        const unsigned size = data[0] & 0x80u ? VLINK_HQ_BYTES : VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE;
-        if ((data[0] & 0x7Fu) == mode && offset + count <= size) {
+        if (!offset)                             /* (a frame's size: 60 x 60, or the code's first two bytes) */
+            video_ble_size = data[0] & 0x80u ? (count >= 2 ? (unsigned)data[4] | (unsigned)data[5] << 8 : 0)
+                                             : VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE;
+        if ((data[0] & 0x7Fu) == mode && video_ble_size <= VLINK_CODEC_MAX && offset + count <= video_ble_size) {
+            const unsigned size = video_ble_size;
             if (!offset) {
                 video_ble_sharp = (uint8_t)(data[0] >> 7);
                 video_ble_kind = mode;
@@ -361,10 +463,16 @@ static void video_ble_poll(uint32_t now)
             if (offset && !(video_ble_kind == mode && data[1] == video_ble_id && offset == video_ble_offset))
                 video_ble_bad++;
             if (video_ble_kind == mode && data[1] == video_ble_id && offset == video_ble_offset) {
-                memcpy(video_ble_pixels[video_ble_front ^ 1u] + offset, data + VIDEO_BLE_HEADER, count);
+                memcpy(video_ble_rx + offset, data + VIDEO_BLE_HEADER, count);
                 video_ble_offset = (uint16_t)(offset + count);
                 video_ble_part_ms = now;
                 if (video_ble_offset == size && video_ble_sharp == data[0] >> 7) {
+                    if (video_ble_sharp) {
+                        if (!codec_decode(video_ble_rx, size))
+                            video_ble_bad += 1000u;
+                    } else {
+                        memcpy(video_ble_pixels[0], video_ble_rx, size);
+                    }
                     video_ble_hq[video_ble_front ^ 1u] = video_ble_sharp;
                     video_ble_front ^= 1u;
                     /* the frame whole: the app may send the next (CC 105, its number; flow control: no queue
@@ -1778,7 +1886,8 @@ static const uint8_t *live_image(void)
     const int source = video_mode() ? vs_get(ST_VMODE) - VS_NMODE + 1 : 0;
     const int preview = source ? preview_state(source, plat_ms()) : 0;
     live_hq = preview == 4 && video_ble_hq[video_ble_front];
-    return preview == 4 ? video_ble_pixels[video_ble_front] : preview == 3 ? video_pixels[video_rx.front] : 0;
+    return preview == 4 ? (live_hq ? video_sharp : video_ble_pixels[0]) :
+           preview == 3 ? video_pixels[video_rx.front] : 0;
 }
 
 static void draw_frame(void)                     /* the picture, the bars over it (unless hidden) */
@@ -1791,7 +1900,7 @@ static void draw_frame(void)                     /* the picture, the bars over i
     const int source = vs_get(ST_VMODE) >= VS_NMODE ? vs_get(ST_VMODE) - VS_NMODE + 1 : 0;
     const int preview = source ? preview_state(source, plat_ms()) : 0;
     const uint8_t *kept = source && photo_view ? photo_nth(photo_view - 1) : 0,
-                  *live = preview == 4 ? video_ble_pixels[video_ble_front] : preview == 3 ? video_pixels[video_rx.front] : 0,
+                  *live = preview == 4 || preview == 3 ? live_image() : 0,
                   *image = kept ? kept : live;   /* (live: through the engine, its effects; a kept photo as it is) */
     const int snap = photo_req && live && !kept;
     int b;

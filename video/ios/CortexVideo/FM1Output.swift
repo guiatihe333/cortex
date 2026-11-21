@@ -274,6 +274,8 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
     private var waitingAck: UInt8?
     private var sentAt: TimeInterval = 0
     private var acks: [TimeInterval] = []
+    private let codec = VideoCodec()
+    private var sharpFrame = false
     private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var characteristic: CBCharacteristic?
@@ -319,20 +321,22 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
         acks.removeAll { now - $0 > 2 }
         let rate = String(format: " · %.1f q/s", Double(acks.count) / 2)
         if waitingAck != nil, pending.isEmpty, now - sentAt < 0.4 {
-            return (pixels.count == VideoWire.sharpBytes ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
+            return (sharpFrame ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
         }
+        if waitingAck != nil { codec.forceKey = true }   // (not answered: every block again)
         waitingAck = nil
-        let limit = min(VideoWire.partSize, peripheral.maximumWriteValueLength(for: .withoutResponse) - 4)
+        let limit = min(VideoWire.blePayload, peripheral.maximumWriteValueLength(for: .withoutResponse) - 4)
         guard limit > 0 else { return "O FM-1 não aceitou pacotes de vídeo Bluetooth." }
         var sent = 0
         while sent < 16 && peripheral.canSendWriteWithoutResponse {   // (as much as the link takes this tick)
             if pending.isEmpty {
-                pending = pixels
+                sharpFrame = pixels.count == VideoWire.sharpRGBA
+                pending = sharpFrame ? codec.encode(pixels) : pixels
                 offset = 0
                 frameID &+= 1
             }
             let count = min(limit, pending.count - offset)
-            let kind = source.rawValue | (pending.count == VideoWire.sharpBytes ? 0x80 : 0)
+            let kind = source.rawValue | (sharpFrame ? 0x80 : 0)
             var payload = Data([kind, frameID, UInt8(offset & 255), UInt8(offset >> 8)])
             payload.append(contentsOf: pending[offset..<(offset + count)])
             peripheral.writeValue(payload, for: characteristic, type: .withoutResponse)
@@ -345,7 +349,7 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
                 break
             }
         }
-        return (pixels.count == VideoWire.sharpBytes ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
+        return (sharpFrame ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
     }
 
     private func scan() {
@@ -410,6 +414,7 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
             $0.uuid == dataID && $0.properties.contains(.writeWithoutResponse)
         }) {
             characteristic = value
+            codec.forceKey = true
         } else { central?.cancelPeripheralConnection(peripheral) }
     }
 

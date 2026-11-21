@@ -16,7 +16,8 @@ enum VideoWire {
     // the sharp picture (Bluetooth): light 120 x 120 at 6 bits (four in three bytes), colour 30 x 30 (Cb, then Cr)
     static let sharpSide = 120
     static let sharpChroma = 30
-    static let sharpBytes = 120 * 120 * 3 / 4 + 2 * 30 * 30
+    static let sharpRGBA = 120 * 120 * 4               // (what the sampler gives; VideoCodec codes it)
+    static let blePayload = 240
 
     static func command(_ body: [UInt8]) -> [UInt8] {
         message(type: 0x10, body: body)

@@ -179,14 +179,9 @@ static int vcam_on(void) { return VPAR(VMODE) >= VS_NMODE && vcam; }
 void vs_camera(const uint8_t *pic, int sharp) { vcam = pic, vcam_hq = sharp; }
 static void vis_cam_hq(void)                     /* the sharp picture: its light as it is, its colour 30 -> 120 */
 {
-    const uint8_t *q = vcam, *cb = vcam + 120 * 120 * 3 / 4, *cr = cb + 30 * 30;
+    const uint8_t *cb = vcam + 120 * 120, *cr = cb + 30 * 30;
     int x, y;
-    uint8_t *o = &vcy[0][0];
-    for (x = 0; x < 120 * 120; x += 4, q += 3) {
-        const int a = q[0] >> 2, b = (q[0] & 3) << 4 | q[1] >> 4, c = (q[1] & 15) << 2 | q[2] >> 6, d = q[2] & 63;
-        o[x] = (uint8_t)(a << 2 | a >> 4), o[x + 1] = (uint8_t)(b << 2 | b >> 4);
-        o[x + 2] = (uint8_t)(c << 2 | c >> 4), o[x + 3] = (uint8_t)(d << 2 | d >> 4);
-    }
+    memcpy(vcy, vcam, sizeof vcy);
     for (y = 0; y < VF_H; y++) {
         const int fy = y * 64 - 96, i0 = fy < 0 ? 0 : fy >> 8, i1 = i0 + 1 < 30 ? i0 + 1 : 29, wy = fy < 0 ? 0 : fy & 255;
         for (x = 0; x < VF_W; x++) {

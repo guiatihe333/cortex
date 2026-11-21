@@ -33,7 +33,7 @@ final class FrameSampler {
                                bounds: bounds, format: .RGBA8, colorSpace: color)
             }
         }
-        if sharp { return FrameSampler.packSharp(rgba) }
+        if sharp { return rgba }                   // (the sharp picture: RGBA 120 x 120, coded when it is sent)
         var pixels = [UInt8](repeating: 0, count: VideoWire.side * VideoWire.side)
         let bayer: [Int] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
         for index in 0..<pixels.count {          // RGBA to RGB332, dithered (4 x 4 Bayer): no bands
@@ -47,40 +47,6 @@ final class FrameSampler {
             pixels[index] = red | green | blue
         }
         return pixels
-    }
-
-    // RGBA 120 x 120 to the sharp layout: the light dithered to 6 bits, the colour averaged over 4 x 4
-    static func packSharp(_ rgba: [UInt8]) -> [UInt8] {
-        let side = VideoWire.sharpSide, cside = VideoWire.sharpChroma
-        var out = [UInt8](repeating: 128, count: VideoWire.sharpBytes)
-        let bayer: [Int] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
-        var light = [Int](repeating: 0, count: side * side)
-        var cb = [Int](repeating: 0, count: cside * cside)
-        var cr = [Int](repeating: 0, count: cside * cside)
-        for index in 0..<(side * side) {
-            let r: Int = Int(rgba[index * 4]), g: Int = Int(rgba[index * 4 + 1]), b: Int = Int(rgba[index * 4 + 2])
-            let y: Int = (77 * r + 150 * g + 29 * b) >> 8
-            let d: Int = bayer[(index / side % 4) * 4 + index % 4] / 4
-            light[index] = min(63, (y + d) >> 2)
-            let cell: Int = (index / side / 4) * cside + (index % side) / 4
-            cb[cell] += (-43 * r - 85 * g + 128 * b) >> 8
-            cr[cell] += (128 * r - 107 * g - 21 * b) >> 8
-        }
-        var o = 0
-        var index = 0
-        while index < side * side {
-            let a = light[index], b = light[index + 1], c = light[index + 2], e = light[index + 3]
-            out[o] = UInt8(a << 2 | b >> 4)
-            out[o + 1] = UInt8((b & 15) << 4 | c >> 2)
-            out[o + 2] = UInt8((c & 3) << 6 | e)
-            o += 3
-            index += 4
-        }
-        for cell in 0..<(cside * cside) {
-            out[o + cell] = UInt8(max(0, min(255, 128 + cb[cell] / 16)))
-            out[o + cside * cside + cell] = UInt8(max(0, min(255, 128 + cr[cell] / 16)))
-        }
-        return out
     }
 }
 
@@ -211,3 +177,165 @@ struct CameraPreview: UIViewRepresentable {
     }
 }
 
+// The sharp picture's code (video/app.c codec_decode on the FM-1): the light 120 x 120 in 8 x 8 blocks as JPEG codes
+// them, only the blocks that changed since the FM-1's copy (every block each 30 frames, and after a frame not
+// answered), each with its colour (four cells of the 30 x 30, a byte each: Cb, Cr nibbles, steps of 8). The scale
+// follows the size: about 11 bytes a block.
+final class VideoCodec {
+    static let zigzag: [Int] = [0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48,
+                                41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23,
+                                30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63]
+    static let qbase: [Int] = [16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55,
+                               14, 13, 16, 24, 40, 57, 69, 56, 14, 17, 22, 29, 51, 87, 80, 62,
+                               18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81, 104, 113, 92,
+                               49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99]
+    private let table: [Float]                       // [x * 8 + u]: C(u) / 2 cos((2x + 1) u pi / 16)
+    private var refLuma = [Float](repeating: -1000, count: 14400)
+    private var refChroma = [UInt8](repeating: 0, count: 900)
+    private var scale = 16
+    private var count = 0
+    var forceKey = true
+
+    init() {
+        var t = [Float](repeating: 0, count: 64)
+        for x in 0..<8 {
+            for u in 0..<8 {
+                let angle: Double = Double((2 * x + 1) * u) * Double.pi / 16.0
+                t[x * 8 + u] = u == 0 ? 0.35355339 : Float(0.5 * cos(angle))
+            }
+        }
+        table = t
+    }
+
+    func encode(_ rgba: [UInt8]) -> [UInt8] {
+        let key = forceKey || count % 30 == 0
+        forceKey = false
+        count += 1
+        var result = encodeFrame(rgba, key: key, scale: scale)
+        while result.bytes.count > 8000 && scale < 120 {
+            scale = scale * 3 / 2
+            result = encodeFrame(rgba, key: key, scale: scale)
+        }
+        refLuma = result.luma
+        refChroma = result.chroma
+        if result.coded > 40 {
+            let perBlock: Int = (result.bytes.count - 33) / result.coded
+            if perBlock > 14 { scale = min(80, scale + scale / 8 + 1) }
+            else if perBlock < 8 { scale = max(6, scale - scale / 10 - 1) }
+        }
+        return result.bytes
+    }
+
+    private func encodeFrame(_ rgba: [UInt8], key: Bool, scale: Int) -> (bytes: [UInt8], luma: [Float], chroma: [UInt8], coded: Int) {
+        var luma = [Float](repeating: 0, count: 14400)
+        var cbSum = [Int](repeating: 0, count: 900)
+        var crSum = [Int](repeating: 0, count: 900)
+        for i in 0..<14400 {
+            let r: Int = Int(rgba[i * 4]), g: Int = Int(rgba[i * 4 + 1]), b: Int = Int(rgba[i * 4 + 2])
+            let y: Int = (77 * r + 150 * g + 29 * b) >> 8
+            luma[i] = Float(y)
+            let cell: Int = (i / 480) * 30 + (i % 120) / 4
+            cbSum[cell] += (-43 * r - 85 * g + 128 * b) >> 8
+            crSum[cell] += (128 * r - 107 * g - 21 * b) >> 8
+        }
+        var chroma = [UInt8](repeating: 0x88, count: 900)
+        for c in 0..<900 {
+            let cbN: Int = max(0, min(15, Int((Double(cbSum[c]) / 128.0).rounded()) + 8))
+            let crN: Int = max(0, min(15, Int((Double(crSum[c]) / 128.0).rounded()) + 8))
+            chroma[c] = UInt8(cbN << 4 | crN)
+        }
+        var step = [Int](repeating: 1, count: 64)
+        for k in 0..<64 { step[k] = max(1, (VideoCodec.qbase[k] * scale + 8) / 16) }
+        var out: [UInt8] = [0, 0, key ? 1 : 0, UInt8(scale)]
+        out.append(contentsOf: [UInt8](repeating: 0, count: 29))
+        var newLuma = refLuma
+        var newChroma = refChroma
+        var coded = 0
+        let threshold: Float = Float(5 + scale / 4) * 64
+        var block = [Float](repeating: 0, count: 64)
+        var tmp = [Float](repeating: 0, count: 64)
+        var coef = [Int](repeating: 0, count: 64)
+        for b in 0..<225 {
+            let by: Int = b / 15, bx: Int = b % 15
+            var sad: Float = 0
+            for y in 0..<8 {
+                for x in 0..<8 {
+                    let index: Int = (by * 8 + y) * 120 + bx * 8 + x
+                    block[y * 8 + x] = luma[index]
+                    sad += abs(luma[index] - refLuma[index])
+                }
+            }
+            var cells = [Int](repeating: 0, count: 4)
+            var colourMoved = false
+            for k in 0..<4 {
+                let c: Int = (2 * by + k / 2) * 30 + 2 * bx + k % 2
+                cells[k] = c
+                let a = Int(chroma[c]), o = Int(refChroma[c])
+                if abs((a >> 4) - (o >> 4)) > 1 || abs((a & 15) - (o & 15)) > 1 { colourMoved = true }
+            }
+            if !key && sad < threshold && !colourMoved { continue }
+            coded += 1
+            out[4 + (b >> 3)] |= UInt8(1 << (b & 7))
+            for c in cells {
+                out.append(chroma[c])
+                newChroma[c] = chroma[c]
+            }
+            for y in 0..<8 {                         // forward: across, then down
+                for u in 0..<8 {
+                    var s: Float = 0
+                    for x in 0..<8 { s += table[x * 8 + u] * (block[y * 8 + x] - 128) }
+                    tmp[y * 8 + u] = s
+                }
+            }
+            for v in 0..<8 {
+                for u in 0..<8 {
+                    var s: Float = 0
+                    for y in 0..<8 { s += table[y * 8 + v] * tmp[y * 8 + u] }
+                    let k = v * 8 + u
+                    var q = Int((s / Float(step[k])).rounded())
+                    if k != 0 { q = max(-127, min(127, q)) }
+                    coef[k] = q
+                }
+            }
+            let dc = max(-32768, min(32767, coef[0]))
+            out.append(UInt8(truncatingIfNeeded: dc))
+            out.append(UInt8(truncatingIfNeeded: dc >> 8))
+            var last = 0
+            for p in 1..<64 where coef[VideoCodec.zigzag[p]] != 0 { last = p }
+            var run = 0
+            if last > 0 {
+                for p in 1...last {
+                    let v = coef[VideoCodec.zigzag[p]]
+                    if v == 0 { run += 1; continue }
+                    while run > 15 { out.append(0xF0); run -= 16 }
+                    if v >= -7 && v <= 7 {
+                        out.append(UInt8(run << 4 | (v > 0 ? v : v + 16)))
+                    } else {
+                        out.append(UInt8(run << 4 | 8))
+                        out.append(UInt8(truncatingIfNeeded: v))
+                    }
+                    run = 0
+                }
+            }
+            out.append(0)
+            for v in 0..<8 {                         // the FM-1's copy: back, as it decodes
+                for x in 0..<8 {
+                    var s: Float = 0
+                    for u in 0..<8 { s += table[x * 8 + u] * Float(coef[v * 8 + u] * step[v * 8 + u]) }
+                    tmp[v * 8 + x] = s
+                }
+            }
+            for y in 0..<8 {
+                for x in 0..<8 {
+                    var s: Float = 128
+                    for v in 0..<8 { s += table[y * 8 + v] * tmp[v * 8 + x] }
+                    newLuma[(by * 8 + y) * 120 + bx * 8 + x] = max(0, min(255, s.rounded()))
+                }
+            }
+        }
+        let n = out.count
+        out[0] = UInt8(n & 255)
+        out[1] = UInt8(n >> 8)
+        return (out, newLuma, newChroma, coded)
+    }
+}
