@@ -295,7 +295,7 @@ static void receive_video(const uint8_t *p, uint32_t n)
 }
 
 /* Cortex BLE preview: source, frame ID, little-endian byte offset, up to 180 RGB332 pixels. */
-#define VIDEO_BLE_QUEUE 8u
+#define VIDEO_BLE_QUEUE 32u
 #define VIDEO_BLE_HEADER 4u
 static struct {
     uint8_t size, data[VIDEO_BLE_HEADER + VLINK_VIDEO_PART];
@@ -303,7 +303,8 @@ static struct {
 static volatile uint8_t video_ble_write, video_ble_read, video_ble_mode;
 static uint16_t video_ble_offset;
 static uint8_t video_ble_id, video_ble_kind, video_ble_front;
-static uint8_t video_ble_pixels[2][VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE] PLAT_POOL;
+static uint8_t video_ble_pixels[2][VLINK_HQ_BYTES] PLAT_POOL;   /* (60 x 60 RGB332, or the sharp picture) */
+static uint8_t video_ble_hq[2], video_ble_sharp;
 static uint8_t video_ble_shown_kind;
 static uint32_t video_ble_part_ms;
 
@@ -315,7 +316,7 @@ int app_ble_video_write(const uint8_t *data, uint16_t length)
 {
     const uint8_t w = video_ble_write, next = (w + 1u) & (VIDEO_BLE_QUEUE - 1u);
     if (!video_ble_mode || length <= VIDEO_BLE_HEADER || length > sizeof video_ble_queue[w].data ||
-        data[0] != video_ble_mode || next == video_ble_read)
+        (data[0] & 0x7Fu) != video_ble_mode || next == video_ble_read)
         return 0;
     memcpy(video_ble_queue[w].data, data, length);
     video_ble_queue[w].size = (uint8_t)length;
@@ -342,8 +343,10 @@ static void video_ble_poll(uint32_t now)
         const unsigned offset = (unsigned)data[2] | (unsigned)data[3] << 8;
         const unsigned count = video_ble_queue[r].size - VIDEO_BLE_HEADER;
         __asm__ volatile("" ::: "memory");
-        if (data[0] == mode && offset + count <= sizeof video_ble_pixels[0]) {
+        const unsigned size = data[0] & 0x80u ? VLINK_HQ_BYTES : VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE;
+        if ((data[0] & 0x7Fu) == mode && offset + count <= size) {
             if (!offset) {
+                video_ble_sharp = (uint8_t)(data[0] >> 7);
                 video_ble_kind = mode;
                 video_ble_id = data[1];
                 video_ble_offset = 0;
@@ -352,7 +355,8 @@ static void video_ble_poll(uint32_t now)
                 memcpy(video_ble_pixels[video_ble_front ^ 1u] + offset, data + VIDEO_BLE_HEADER, count);
                 video_ble_offset = (uint16_t)(offset + count);
                 video_ble_part_ms = now;
-                if (video_ble_offset == sizeof video_ble_pixels[0]) {
+                if (video_ble_offset == size && video_ble_sharp == data[0] >> 7) {
+                    video_ble_hq[video_ble_front ^ 1u] = video_ble_sharp;
                     video_ble_front ^= 1u;
                     video_ble_shown_kind = mode;
                     video_rx.frames++;
@@ -1756,10 +1760,12 @@ static const char *preview_message(int source, int state)
     }
 }
 
+static int live_hq;                              /* (the picture live_image gave is the sharp one) */
 static const uint8_t *live_image(void)
 {
     const int source = video_mode() ? vs_get(ST_VMODE) - VS_NMODE + 1 : 0;
     const int preview = source ? preview_state(source, plat_ms()) : 0;
+    live_hq = preview == 4 && video_ble_hq[video_ble_front];
     return preview == 4 ? video_ble_pixels[video_ble_front] : preview == 3 ? video_pixels[video_rx.front] : 0;
 }
 
@@ -1945,7 +1951,10 @@ void app_frame(void)
         scenes_frame();
         frame_input();
         link_hold_back(saved, held);
-        vs_camera(photo_view ? 0 : live_image());
+        {
+            const uint8_t *cam = photo_view ? 0 : live_image();
+            vs_camera(cam, live_hq);
+        }
         vs_frame(&fin);
         ui.gen_us += ((int32_t)((plat_ticks24() - t0) / 24u) - (int32_t)ui.gen_us) / 8;
         sum = lk.on && !(video_mode() && !photo_view && live_image()) ? vs_sum() : 0u;   /* (0: the camera's,

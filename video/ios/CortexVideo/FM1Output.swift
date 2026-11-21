@@ -309,21 +309,27 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
         guard let peripheral, let characteristic else {
             return "Buscando FM-1 · selecione Live Video ou Video import. no aparelho."
         }
-        guard peripheral.canSendWriteWithoutResponse, let pixels else { return "FM-1 conectado por Bluetooth." }
+        guard let pixels else { return "FM-1 conectado por Bluetooth." }
         let limit = min(VideoWire.partSize, peripheral.maximumWriteValueLength(for: .withoutResponse) - 4)
         guard limit > 0 else { return "O FM-1 não aceitou pacotes de vídeo Bluetooth." }
-        if pending.isEmpty {
-            pending = pixels
-            offset = 0
-            frameID &+= 1
+        var sent = 0
+        while sent < 16 && peripheral.canSendWriteWithoutResponse {   // (as much as the link takes this tick)
+            if pending.isEmpty {
+                pending = pixels
+                offset = 0
+                frameID &+= 1
+            }
+            let count = min(limit, pending.count - offset)
+            let kind = source.rawValue | (pending.count == VideoWire.sharpBytes ? 0x80 : 0)
+            var payload = Data([kind, frameID, UInt8(offset & 255), UInt8(offset >> 8)])
+            payload.append(contentsOf: pending[offset..<(offset + count)])
+            peripheral.writeValue(payload, for: characteristic, type: .withoutResponse)
+            offset += count
+            sent += 1
+            if offset == pending.count { pending = []; break }
         }
-        let count = min(limit, pending.count - offset)
-        var payload = Data([source.rawValue, frameID, UInt8(offset & 255), UInt8(offset >> 8)])
-        payload.append(contentsOf: pending[offset..<(offset + count)])
-        peripheral.writeValue(payload, for: characteristic, type: .withoutResponse)
-        offset += count
-        if offset == pending.count { pending = [] }
-        return "Enviando prévia por Bluetooth · 60 × 60."
+        return pixels.count == VideoWire.sharpBytes ? "Enviando por Bluetooth · nítido 120 × 120."
+                                                     : "Enviando por Bluetooth · 60 × 60."
     }
 
     private func scan() {

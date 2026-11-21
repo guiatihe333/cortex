@@ -43,7 +43,15 @@ final class Studio: ObservableObject {
     @Published var useBluetooth = true {
         didSet {
             if useBluetooth { midi.stop() } else { bluetooth.stop() }
+            applySharp()
         }
+    }
+    @Published var sharp = true { didSet { applySharp() } }   // (Bluetooth only: USB keeps 60 x 60)
+    private func applySharp() {
+        let on = sharp && useBluetooth
+        camera.sharp = on
+        sampler.sharp = on
+        pixels = nil
     }
     private let sampler = FrameSampler()
     private var videoOutput: AVPlayerItemVideoOutput?
@@ -59,6 +67,8 @@ final class Studio: ObservableObject {
     private let fm1Photo = FM1Photo()
 
     init() {
+        camera.sharp = true
+        sampler.sharp = true
         midi.command = { [weak self] cc in self?.remote(cc) }
         midi.received = { [weak self] bytes in self?.fm1Photo.feed(bytes) }
         bluetooth.receivedBLE = { [weak self] bytes in self?.fm1Photo.feedBLE(bytes) }
@@ -281,7 +291,7 @@ final class Studio: ObservableObject {
         guard active else { return }
         let now = CACurrentMediaTime()
         if source == .clip, now >= nextSample, let videoOutput {
-            nextSample = now + 0.18
+            nextSample = now + 0.06
             let itemTime = videoOutput.itemTime(forHostTime: now)
             if videoOutput.hasNewPixelBuffer(forItemTime: itemTime),
                let buffer = videoOutput.copyPixelBuffer(forItemTime: itemTime, itemTimeForDisplay: nil) {
@@ -334,6 +344,7 @@ struct StudioView: View {
                     Text("USB").tag(false)
                 }
                 .pickerStyle(.segmented)
+                Toggle("Imagem nítida (120 × 120, Bluetooth)", isOn: $studio.sharp)
                 Text(studio.status).font(.subheadline).foregroundStyle(.secondary)
                 ZStack {
                     Rectangle().fill(.black)

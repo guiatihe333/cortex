@@ -35,6 +35,10 @@ enum { VLINK_PHOTO_SIDE = 120, VLINK_PHOTO_RAW = 2 + 2 * 120, VLINK_PHOTO_MAX = 
 enum { VLINK_OFF = 0, VLINK_ON = 1, VLINK_RESYNC = 2, VLINK_SET = 3, VLINK_SCENE = 4, VLINK_UNDO = 5, VLINK_LOOK = 6 };
 /* VIDEO: source (1 live, 2 clip), frame ID, part index, then 180 RGB332 pixels in scan order. */
 enum { VLINK_VIDEO_SIDE = 60, VLINK_VIDEO_PART = 180, VLINK_VIDEO_PARTS = 20 };
+/* the sharp picture (Bluetooth, the source byte's top bit set): its light 120 x 120 at 6 bits (four in three bytes,
+ * the first the high bits), then its colour 30 x 30 twice (Cb, then Cr; 128 = none) */
+enum { VLINK_HQ_SIDE = 120, VLINK_HQ_CSIDE = 30, VLINK_HQ_LUMA = 120 * 120 * 3 / 4,
+       VLINK_HQ_BYTES = 120 * 120 * 3 / 4 + 2 * 30 * 30 };
 #define VLINK_NCHG 24                             /* settings changed a frame, at most (the rest wait a frame) */
 #define VLINK_RAW_MAX (2 + 1 + 4 + 4 + 4 * 8 + 9 + 3 * VS_NNOTE + VS_WAVE_N + VS_NSPEC + 4 + 1 + 3 * VLINK_NCHG)
 #define VLINK_MAX (5 + (VLINK_RAW_MAX * 8 + 6) / 7 + 1)

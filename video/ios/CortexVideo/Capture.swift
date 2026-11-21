@@ -7,9 +7,14 @@ import SwiftUI
 final class FrameSampler {
     private let context = CIContext()
     private let color = CGColorSpace(name: CGColorSpace.sRGB)!
-    private let bounds = CGRect(x: 0, y: 0, width: VideoWire.side, height: VideoWire.side)
+    private let small = CGRect(x: 0, y: 0, width: VideoWire.side, height: VideoWire.side)
+    private let large = CGRect(x: 0, y: 0, width: VideoWire.sharpSide, height: VideoWire.sharpSide)
+    var sharp = false
 
     func pixels(_ buffer: CVPixelBuffer, transform: CGAffineTransform = .identity) -> [UInt8] {
+        let sharp = self.sharp
+        let bounds = sharp ? large : small
+        let side = Int(bounds.width)
         let image = CIImage(cvPixelBuffer: buffer).transformed(by: transform)
         let extent = image.extent
         guard extent.width > 0, extent.height > 0 else { return [] }
@@ -21,13 +26,14 @@ final class FrameSampler {
                 translationX: (bounds.width - extent.width * scale) / 2,
                 y: (bounds.height - extent.height * scale) / 2))
         let square = centered.composited(over: CIImage(color: .black).cropped(to: bounds))
-        var rgba = [UInt8](repeating: 0, count: VideoWire.side * VideoWire.side * 4)
+        var rgba = [UInt8](repeating: 0, count: side * side * 4)
         rgba.withUnsafeMutableBytes { bytes in
             if let address = bytes.baseAddress {
-                context.render(square, toBitmap: address, rowBytes: VideoWire.side * 4,
+                context.render(square, toBitmap: address, rowBytes: side * 4,
                                bounds: bounds, format: .RGBA8, colorSpace: color)
             }
         }
+        if sharp { return FrameSampler.packSharp(rgba) }
         var pixels = [UInt8](repeating: 0, count: VideoWire.side * VideoWire.side)
         let bayer: [Int] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
         for index in 0..<pixels.count {          // RGBA to RGB332, dithered (4 x 4 Bayer): no bands
@@ -42,6 +48,40 @@ final class FrameSampler {
         }
         return pixels
     }
+
+    // RGBA 120 x 120 to the sharp layout: the light dithered to 6 bits, the colour averaged over 4 x 4
+    static func packSharp(_ rgba: [UInt8]) -> [UInt8] {
+        let side = VideoWire.sharpSide, cside = VideoWire.sharpChroma
+        var out = [UInt8](repeating: 128, count: VideoWire.sharpBytes)
+        let bayer: [Int] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
+        var light = [Int](repeating: 0, count: side * side)
+        var cb = [Int](repeating: 0, count: cside * cside)
+        var cr = [Int](repeating: 0, count: cside * cside)
+        for index in 0..<(side * side) {
+            let r: Int = Int(rgba[index * 4]), g: Int = Int(rgba[index * 4 + 1]), b: Int = Int(rgba[index * 4 + 2])
+            let y: Int = (77 * r + 150 * g + 29 * b) >> 8
+            let d: Int = bayer[(index / side % 4) * 4 + index % 4] / 4
+            light[index] = min(63, (y + d) >> 2)
+            let cell: Int = (index / side / 4) * cside + (index % side) / 4
+            cb[cell] += (-43 * r - 85 * g + 128 * b) >> 8
+            cr[cell] += (128 * r - 107 * g - 21 * b) >> 8
+        }
+        var o = 0
+        var index = 0
+        while index < side * side {
+            let a = light[index], b = light[index + 1], c = light[index + 2], e = light[index + 3]
+            out[o] = UInt8(a << 2 | b >> 4)
+            out[o + 1] = UInt8((b & 15) << 4 | c >> 2)
+            out[o + 2] = UInt8((c & 3) << 6 | e)
+            o += 3
+            index += 4
+        }
+        for cell in 0..<(cside * cside) {
+            out[o + cell] = UInt8(max(0, min(255, 128 + cb[cell] / 16)))
+            out[o + cside * cside + cell] = UInt8(max(0, min(255, 128 + cr[cell] / 16)))
+        }
+        return out
+    }
 }
 
 final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureFileOutputRecordingDelegate {
@@ -50,6 +90,10 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private let samples = AVCaptureVideoDataOutput()
     private let movies = AVCaptureMovieFileOutput()
     private let sampler = FrameSampler()
+    var sharp: Bool {
+        get { sampler.sharp }
+        set { sampler.sharp = newValue }
+    }
     private var configured = false
     private var lastFrame: TimeInterval = -.infinity
     private var latest: CVPixelBuffer?
@@ -130,7 +174,7 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         let now = CACurrentMediaTime()
-        guard now - lastFrame >= 0.18, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        guard now - lastFrame >= 0.06, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lastFrame = now
         latest = buffer
         let pixels = sampler.pixels(buffer)

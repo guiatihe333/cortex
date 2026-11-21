@@ -174,8 +174,32 @@ static void vis_fold(uint8_t (*f)[VF_W], int m)  /* MIRROR: a plane folded (Mirr
 static uint8_t vcy[VF_H][VF_W] VS_POOL;
 static int8_t vcb[VF_H][VF_W] VS_POOL, vcr[VF_H][VF_W] VS_POOL;
 static const uint8_t *vcam;
+static int vcam_hq;
 static int vcam_on(void) { return VPAR(VMODE) >= VS_NMODE && vcam; }
-void vs_camera(const uint8_t *rgb332) { vcam = rgb332; }
+void vs_camera(const uint8_t *pic, int sharp) { vcam = pic, vcam_hq = sharp; }
+static void vis_cam_hq(void)                     /* the sharp picture: its light as it is, its colour 30 -> 120 */
+{
+    const uint8_t *q = vcam, *cb = vcam + 120 * 120 * 3 / 4, *cr = cb + 30 * 30;
+    int x, y;
+    uint8_t *o = &vcy[0][0];
+    for (x = 0; x < 120 * 120; x += 4, q += 3) {
+        const int a = q[0] >> 2, b = (q[0] & 3) << 4 | q[1] >> 4, c = (q[1] & 15) << 2 | q[2] >> 6, d = q[2] & 63;
+        o[x] = (uint8_t)(a << 2 | a >> 4), o[x + 1] = (uint8_t)(b << 2 | b >> 4);
+        o[x + 2] = (uint8_t)(c << 2 | c >> 4), o[x + 3] = (uint8_t)(d << 2 | d >> 4);
+    }
+    for (y = 0; y < VF_H; y++) {
+        const int fy = y * 64 - 96, i0 = fy < 0 ? 0 : fy >> 8, i1 = i0 + 1 < 30 ? i0 + 1 : 29, wy = fy < 0 ? 0 : fy & 255;
+        for (x = 0; x < VF_W; x++) {
+            const int fx = x * 64 - 96, j0 = fx < 0 ? 0 : fx >> 8, j1 = j0 + 1 < 30 ? j0 + 1 : 29,
+                      wx = fx < 0 ? 0 : fx & 255;
+#define BQ(P) ((((P[i0 * 30 + j0] * (256 - wx) + P[i0 * 30 + j1] * wx) >> 8) * (256 - wy) + \
+                ((P[i1 * 30 + j0] * (256 - wx) + P[i1 * 30 + j1] * wx) >> 8) * wy) >> 8)
+            vcb[y][x] = (int8_t)((BQ(cb) - 128) >> 1);
+            vcr[y][x] = (int8_t)((BQ(cr) - 128) >> 1);
+#undef BQ
+        }
+    }
+}
 static void vis_cam_in(void)
 {
     static uint8_t ty[256];
@@ -193,6 +217,10 @@ static void vis_cam_in(void)
             tr[i] = (int8_t)((128 * r - 107 * g - 21 * b) >> 9);
         }
         made = 1;
+    }
+    if (vcam_hq) {
+        vis_cam_hq();
+        return;
     }
     for (y = 0; y < 60; y++)
         for (x = 0; x < 60; x++) {
@@ -1470,7 +1498,7 @@ static void vis_row_cam(int ya, int yb, int wb, int ps, int fi, const int8_t *dr
         int v = c, d, Y, cb = lb[x] * 2, cr = lr[x] * 2, r, g, b;
         if (ps <= 1 && x > 0 && x < 239) {       /* (sharpened along the row, as the synthesis is) */
             const int sh = 2 * c - pl - ly[x + 1];
-            v = c + sh / 3;
+            v = c + (sh >= 0 ? (int)(((uint32_t)sh * 43691u) >> 17) : -(int)(((uint32_t)-sh * 43691u) >> 17));
             v = v < 0 ? 0 : v > 255 ? 255 : v;
         }
         pl = c;
@@ -1491,16 +1519,28 @@ static void vis_row_cam(int ya, int yb, int wb, int ps, int fi, const int8_t *dr
         b = b < 0 ? 0 : b > 255 ? 255 : b;
         row[x] = swap16((uint32_t)((r >> 3) << 11 | (g >> 2) << 5 | (b >> 3)));
     }
-    for (x = 0; x < 240; x++) {
-        int xg = (x - o) % 240, xr, xb;
-        xg += xg < 0 ? 240 : 0;
+    {
+        int xg = -o, xr, xb;
+        while (xg < 0) xg += 240;
+        while (xg >= 240) xg -= 240;
         if (!spr) {
-            out[x] = row[xg];
-            continue;
+            for (x = 0; x < 240; x++) {
+                out[x] = row[xg];
+                if (++xg == 240) xg = 0;
+            }
+        } else {
+            xr = xg - spr, xb = xg + spr;
+            while (xr < 0) xr += 240;
+            while (xr >= 240) xr -= 240;
+            while (xb < 0) xb += 240;
+            while (xb >= 240) xb -= 240;
+            for (x = 0; x < 240; x++) {
+                out[x] = (uint16_t)((row[xr] & 0x00F8u) | (row[xg] & 0xE007u) | (row[xb] & 0x1F00u));
+                if (++xg == 240) xg = 0;
+                if (++xr == 240) xr = 0;
+                if (++xb == 240) xb = 0;
+            }
         }
-        xr = (xg - spr) % 240, xr += xr < 0 ? 240 : 0;
-        xb = (xg + spr) % 240, xb += xb < 0 ? 240 : 0;
-        out[x] = (uint16_t)((row[xr] & 0x00F8u) | (row[xg] & 0xE007u) | (row[xb] & 0x1F00u));
     }
 }
 static void vis_band(int y0, int h)
