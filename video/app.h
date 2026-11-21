@@ -38,6 +38,14 @@ int app_sysex(const uint8_t *p, uint32_t n);
 /* the host simulator's checks (expect): page, parN (a setting), link, rec, frames, sent, held, scene, bpm */
 /* The Cortex preview service is advertised only while an external Visual is selected. */
 #define APP_BLE_VIDEO
+/* the connection's pace (bt/ble/ble_cfg.h): 15 ms asked for, within Apple's rules (min a multiple of 15 ms, timeout
+ * 2 .. 6 s; the stack's 7.5 .. 11.25 ms with 1 s is refused and the iPhone stays at 30 ms). The stack takes one packet
+ * an event: 15 ms is twice 30's video (about 16 KB/s); refused, 15 .. 30 ms */
+#define BLE_CONN_MIN 12u
+#define BLE_CONN_MAX 12u
+#define BLE_CONN_TIMEOUT 200u
+#define BLE_CONN_RETRY_MIN 12u
+#define BLE_CONN_RETRY_MAX 24u
 #define APP_BLE_AT_BOOT 0
 #define APP_BLE_STORE
 #define BLE_DEVICE_NAME "Cortex Video"
