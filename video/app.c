@@ -309,10 +309,11 @@ static uint8_t video_sharp[VLINK_HQ_BYTES] PLAT_POOL;            /* (the sharp p
 static uint8_t video_ble_hq[2], video_ble_sharp;
 static unsigned video_ble_size;
 
-/* the sharp picture's code (the iPhone's VideoCodec): 2 bytes its length, flags (1: every block), the quantizer's
- * scale (16: JPEG's quality 50), 29 bytes a bit a block (15 x 15, which are in it); then each block in it: its colour
- * (four cells, a byte each: Cb, Cr nibbles, 8 = none, steps of 8), its DC (int16), its other 63 in zigzag as JPEG's runs: 0x00 the end, 0xF0 sixteen zeros,
- * else the zeros before (high nibble) and the value (1..7, 9..15 = -7..-1, 8: the next byte, int8) */
+/* the sharp picture's code (the iPhone's VideoCodec), 2: 2 bytes its length, flags (1: every block), the quantizer's
+ * scale (16: JPEG's quality 50), 29 bytes a bit a block (15 x 15, which are in it); then bits, the first the highest,
+ * each block in it: a bit (its colour follows: four cells of 30 x 30, 8 bits each, Cb Cr nibbles, steps of 8); its DC
+ * against the block before in this frame (signed Exp-Golomb); how many others are not zero (Exp-Golomb); each: the
+ * zeros before it in zigzag (Exp-Golomb), its size less one (Exp-Golomb), its sign (a bit) */
 static const uint8_t ZZ[64] = {0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48,
                                41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23,
                                30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63};
@@ -321,13 +322,45 @@ static const uint8_t QBASE[64] = {16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19
                                   18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81, 104, 113, 92,
                                   49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99};
 static float idct_t[8][8];                       /* [x][u]: C(u) / 2 cos((2x + 1) u pi / 16) */
+static struct {
+    const uint8_t *p;
+    uint32_t pos, end, bad;                      /* (in bits) */
+} cbits;
+static uint32_t cb_get(int n)                    /* n bits (n <= 24) */
+{
+    uint32_t v = 0;
+    if (cbits.pos + (uint32_t)n > cbits.end) {
+        cbits.bad = 1;
+        return 0;
+    }
+    while (n--) {
+        v = v << 1 | (uint32_t)(cbits.p[cbits.pos >> 3] >> (7 - (cbits.pos & 7)) & 1u);
+        cbits.pos++;
+    }
+    return v;
+}
+static uint32_t cb_eg(void)                      /* Exp-Golomb, order 0 */
+{
+    int z = 0;
+    while (!cb_get(1)) {
+        if (cbits.bad || ++z > 20) {
+            cbits.bad = 1;
+            return 0;
+        }
+    }
+    return ((1u << z) | cb_get(z)) - 1u;
+}
+static int cb_seg(void)                          /* signed: 1, -1, 2, -2 .. as 1, 2, 3, 4 .. */
+{
+    const uint32_t m = cb_eg();
+    return m & 1u ? (int)((m + 1u) >> 1) : -(int)(m >> 1);
+}
 static int codec_decode(const uint8_t *p, unsigned n)
 {
     static const float C[9] = {1.0f, 0.98078528f, 0.92387953f, 0.83146961f, 0.70710678f, 0.55557023f, 0.38268343f,
                                0.19509032f, 0.0f};
     uint8_t *luma = video_sharp, *cb = video_sharp + VLINK_HQ_LUMA, *cr = cb + 900;
-    unsigned i = 33;
-    int step[64], b, k;
+    int step[64], b, k, dc = 0;
     if (idct_t[0][0] == 0.0f) {
         int x, u;
         for (x = 0; x < 8; x++)
@@ -343,48 +376,36 @@ static int codec_decode(const uint8_t *p, unsigned n)
         const int s = (QBASE[k] * p[3] + 8) / 16;
         step[k] = s < 1 ? 1 : s;
     }
+    cbits.p = p + 33, cbits.pos = 0, cbits.end = (n - 33u) * 8u, cbits.bad = 0;
     for (b = 0; b < 225; b++) {
         const int by = b / 15, bx = b - by * 15;
         float F[64], T[64];
-        int pos = 1, x, y, u;
+        int pos = 0, x, y, u, nz;
         if (!(p[4 + (b >> 3)] >> (b & 7) & 1u))
             continue;
-        if (i + 7 > n)
-            return 0;
-        for (k = 0; k < 4; k++) {               /* (each cell a byte: Cb's nibble, Cr's; 8 = none, steps of 8) */
-            const int c = (2 * by + (k >> 1)) * 30 + 2 * bx + (k & 1);
-            cb[c] = (uint8_t)(128 + ((p[i + k] >> 4) - 8) * 8);
-            cr[c] = (uint8_t)(128 + ((p[i + k] & 15) - 8) * 8);
-        }
-        i += 4;
+        if (cb_get(1))
+            for (k = 0; k < 4; k++) {           /* (its colour: Cb's nibble, Cr's; 8 = none, steps of 8) */
+                const int c = (2 * by + (k >> 1)) * 30 + 2 * bx + (k & 1);
+                const uint32_t v = cb_get(8);
+                cb[c] = (uint8_t)(128 + ((int)(v >> 4) - 8) * 8);
+                cr[c] = (uint8_t)(128 + ((int)(v & 15u) - 8) * 8);
+            }
         memset(F, 0, sizeof F);
-        F[0] = (float)((int16_t)(p[i] | p[i + 1] << 8) * step[0]);
-        i += 2;
-        for (;;) {
-            uint8_t t;
+        dc += cb_seg();
+        F[0] = (float)(dc * step[0]);
+        nz = (int)cb_eg();
+        while (nz-- > 0) {
             int v;
-            if (i >= n)
+            pos += 1 + (int)cb_eg();
+            v = 1 + (int)cb_eg();
+            if (cb_get(1))
+                v = -v;
+            if (cbits.bad || pos > 63)
                 return 0;
-            t = p[i++];
-            if (!t)
-                break;
-            if (t == 0xF0u) {
-                pos += 16;
-                continue;
-            }
-            pos += t >> 4;
-            v = t & 15;
-            if (v == 8) {
-                if (i >= n)
-                    return 0;
-                v = (int8_t)p[i++];
-            } else if (v > 8) {
-                v -= 16;
-            }
-            if (pos < 64)
-                F[ZZ[pos]] = (float)(v * step[ZZ[pos]]);
-            pos++;
+            F[ZZ[pos]] = (float)(v * step[ZZ[pos]]);
         }
+        if (cbits.bad)
+            return 0;
         for (y = 0; y < 8; y++)                  /* (rows: the frequencies across to x) */
             for (x = 0; x < 8; x++) {
                 float s = 0.0f;

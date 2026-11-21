@@ -181,6 +181,43 @@ struct CameraPreview: UIViewRepresentable {
 // them, only the blocks that changed since the FM-1's copy (every block each 30 frames, and after a frame not
 // answered), each with its colour (four cells of the 30 x 30, a byte each: Cb, Cr nibbles, steps of 8). The scale
 // follows the size: about 11 bytes a block.
+private struct BitWriter {                         // the first bit the highest; Exp-Golomb codes
+    var bytes: [UInt8] = []
+    private var acc: UInt32 = 0
+    private var count = 0
+
+    mutating func put(_ value: Int, _ n: Int) {
+        if n <= 0 { return }
+        for i in stride(from: n - 1, through: 0, by: -1) {
+            acc = acc << 1 | UInt32((value >> i) & 1)
+            count += 1
+            if count == 8 {
+                bytes.append(UInt8(acc & 255))
+                acc = 0
+                count = 0
+            }
+        }
+    }
+
+    mutating func eg(_ v: Int) {
+        let m = v + 1
+        let z = Int.bitWidth - m.leadingZeroBitCount - 1
+        put(0, z)
+        put(m, z + 1)
+    }
+
+    mutating func seg(_ v: Int) { eg(v > 0 ? 2 * v - 1 : -2 * v) }
+
+    mutating func finish() -> [UInt8] {
+        if count > 0 {
+            bytes.append(UInt8((acc << UInt32(8 - count)) & 255))
+            acc = 0
+            count = 0
+        }
+        return bytes
+    }
+}
+
 final class VideoCodec {
     static let zigzag: [Int] = [0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48,
                                 41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23,
@@ -218,10 +255,10 @@ final class VideoCodec {
         }
         refLuma = result.luma
         refChroma = result.chroma
-        if result.coded > 40 {
+        if result.coded > 40 {                       // (about 7 bytes a block: quality and pace together)
             let perBlock: Int = (result.bytes.count - 33) / result.coded
-            if perBlock > 14 { scale = min(80, scale + scale / 8 + 1) }
-            else if perBlock < 8 { scale = max(6, scale - scale / 10 - 1) }
+            if perBlock > 9 { scale = min(64, scale + scale / 8 + 1) }
+            else if perBlock < 5 { scale = max(6, scale - scale / 10 - 1) }
         }
         return result.bytes
     }
@@ -251,6 +288,8 @@ final class VideoCodec {
         var newLuma = refLuma
         var newChroma = refChroma
         var coded = 0
+        var writer = BitWriter()
+        var prevDC = 0
         let threshold: Float = Float(5 + scale / 4) * 64
         var block = [Float](repeating: 0, count: 64)
         var tmp = [Float](repeating: 0, count: 64)
@@ -276,9 +315,13 @@ final class VideoCodec {
             if !key && sad < threshold && !colourMoved { continue }
             coded += 1
             out[4 + (b >> 3)] |= UInt8(1 << (b & 7))
-            for c in cells {
-                out.append(chroma[c])
-                newChroma[c] = chroma[c]
+            let colour = key || colourMoved || newChroma[cells[0]] == 0   // (the colour only when it moved)
+            writer.put(colour ? 1 : 0, 1)
+            if colour {
+                for c in cells {
+                    writer.put(Int(chroma[c]), 8)
+                    newChroma[c] = chroma[c]
+                }
             }
             for y in 0..<8 {                         // forward: across, then down
                 for u in 0..<8 {
@@ -292,32 +335,27 @@ final class VideoCodec {
                     var s: Float = 0
                     for y in 0..<8 { s += table[y * 8 + v] * tmp[y * 8 + u] }
                     let k = v * 8 + u
-                    var q = Int((s / Float(step[k])).rounded())
-                    if k != 0 { q = max(-127, min(127, q)) }
-                    coef[k] = q
-                }
-            }
-            let dc = max(-32768, min(32767, coef[0]))
-            out.append(UInt8(truncatingIfNeeded: dc))
-            out.append(UInt8(truncatingIfNeeded: dc >> 8))
-            var last = 0
-            for p in 1..<64 where coef[VideoCodec.zigzag[p]] != 0 { last = p }
-            var run = 0
-            if last > 0 {
-                for p in 1...last {
-                    let v = coef[VideoCodec.zigzag[p]]
-                    if v == 0 { run += 1; continue }
-                    while run > 15 { out.append(0xF0); run -= 16 }
-                    if v >= -7 && v <= 7 {
-                        out.append(UInt8(run << 4 | (v > 0 ? v : v + 16)))
-                    } else {
-                        out.append(UInt8(run << 4 | 8))
-                        out.append(UInt8(truncatingIfNeeded: v))
+                    if k == 0 {
+                        coef[k] = Int((s / Float(step[k])).rounded())
+                    } else {                         // (a dead zone: the small ones to zero, fewer bits)
+                        let a = min(1023, Int(abs(s) / Float(step[k]) + 0.35))
+                        coef[k] = s >= 0 ? a : -a
                     }
-                    run = 0
                 }
             }
-            out.append(0)
+            writer.seg(coef[0] - prevDC)
+            prevDC = coef[0]
+            var nonzero: [Int] = []
+            for p in 1..<64 where coef[VideoCodec.zigzag[p]] != 0 { nonzero.append(p) }
+            writer.eg(nonzero.count)
+            var last = 0
+            for p in nonzero {
+                let v = coef[VideoCodec.zigzag[p]]
+                writer.eg(p - last - 1)
+                writer.eg(abs(v) - 1)
+                writer.put(v < 0 ? 1 : 0, 1)
+                last = p
+            }
             for v in 0..<8 {                         // the FM-1's copy: back, as it decodes
                 for x in 0..<8 {
                     var s: Float = 0
@@ -333,6 +371,7 @@ final class VideoCodec {
                 }
             }
         }
+        out.append(contentsOf: writer.finish())
         let n = out.count
         out[0] = UInt8(n & 255)
         out[1] = UInt8(n >> 8)

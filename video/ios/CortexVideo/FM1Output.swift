@@ -325,7 +325,7 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
         let before = inFlight.count
         inFlight.removeAll { now - $0.at > 0.5 }
         if inFlight.count < before { codec.forceKey = true }   // (one not answered: every block again)
-        if pending.isEmpty && inFlight.count >= 2 {
+        if pending.isEmpty && inFlight.count >= 3 {
             return (sharpFrame ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
         }
         let limit = min(VideoWire.blePayload, peripheral.maximumWriteValueLength(for: .withoutResponse) - 4)
@@ -419,6 +419,9 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
             codec.forceKey = true
         } else { central?.cancelPeripheralConnection(peripheral) }
     }
+
+    // the radio has room again: the next packets now, not at the next tick
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) { ready?() }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil, characteristic.uuid == midiDataID, let value = characteristic.value else { return }

@@ -180,8 +180,28 @@ void vs_camera(const uint8_t *pic, int sharp) { vcam = pic, vcam_hq = sharp; }
 static void vis_cam_hq(void)                     /* the sharp picture: its light as it is, its colour 30 -> 120 */
 {
     const uint8_t *cb = vcam + 120 * 120, *cr = cb + 30 * 30;
-    int x, y;
+    int x, y, k;
     memcpy(vcy, vcam, sizeof vcy);
+    /* the code's 8 x 8 edges smoothed where the step across is small (the code's, not the picture's), as video
+     * decoders do: p1 p0 | q0 q1 */
+#define EDGE(Q, S) do { \
+        uint8_t *q_ = (Q); \
+        const int p1 = q_[-2 * (S)], p0 = q_[-(S)], q0 = q_[0], q1 = q_[(S)]; \
+        const int d0 = q0 - p0; \
+        if (d0 > -24 && d0 < 24 && p1 - p0 > -8 && p1 - p0 < 8 && q1 - q0 > -8 && q1 - q0 < 8) { \
+            int d = (d0 * 4 + (p1 - q1) + 4) >> 3; \
+            d = d < -6 ? -6 : d > 6 ? 6 : d; \
+            q_[-(S)] = (uint8_t)(p0 + d < 0 ? 0 : p0 + d > 255 ? 255 : p0 + d); \
+            q_[0] = (uint8_t)(q0 - d < 0 ? 0 : q0 - d > 255 ? 255 : q0 - d); \
+        } \
+    } while (0)
+    for (y = 0; y < VF_H; y++)
+        for (k = 8; k < VF_W; k += 8)
+            EDGE(&vcy[y][k], 1);
+    for (k = 8; k < VF_H; k += 8)
+        for (x = 0; x < VF_W; x++)
+            EDGE(&vcy[k][x], VF_W);
+#undef EDGE
     for (y = 0; y < VF_H; y++) {
         const int fy = y * 64 - 96, i0 = fy < 0 ? 0 : fy >> 8, i1 = i0 + 1 < 30 ? i0 + 1 : 29, wy = fy < 0 ? 0 : fy & 255;
         for (x = 0; x < VF_W; x++) {
@@ -1461,6 +1481,87 @@ static void vis_post(int y0, int h, uint16_t *out)   /* TARGETS Video All: each 
 /* a row of the camera's picture: the field's light (sharpened, dithered, CHROMA's map) with the camera's colour put
  * back; COLORAMA turns it to the palette's colour (all of it at 40); shifted by o, the RGB planes spr apart; PIXEL's
  * blocks when ps > 1 */
+#define VS_SW16(v) ((uint16_t)(((v) >> 8 & 0xFFu) | ((v) & 0xFFu) << 8))
+static VS_RAM void vis_row_camr(const uint8_t *a, const uint8_t *b, const int8_t *ba, const int8_t *bb,
+                                const int8_t *ra, const int8_t *rb, int wb, const int8_t *dr, int dith,
+                                const uint8_t *lut, const uint16_t *pal, int pm, int neg, uint8_t *ly, uint16_t *row,
+                                uint16_t *out, int o, int spr)
+{
+    const int d0 = dr[0], d1 = dr[1], d2 = dr[2], d3 = dr[3];
+    int x, c0, cl, pl;
+    c0 = (a[0] * (4 - wb) + b[0] * wb) >> 2, cl = c0;
+    for (x = 0; x < 120; x++) {
+        const int xr = x + 1 < 120 ? x + 1 : 119, cr = (a[xr] * (4 - wb) + b[xr] * wb) >> 2;
+        ly[2 * x] = (uint8_t)((3 * c0 + cl) >> 2);
+        ly[2 * x + 1] = (uint8_t)((3 * c0 + cr) >> 2);
+        cl = c0, c0 = cr;
+    }
+    pl = ly[0];
+    for (x = 0; x < 240; x += 2) {
+        int cb = ((ba[x >> 1] * (4 - wb) + bb[x >> 1] * wb) >> 2) * 2,
+            cr = ((ra[x >> 1] * (4 - wb) + rb[x >> 1] * wb) >> 2) * 2, k, tr, tg, tb;
+        if (neg)
+            cb = -cb, cr = -cr;
+        tr = (359 * cr) >> 8, tg = (88 * cb + 183 * cr) >> 8, tb = (454 * cb) >> 8;
+        for (k = 0; k < 2; k++) {
+            const int i = x + k, c = ly[i];
+            int v = c, d, Y, r, g, bl;
+            if (i > 0 && i < 239) {
+                const int sh = 2 * c - pl - ly[i + 1];
+                v = c + (sh >= 0 ? (int)(((uint32_t)sh * 43691u) >> 17) : -(int)(((uint32_t)-sh * 43691u) >> 17));
+                v = v < 0 ? 0 : v > 255 ? 255 : v;
+            }
+            pl = c;
+            if (dith && v > 8) {
+                const int q = i & 3;
+                d = v + (q == 0 ? d0 : q == 1 ? d1 : q == 2 ? d2 : d3);
+            } else {
+                d = v;
+            }
+            Y = lut[d < 0 ? 0 : d > 255 ? 255 : d];
+            if (!Y) {
+                row[i] = 0;
+                continue;
+            }
+            r = Y + tr, g = Y - tg, bl = Y + tb;
+            if (pm) {
+                const uint32_t P = pal[Y];
+                const int pr = (int)(P >> 11) << 3, pg = (int)(P >> 5 & 63u) << 2, pb = (int)(P & 31u) << 3;
+                r += ((pr - r) * pm) >> 8, g += ((pg - g) * pm) >> 8, bl += ((pb - bl) * pm) >> 8;
+            }
+            r = r < 0 ? 0 : r > 255 ? 255 : r;
+            g = g < 0 ? 0 : g > 255 ? 255 : g;
+            bl = bl < 0 ? 0 : bl > 255 ? 255 : bl;
+            {
+                const uint32_t v565 = (uint32_t)((r >> 3) << 11 | (g >> 2) << 5 | (bl >> 3));
+                row[i] = VS_SW16(v565);
+            }
+        }
+    }
+    {
+        int xg = -o, xr, xb;
+        while (xg < 0) xg += 240;
+        while (xg >= 240) xg -= 240;
+        if (!spr) {
+            for (x = 0; x < 240; x++) {
+                out[x] = row[xg];
+                if (++xg == 240) xg = 0;
+            }
+        } else {
+            xr = xg - spr, xb = xg + spr;
+            while (xr < 0) xr += 240;
+            while (xr >= 240) xr -= 240;
+            while (xb < 0) xb += 240;
+            while (xb >= 240) xb -= 240;
+            for (x = 0; x < 240; x++) {
+                out[x] = (uint16_t)((row[xr] & 0x00F8u) | (row[xg] & 0xE007u) | (row[xb] & 0x1F00u));
+                if (++xg == 240) xg = 0;
+                if (++xr == 240) xr = 0;
+                if (++xb == 240) xb = 0;
+            }
+        }
+    }
+}
 static void vis_row_cam(int ya, int yb, int wb, int ps, int fi, const int8_t *dr, int dith, uint16_t *out, int o,
                         int spr)
 {
@@ -1469,6 +1570,11 @@ static void vis_row_cam(int ya, int yb, int wb, int ps, int fi, const int8_t *dr
     static uint16_t row[240];
     const int pm = VPAR(VFOLD) >= 40 ? 256 : VPAR(VFOLD) * 256 / 40, neg = vinv > 128;
     int x, pl;
+    if (ps <= 1) {                               /* (the usual: in RAM code) */
+        VS_FAR(vis_row_camr)(vf[ya], vf[yb], vcb[ya], vcb[yb], vcr[ya], vcr[yb], wb, dr, dith, vlut, vpal, pm, neg,
+                             ly, row, out, o, spr);
+        return;
+    }
     if (ps > 1) {
         const int qy = fi / ps * ps;
         for (x = 0; x < 240; x++) {
