@@ -14,8 +14,8 @@ key 1 down
 key 1 up
 release SEL
 expect scenes 3
-turn SELECT 18
-expect page 18
+turn SELECT 25
+expect page 25
 spin K2 1
 spin K3 2
 key 0 down
@@ -30,7 +30,7 @@ spin K4 1
 wait 2300
 expect scene 1
 spin K4 -1
-turn SELECT -18
+turn SELECT -25
 expect page 0
 key 16 down
 spin K2 3

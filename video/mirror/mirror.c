@@ -65,9 +65,15 @@ EXPORT int mx_page_group(int p) { return PAGES[p].group; }
 EXPORT int mx_page_knob(int p, int i) { return PAGES[p].k[i]; }
 EXPORT int mx_ngroup(void) { return GR_N; }
 EXPORT const char *mx_group_name(int g) { return GROUP_NAME[g]; }
+EXPORT int mx_video_source(void)
+{
+    const int visual = vs_get(ST_VMODE);
+    return visual >= VS_NMODE ? visual - VS_NMODE + 1 : 0;
+}
 EXPORT int mx_npar(void) { return ST_N; }
 EXPORT int mx_slot_w(void) { return VS_SLOT_W; }
 EXPORT int mx_nslot(void) { return VS_NSLOT; }
+EXPORT int mx_tr1s(void) { return ST_TR1S; }
 EXPORT const char *mx_par_name(int k) { return vs_par_info(k)->name; }
 EXPORT int mx_par_lo(int k) { return vs_par_info(k)->lo; }
 EXPORT int mx_par_hi(int k) { return vs_par_info(k)->hi; }

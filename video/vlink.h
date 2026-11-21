@@ -28,8 +28,10 @@
 #define VLINK_MANU 0x7Du
 #define VLINK_ID0 0x43u
 #define VLINK_ID1 0x56u
-enum { VLINK_SYNC = 0x01, VLINK_FRAME = 0x02, VLINK_CMD = 0x10 };
+enum { VLINK_SYNC = 0x01, VLINK_FRAME = 0x02, VLINK_CMD = 0x10, VLINK_VIDEO = 0x11 };
 enum { VLINK_OFF = 0, VLINK_ON = 1, VLINK_RESYNC = 2, VLINK_SET = 3, VLINK_SCENE = 4, VLINK_UNDO = 5, VLINK_LOOK = 6 };
+/* VIDEO: source (1 live, 2 clip), frame ID, part index, then 180 RGB332 pixels in scan order. */
+enum { VLINK_VIDEO_SIDE = 60, VLINK_VIDEO_PART = 180, VLINK_VIDEO_PARTS = 20 };
 #define VLINK_NCHG 24                             /* settings changed a frame, at most (the rest wait a frame) */
 #define VLINK_RAW_MAX (2 + 1 + 4 + 4 + 4 * 8 + 9 + 3 * VS_NNOTE + VS_WAVE_N + VS_NSPEC + 4 + 1 + 3 * VLINK_NCHG)
 #define VLINK_MAX (5 + (VLINK_RAW_MAX * 8 + 6) / 7 + 1)

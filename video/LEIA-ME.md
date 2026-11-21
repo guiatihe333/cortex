@@ -16,22 +16,92 @@ O FM-1 como video synth reativo ao áudio, e só isso: sem vozes, sem fita, sem 
   juntos. O REC do FM-1 inicia e para a gravação no PC, que sai como MP4 (H.264 + AAC) ou WebM, com o áudio da entrada
   USB do FM-1.
 
+## Vídeo de arquivo e câmera
+
+- **PC:** abra o espelho no Chrome ou Edge. Em **Entrada de vídeo**, importe um clipe ou ligue a câmera. O clipe
+  repete em loop. MP4 (H.264) é um bom ponto de partida. Para câmeras USB ou virtuais, escolha o dispositivo
+  no seletor **Câmera**. Os nomes costumam aparecer depois de permitir o acesso.
+- **iPhone via cabo no Windows:** instale o [Camo Camera e o Camo Studio](https://reincubate.com/camo/).
+  Conecte o iPhone ao PC com um cabo Lightning de dados, desbloqueie o aparelho e toque em **Confiar** se solicitado.
+  Abra o Camo Camera no iPhone e selecione o aparelho no Camo Studio pela conexão USB. Quando a prévia aparecer,
+  abra **Entrada de vídeo → iPhone via USB / Lightning → Ligar câmera do iPhone**. O espelho seleciona a câmera
+  virtual Camo e aplica os mesmos efeitos ao vídeo recebido por cabo. Use o Camo Studio para trocar a lente.
+- **No próprio iPhone:** abra a página do espelho no Safari por HTTPS, toque em **Ligar câmera** e escolha
+  a frontal ou a traseira.
+- **Na tela do FM-1:** conecte o aparelho por USB ao PC e use o firmware e o espelho desta mesma compilação.
+  Na página **VISUAL**, gire K1 até **Live Video** para câmera ou **Video import.** para clipe. Escolha a fonte
+  correspondente no espelho. O PC aplica os efeitos da entrada e envia uma prévia colorida de 60 × 60 para
+  a tela do FM-1. O espelho continua com a saída de gravação em resolução maior.
+- **Efeitos:** o espelhamento dobra a imagem em duas ou quatro partes. **Rastro de vídeo** realimenta a imagem
+  anterior e **Zoom do rastro** faz o eco expandir ou contrair. Com o FM-1 conectado e sincronizado, a síntese
+  forma uma segunda camada, com intensidade e mistura **Sobrepor**, **Trama**, **Diferença** ou **Multiplicar**.
+- **Saída:** **Gravar aqui** e **Foto (PNG)** capturam a composição. O áudio continua vindo de **Áudio gravado**.
+  O clipe e a câmera entram como imagem. Use **Preencher** para decidir entre preservar todo o quadro e
+  cortar para preencher o formato da saída.
+
 ## O painel
 
 | Controle | Função |
 | --- | --- |
-| SELECT, OCT− / OCT+ | página (21, em 7 grupos): SOURCE (Visual, Osc, Osc 2) · OBJECT (Object, Obj Motion, Obj Array, Obj Look) · SHAPE (Shape, Shape 2, Mix) · FX (Video, Transform, Life, Mosh, Chroma) · REACT (React, React 2, Input) · PERFORM (Scenes, Matrix) · SETUP (Screen) |
-| SEL + SELECT | pula de grupo em grupo |
+| SELECT, OCT− / OCT+ | página (28, em 7 grupos): SOURCE (Visual, Osc, Osc 2) · OBJECT (Object, Profile, Structure, Deform, Obj Motion, Clone, Clone Step, Obj Look) · SHAPE (Shape, Shape 2, Mix) · FX (Video, Transform, Life, Mosh, Chroma, Targets, Modulate) · REACT (React, React 2, Triggers, Input) · PERFORM (Scenes, Matrix) · SETUP (Screen) |
+| SEL segurado | o mapa de páginas: ALGO escolhe o grupo, SELECT a página; soltar SEL vai até ela |
+| HOME | toque: volta à página anterior (e de novo, à outra); segurado: esconde ou mostra as barras |
 | K1–K4 | os quatro ajustes da página |
+| SEL + knob | ajuste fino (de 1 em 1) |
+| GLO + knob | o ajuste volta ao padrão |
 | PRESET, ARP / SEQ | os 27 looks |
 | ALGO | as cenas |
 | 16 primeiras teclas | cenas 1–16; SEL + tecla guarda |
 | teclas 17–27 | a matriz: cada tecla faz o que a página MATRIX diz |
 | segurar uma tecla da matriz e girar um knob | a tecla aprende: vira um “Jump” para aquele valor enquanto segurada |
 | REC | gravação no PC (precisa do espelho aberto) |
-| PLAY | segura a estrutura · EDIT nova estrutura · LFO mutação leve · GLO sorteia a página |
+| PLAY | segura a estrutura · EDIT nova estrutura · LFO mutação leve · GLO (toque) sorteia a página |
 | ENV | desfaz (até 8 gestos: um knob depois de uma pausa, um look, uma cena, o sorteio, um controle do espelho) |
-| FX | tap tempo · HOME esconde as barras · SAVE salva ajustes, cenas e matriz |
+| FX | tap tempo · SAVE salva ajustes, cenas e matriz |
+
+### Objetos: formas a partir de parâmetros
+Não há figuras prontas: a forma sai de alguns números estruturais.
+- **PROFILE**: a superformula de Gielis. Symmetry (0 redondo; 3, 4, 5… pontas ou lados), Point (baixo: espinhos;
+  alto: cheio), Curve (baixo: beliscado; alto: quadrado) e Symmetry 2 (o segundo perfil, das latitudes ou da seção).
+- **OBJECT · Form**: Flat (o perfil como disco; Depth dá espessura, Hole faz um anel), Solid (o produto dos dois
+  perfis: esfera, cubo, estrela, concha, flor), Ring (o segundo perfil varrido ao longo do primeiro: toros e
+  parentes), Terrain e Wave (pisos do espectro e da forma de onda).
+- **STRUCTURE**: Hole, Twist (torce o perfil ao longo da forma), Depth e Detail (facetas).
+- **DEFORM**: Spectrum (cada parte da forma empurrada pela sua banda: em volta de um disco ou anel, ao longo das
+  latitudes de um sólido), Noise, Morph (a forma de onda) e Explode (as faces lançadas para fora no tempo).
+- **CLONE**: até 16 cópias em grade, anel, linha, espiral, espalhadas, órbita ou grade 3D; cada uma reage à sua
+  faixa do espectro. **CLONE STEP**: Turn, Scale, Hue e Lag (as cópias atrasadas no giro) somados de cópia em cópia.
+- **OBJ MOTION**: Spin, Tilt, Zoom e Sync (o giro preso ao tempo: 1 tempo, 2, 1 compasso, 2).
+- **TRIGGERS** (3): um ataque (Kick, Snare, Hat, Beat, Note, Bar) dispara uma ação (Explode, Spin, Colour, Shuffle,
+  Throw, Flash, Invert, Zoom) com uma intensidade. Shuffle sacode os números do perfil, e a forma volta sozinha.
+- Looks novos: Orb, Supershell, Cubes, Flower, Torus Ring, Terrain, Spectrum, Clone Spiral, Kick Shatter.
+
+### Um todo: os efeitos na imagem inteira (página TARGETS)
+- **Video on**, **Mosh on** e **Chroma on**: cada família de efeitos age só no campo (Field) ou na imagem inteira
+  (All, o padrão), objetos incluídos.
+  - Video All: RGB, Sync e Slice rasgam e separam as cores da linha já composta (campo, linhas e objetos).
+  - Mosh All: os vértices dos objetos andam com os vetores dos blocos, o rastro deles entra no campo para ser
+    arrastado, e o Corrupt joga ou some com faces.
+  - Chroma All: os objetos passam pelo mesmo mapa de cor do campo (Colorama, Poster, Key), por Invert e Strobe, e
+    o Pixel encaixa os vértices na grade.
+- **Life** (na mesma página): o genoma que muta o campo (Mutate, Chaos, as teclas Nudge, Throw, New) muta também o
+  perfil dos objetos, e os dois mudam juntos.
+- **OBJ LOOK · Blend**: Over, Add, Feed, Behind (o campo claro cobre o objeto além do **Key**, com borda suave, como
+  um keyer de luma), Difference e Multiply.
+
+### Os objetos modulam o campo (página MODULATE)
+Como o modulate do Hydra, com os objetos no papel de modulador:
+- **Lens**: o campo empurrado para fora das formas (positivo) ou puxado para dentro (negativo), como uma lente.
+- **Swirl**: o campo torcido em volta das formas.
+- **Glow**: um halo das formas no campo, que o feedback carrega.
+- **Vectors**: com o Mosh ligado, os blocos sob cada cópia andam com o movimento dela na tela, e o borrão segue o
+  que se move (como os vetores de um datamosh de verdade, em vez de sorteados).
+
+### A tela
+- Os knobs são arcos: o valor da mão em laranja; por dentro, até onde a modulação o leva agora, na cor da fonte
+  (vermelho: grave, bumbo; amarelo: médios, caixa; azul: agudos, chimbal, brilho; verde: LFO, tempo, compasso;
+  branco: batida, notas).
+- À direita do cabeçalho: o espectro em 24 bandas, as luzes do bumbo, da caixa e do chimbal, e o tempo piscando.
 
 ### Cenas (página SCENES)
 - **Scene**: escolhe e chama uma cena.
@@ -52,6 +122,11 @@ O FM-1 como video synth reativo ao áudio, e só isso: sem vozes, sem fita, sem 
   Bright.
 - Cada slot React tem Mode (Direct, Invert, Beat hold, Gate) e Lag (suavização) na página REACT 2.
 - As cópias dos objetos (Bars, a grade de cubos) e o Terrain leem cada uma uma faixa do espectro.
+
+### Abrir o espelho
+Dê um clique duplo em **Abrir espelho.cmd** (na mesma pasta da página). Ele serve a página em
+http://127.0.0.1:8770 e a abre no navegador; deixe a janela preta aberta enquanto usa. Aberta direto do disco
+(file://), a página não consegue escolher a saída de áudio nem lembrar as permissões: o R20 não chega ao FM-1.
 
 ### Áudio de uma placa ou gravador (Zoom R20, microfone)
 O FM-1 só recebe áudio pelo USB do computador, e uma placa USB não se liga direto nele (os dois são dispositivos USB).

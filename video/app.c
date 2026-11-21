@@ -169,7 +169,8 @@ typedef struct {
 typedef struct {
     uint32_t magic, n;
     uint32_t used;                       /* bit i: scene i stored */
-    int16_t par[NSCENE][ST_N];
+    uint8_t par[NSCENE][ST_N];           /* (each setting over its low end: every range fits a byte; the store's
+                                          * objects hold 3840 bytes) */
 } scenes_t;
 static set_t set;
 static scenes_t scn;
@@ -219,15 +220,19 @@ static const struct {
     {"Synthwave", 11, {ST_VMODE, ST_VGEO, ST_VPAL, ST_VFEED, ST_VXTGT, ST_VXZOOM, ST_VTRAIL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {4, 3, 6, 50, 0, 30, 70, 0, 0, 0, 0}},
     {"Ink", 11, {ST_VMODE, ST_VPAL, ST_VKEY, ST_VPOSTER, ST_VFEED, ST_VFLOW, ST_VTRAIL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {3, 4, 40, 60, 60, 60, 90, 0, 0, 0, 0}},
     {"Strobe", 9, {ST_VMODE, ST_VSTROBE, ST_VPAL, ST_VFEED, ST_VGEO, ST_VSIDES, ST_VMIRROR, ST_VPULSE, ST_VINVERT}, {7, 70, 5, 40, 7, 6, 4, 90, 0}},
-    {"Orb", 9, {ST_VMODE, ST_OSHAPE, ST_OSIZE, ST_OMORPH, ST_OLIGHT, ST_VFEED, ST_VTRAIL, ST_VPAL, ST_OBLEND}, {5, 7, 55, 60, 80, 30, 70, 0, 0}},
-    {"Cubes", 10, {ST_VMODE, ST_OSHAPE, ST_OCOUNT, ST_OARRAY, ST_OSPREAD, ST_OREACT, ST_ODRAW, ST_VFEED, ST_VPAL, ST_OSPIN}, {7, 6, 9, 0, 60, 70, 3, 20, 5, 40}},
-    {"Terrain", 9, {ST_VMODE, ST_OSHAPE, ST_ODRAW, ST_OTILT, ST_OZOOM, ST_OMORPH, ST_VPAL, ST_VFEED, ST_OSPIN}, {4, 11, 1, 30, 55, 50, 6, 40, 10}},
-    {"Torus Ring", 10, {ST_VMODE, ST_OSHAPE, ST_OCOUNT, ST_OARRAY, ST_OSPREAD, ST_OSIZE, ST_OBLEND, ST_VFEED, ST_VTRAIL, ST_VPAL}, {5, 8, 6, 5, 55, 55, 2, 60, 85, 8}},
-    {"Spectrum", 9, {ST_VMODE, ST_OSHAPE, ST_OCOUNT, ST_OARRAY, ST_OSPREAD, ST_OREACT, ST_OSPIN, ST_VPAL, ST_VFEED}, {8, 5, 12, 2, 80, 100, 0, 5, 15}},
+    {"Orb", 8, {ST_VMODE, ST_OFORM, ST_OSIZE, ST_OSPEC, ST_OLIGHT, ST_VFEED, ST_VTRAIL, ST_VPAL}, {5, 2, 50, 55, 80, 30, 70, 0}},
+    {"Supershell", 11, {ST_VMODE, ST_OFORM, ST_OSYM, ST_OPINCH, ST_OCURVE, ST_OSYM2, ST_OTWIST, ST_OSPEC, ST_ODRAW, ST_VPAL, ST_VFEED}, {7, 2, 7, 18, 35, 3, 25, 40, 3, 6, 20}},
+    {"Cubes", 10, {ST_VMODE, ST_OFORM, ST_OSYM, ST_OSYM2, ST_OPINCH, ST_OCURVE, ST_OCOUNT, ST_OARRAY, ST_OREACT, ST_VPAL}, {7, 2, 4, 4, 90, 90, 27, 6, 70, 5}},
+    {"Flower", 10, {ST_VMODE, ST_OFORM, ST_OSYM, ST_OPINCH, ST_OCURVE, ST_ODEPTH, ST_OCOUNT, ST_OSTSCALE, ST_OSTROT, ST_OSTHUE}, {5, 1, 6, 30, 20, 0, 8, -25, 12, 40}},
+    {"Torus Ring", 10, {ST_VMODE, ST_OFORM, ST_OHOLE, ST_OCOUNT, ST_OARRAY, ST_OSPREAD, ST_OBLEND, ST_VFEED, ST_VTRAIL, ST_VPAL}, {5, 3, 30, 6, 5, 55, 2, 60, 85, 8}},
+    {"Terrain", 9, {ST_VMODE, ST_OFORM, ST_ODRAW, ST_OTILT, ST_OZOOM, ST_OMORPH, ST_VPAL, ST_VFEED, ST_OSPIN}, {4, 4, 1, 30, 55, 50, 6, 40, 10}},
+    {"Spectrum", 10, {ST_VMODE, ST_OFORM, ST_OSYM, ST_OPINCH, ST_OCURVE, ST_OCOUNT, ST_OARRAY, ST_OSPREAD, ST_OREACT, ST_VPAL}, {8, 1, 4, 90, 90, 16, 2, 80, 100, 5}},
+    {"Clone Spiral", 11, {ST_VMODE, ST_OFORM, ST_OSYM, ST_OCOUNT, ST_OARRAY, ST_OSTROT, ST_OSTHUE, ST_OSTTIME, ST_OSTSCALE, ST_VFEED, ST_VPAL}, {5, 2, 5, 16, 3, 15, 60, 50, 10, 40, 6}},
+    {"Kick Shatter", 12, {ST_VMODE, ST_OFORM, ST_OSYM, ST_OPINCH, ST_TR1S, ST_TR1A, ST_TR1N, ST_TR1S + 3, ST_TR1S + 4, ST_TR1S + 5, ST_OSYNC, ST_VPAL}, {7, 2, 5, 40, 1, 0, 90, 2, 3, 70, 3, 8}},
     {"Negative", 8, {ST_VMODE, ST_VINVERT, ST_VPAL, ST_VFEED, ST_VXZOOM, ST_VXROT, ST_VGEO, ST_VTRAIL}, {5, 100, 8, 70, 30, 15, 14, 80}},
 };
 #define NLOOK ((int)(sizeof LOOKS / sizeof *LOOKS))
-#define PICTURE_LAST ST_OPULSE                  /* (a look, a scene, the dice: VMODE .. VINVERT; not the ear, the screen,
+#define PICTURE_LAST ST_TR3N                  /* (a look, a scene, the dice: VMODE .. VINVERT; not the ear, the screen,
                                                   * the react slots: the player's) */
 
 /* ------------------------------------------------------------------- pages --- */
@@ -251,11 +256,49 @@ static struct {
 static uint8_t lk_buf[VLINK_SYNC_MAX > VLINK_MAX ? VLINK_SYNC_MAX : VLINK_MAX];
 static uint8_t lk_raw[VLINK_SYNC_RAW > VLINK_RAW_MAX ? VLINK_SYNC_RAW : VLINK_RAW_MAX];
 
+static uint8_t video_pixels[2][VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE] PLAT_POOL;
+static struct {
+    uint32_t shown_ms;
+    uint8_t front, shown_kind, loading_kind, frame_id, next_part;
+} video_rx;
+
+static void receive_video(const uint8_t *p, uint32_t n)
+{
+    uint8_t packet[3 + VLINK_VIDEO_PART];
+    const int selected = vs_get(ST_VMODE) - VS_NMODE + 1;
+    if (selected < 1 || selected > 2 || !lk.on ||
+        n != (sizeof packet * 8u + 6u) / 7u ||
+        vlink_unpack(p, n, packet, sizeof packet) != sizeof packet ||
+        packet[0] != selected)
+        return;
+    if (packet[2] == 0) {
+        video_rx.loading_kind = packet[0];
+        video_rx.frame_id = packet[1];
+        video_rx.next_part = 0;
+    }
+    if (packet[0] != video_rx.loading_kind || packet[1] != video_rx.frame_id ||
+        packet[2] != video_rx.next_part || packet[2] >= VLINK_VIDEO_PARTS)
+        return;
+    memcpy(video_pixels[video_rx.front ^ 1u] + packet[2] * VLINK_VIDEO_PART, packet + 3, VLINK_VIDEO_PART);
+    if (++video_rx.next_part == VLINK_VIDEO_PARTS) {
+        video_rx.front ^= 1u;
+        video_rx.shown_kind = packet[0];
+        video_rx.shown_ms = plat_ms();
+    }
+}
+
 static void mirror_cmd(const uint8_t *b, uint32_t n);
+_Static_assert(VLINK_SYNC_MAX <= 384, "a SYNC fits the SysEx ring (384 bytes) whole: more settings, a SYNC in parts");
 int app_sysex(const uint8_t *p, uint32_t n)      /* (the bytes between F0 and F7) */
 {
     uint8_t b[8];
-    if (n < 5 || p[0] != VLINK_MANU || p[1] != VLINK_ID0 || p[2] != VLINK_ID1 || p[3] != VLINK_CMD)
+    if (n < 5 || p[0] != VLINK_MANU || p[1] != VLINK_ID0 || p[2] != VLINK_ID1)
+        return 0;
+    if (p[3] == VLINK_VIDEO) {
+        receive_video(p + 4, n - 4);
+        return 1;
+    }
+    if (p[3] != VLINK_CMD)
         return 0;
     if (vlink_unpack(p + 4, n - 4, b, sizeof b) < 1)
         return 1;
@@ -266,6 +309,7 @@ int app_sysex(const uint8_t *p, uint32_t n)      /* (the bytes between F0 and F7
     }
     if (b[0] == VLINK_OFF) {
         lk.on = 0, lk.rec = 0;
+        video_rx.shown_kind = video_rx.loading_kind = 0;
     } else if (b[0] == VLINK_RESYNC || !lk.on) {
         lk.on = 1;
         lk.want_sync = 1;
@@ -283,6 +327,10 @@ static struct {
     float phase;                         /* the tempo's beats (the clock's, else the taps') */
     uint32_t phase_t;
     uint8_t mkey;                        /* the MATRIX page's key (0 .. 10: 17 .. 27) */
+    uint8_t map_on, map_cur, last_page;  /* the page map (SEL held, SELECT / ALGO turned); the page before (HOME) */
+    uint8_t glo_used, home_done;         /* (GLO held: a knob reset; HOME held: the bars hidden) */
+    uint32_t glo_t, home_t;
+    uint8_t tslot;                       /* the TRIGGERS page's trigger (0 .. 2) */
     int8_t pend;                         /* a scene waiting for its beat or bar (-1 none) */
     int32_t beat_was;                    /* the beat the last frame was in */
     uint8_t morphing, chain_on;
@@ -359,6 +407,8 @@ static int knob_par(int i)                       /* the page's knob i: its setti
     int k = PAGES[set.page].k[i];
     if (k >= ST_AR1S && cv_pre(PAGES[set.page].name, "REACT"))
         k += VS_SLOT_W * set.slot;
+    if (k >= ST_TR1S && k < ST_TR1S + 3 && cv_pre(PAGES[set.page].name, "TRIGGERS"))
+        k += 3 * ui.tslot;
     return k;
 }
 static void knob_text(int i, char *name, char *val)
@@ -375,6 +425,9 @@ static void knob_text(int i, char *name, char *val)
         cv_cpy(name, "Frame", 16);
         vs_itoa((int)(ui.frame_us / 1000u), val);
         cat(val, " ms");
+    } else if (k == K_TSLOT) {
+        cv_cpy(name, "Trigger", 16);
+        vs_itoa(ui.tslot + 1, val);
     } else if (k == K_SCN) {
         cv_cpy(name, "Scene", 16);
         vs_itoa(set.scene + 1, val);
@@ -415,7 +468,7 @@ static void knob_text(int i, char *name, char *val)
         const char *nm = vs_par_info(k)->name;
         int j = 0;
         while (nm[j] && j < 11) {               /* ("Source 3" as "Source") */
-            if (nm[j] == ' ' && nm[j + 1] >= '1' && nm[j + 1] <= '8' && !nm[j + 2])
+            if (nm[j] == ' ' && nm[j + 1] >= '1' && nm[j + 1] <= '8' && !nm[j + 2] && k >= ST_TR1S)
                 break;
             name[j] = nm[j];
             j++;
@@ -435,6 +488,8 @@ static void knob_turn(int i, int d)
         set_dirty = 1;
     } else if (k == K_NONE) {
         return;
+    } else if (k == K_TSLOT) {
+        ui.tslot = (uint8_t)((ui.tslot + 3 + (d > 0 ? 1 : -1)) % 3);
     } else if (k == K_SCN) {
         set.scene = (uint8_t)((set.scene + NSCENE + (d > 0 ? 1 : -1)) % NSCENE);
         if (scn.used >> set.scene & 1u)
@@ -468,11 +523,12 @@ static void knob_turn(int i, int d)
                                            p->lo, p->hi);
     } else {
         const vs_par_t *p = vs_par_info(k);
-        const int span = p->hi - p->lo, step = span >= 100 && (d > 1 || d < -1) ? 2 * d : d;
+        const int span = p->hi - p->lo, fine = ui.btn >> B_SEL & 1u,
+                  step = fine ? d : span >= 100 && (d > 1 || d < -1) ? 3 * d : span >= 100 ? 2 * d : d;
         undo_knob_mark(k);
         par_set(k, vs_get(k) + step);
     }
-    if (k < 0 && k != K_SLOT && k != K_MKEY)
+    if (k < 0 && k != K_SLOT && k != K_MKEY && k != K_TSLOT)
         set_dirty = 1;
     knob_text(i, n, v);
     app_say(n, v);
@@ -492,7 +548,7 @@ static void scene_store(int i)
 {
     int k;
     for (k = 0; k < ST_N; k++)
-        scn.par[i][k] = (int16_t)vs_get(k);
+        scn.par[i][k] = (uint8_t)(vs_get(k) - vs_par_info(k)->lo);
     scn.used |= 1u << i;
     scn_dirty = 1;
     set.scene = (uint8_t)i;
@@ -513,12 +569,12 @@ static void scene_start(int i)                   /* now: cut to it, or MORPH tow
         ui.morphing = 0;
         for (k = 0; k < ST_N; k++)
             if (scene_par(k))
-                par_set(k, scn.par[i][k]);
+                par_set(k, scn.par[i][k] + vs_par_info(k)->lo);
     } else {                                     /* (the switches at once; every range on its way, set.smorph beats) */
         for (k = 0; k < ST_N; k++) {
             const vs_par_t *p = vs_par_info(k);
             ui.m_from[k] = (int16_t)vs_get(k);
-            ui.m_to[k] = scn.par[i][k];
+            ui.m_to[k] = (int16_t)(scn.par[i][k] + vs_par_info(k)->lo);
             if (scene_par(k) && p->hi - p->lo < 10)
                 par_set(k, ui.m_to[k]);
         }
@@ -603,6 +659,8 @@ static void page_go(int d)
 {
     char t[40], n[16], v[16];
     int i;
+    if (d % NPAGE)
+        ui.last_page = set.page;
     set.page = (uint8_t)((set.page + NPAGE + d) % NPAGE);
     t[0] = 0;
     for (i = 0; i < 4; i++) {                    /* (a screen reader hears the page whole) */
@@ -613,12 +671,18 @@ static void page_go(int d)
     }
     app_say(PAGES[set.page].name, t);
 }
-static void group_go(int d)                      /* SEL + SELECT: the next group's first page */
+static void map_move(int d, int by_group)        /* the page map's cursor: a page, or a group's first page */
 {
-    int g = (PAGES[set.page].group + GR_N + d) % GR_N, p;
-    for (p = 0; p < NPAGE && PAGES[p].group != g; p++)
-        ;
-    page_go(p - set.page);
+    if (!ui.map_on)
+        ui.map_on = 1, ui.map_cur = set.page;
+    if (by_group) {
+        int g = (PAGES[ui.map_cur].group + GR_N + d) % GR_N, p;
+        for (p = 0; p < NPAGE && PAGES[p].group != g; p++)
+            ;
+        ui.map_cur = (uint8_t)p;
+    } else {
+        ui.map_cur = (uint8_t)((ui.map_cur + NPAGE + d) % NPAGE);
+    }
 }
 static void undo(void)
 {
@@ -699,8 +763,8 @@ static void mk_down(int m)
     case MF_MOSH: mk_hold(m, ST_VMOSH, 90); break;
     case MF_FREEZE: mk_hold(m, ST_VTRAIL, 100); break;
     case MF_BLACK: mk_hold(m, ST_VBRIGHT, 0); break;
-    case MF_NVIS: par_set(ST_VMODE, (vs_get(ST_VMODE) + 1) % VS_NMODE); app_say("VISUAL", VS_MODE_NAME[vs_get(ST_VMODE)]); break;
-    case MF_NOBJ: par_set(ST_OSHAPE, (vs_get(ST_OSHAPE) + 1) % 13); app_say("OBJECT", vs_par_text(ST_OSHAPE, vs_get(ST_OSHAPE), t)); break;
+    case MF_NVIS: par_set(ST_VMODE, (vs_get(ST_VMODE) + 1) % VS_NVISUAL); app_say("VISUAL", VS_MODE_NAME[vs_get(ST_VMODE)]); break;
+    case MF_NOBJ: par_set(ST_OFORM, (vs_get(ST_OFORM) + 1) % 6); app_say("FORM", vs_par_text(ST_OFORM, vs_get(ST_OFORM), t)); break;
     case MF_NPAL: par_set(ST_VPAL, (vs_get(ST_VPAL) + 1) % VS_NPAL); app_say("COLOUR", vs_par_text(ST_VPAL, vs_get(ST_VPAL), t)); break;
     case MF_NLOOK: look_apply((set.look + 1) % NLOOK); break;
     case MF_PLOOK: look_apply((set.look + NLOOK - 1) % NLOOK); break;
@@ -789,10 +853,10 @@ static void input(void)
         case B_EDIT: ui.mutate = 3; app_say("VISUAL", "NEW STRUCTURE"); break;
         case B_LFO: ui.mutate = 1; app_say("MUTATE", "A NUDGE"); break;
         case B_ENV: undo(); break;
-        case B_GLO: dice_page(); break;
+        case B_GLO: ui.glo_t = now, ui.glo_used = 0; break;
         case B_SAVE: save_all(); break;
         case B_FX: tap(); break;
-        case B_HOME: ui.hide_now = (uint8_t)!ui.hide_now; break;
+        case B_HOME: ui.home_t = now, ui.home_done = 0; break;
         case B_OCTDN: page_go(-1); break;
         case B_OCTUP: page_go(1); break;
         case B_ARP: look_apply((set.look + NLOOK - 1) % NLOOK); break;
@@ -800,10 +864,27 @@ static void input(void)
         default: break;
         }
     }
+    if (!(btn >> B_GLO & 1u) && (ui.btn >> B_GLO & 1u) && !ui.glo_used)
+        dice_page();                             /* GLO let go, no knob reset meanwhile: the dice */
+    if ((btn >> B_HOME & 1u) && !ui.home_done && now - ui.home_t >= 500u) {
+        ui.hide_now = (uint8_t)!ui.hide_now;     /* HOME held: the bars hidden or shown */
+        ui.home_done = 1;
+    }
+    if (!(btn >> B_HOME & 1u) && (ui.btn >> B_HOME & 1u) && !ui.home_done) {
+        const int was = set.page;                /* HOME tapped: the page before, and back */
+        page_go(ui.last_page - set.page);
+        ui.last_page = (uint8_t)was;
+    }
+    if (!(btn >> B_SEL & 1u) && (ui.btn >> B_SEL & 1u) && ui.map_on) {
+        ui.map_on = 0;                           /* SEL let go: to the page the map points at */
+        if (ui.map_cur != set.page)
+            page_go(ui.map_cur - set.page);
+    }
     for (k = 0; k < NKEYS; k++) {
         bit = 1u << k;
         if ((keys & bit) && !(ui.keys & bit)) {
             ui.act_t = now;
+            ui.map_on = 0;                       /* (SEL + a key stores a scene: no map) */
             key_down((int)k);
         }
     }
@@ -821,8 +902,17 @@ static void input(void)
             while (!(ui.kheld >> m & 1u))
                 m++;
             mk_learn(m, (int)(k - EN_K1), (int)e);
-        } else if (k == EN_SELECT && (btn >> B_SEL & 1u))
-            group_go(e > 0 ? 1 : -1);
+        } else if ((btn >> B_GLO & 1u) && k >= EN_K1) {   /* GLO + a knob: back to its start */
+            const int p = knob_par((int)(k - EN_K1));
+            ui.glo_used = 1;
+            if (p >= 0) {
+                char t[16];
+                undo_knob_mark(p);
+                par_set(p, vs_par_info(p)->def);
+                app_say(vs_par_info(p)->name, vs_par_text(p, vs_get(p), t));
+            }
+        } else if ((k == EN_SELECT || k == EN_ALGO) && (btn >> B_SEL & 1u))
+            map_move(e > 0 ? 1 : -1, k == EN_ALGO);   /* (SEL held: the page map, SELECT a page, ALGO a group) */
         else if (k == EN_SELECT)
             page_go(e > 0 ? 1 : -1);
         else if (k == EN_PRESET)
@@ -1008,6 +1098,7 @@ static int link_frame_ok(void)
 {
     if (lk.on && plat_ms() - lk.last_cmd_ms > 3000u) {   /* no keep-alive: the mirror is gone */
         lk.on = lk.rec = 0;
+        video_rx.shown_kind = video_rx.loading_kind = 0;
         app_say("MIRROR", "GONE");
     }
     if (!lk.on)
@@ -1092,6 +1183,58 @@ static void dim(uint16_t *p, uint32_t n)         /* to 3/8 (the bars read over t
         p[i] = swap16((uint16_t)(((c >> 2) & 0x39E7u) + ((c >> 3) & 0x18E3u)));
     }
 }
+
+/* the middle's overlay (over the picture, its rows dimmed): the page map while SEL is held. y0: the band's first
+ * screen row (drawn in screen rows) */
+static void draw_overlay(int y0, int h)
+{
+    const uint32_t now = plat_ms();
+    int i;
+    (void)now;
+    if (!ui.map_on)
+        return;
+    dim(cv_px, 240u * (uint32_t)h);
+    cv_oy = -y0;                                 /* (screen rows from here) */
+    if (ui.map_on) {                             /* the groups at the left, the cursor's group's pages at the right */
+        const int g = PAGES[ui.map_cur].group;
+        int row = 0;
+        for (i = 0; i < GR_N; i++) {
+            const int on = i == g;
+            if (on)
+                cv_rect(4, 34 + i * 19, 84, 17, C_HI);
+            cv_text(8, 36 + i * 19, &FONT_XS, GROUP_NAME[i], on ? C_BLACK : C_GRAY);
+        }
+        for (i = 0; i < NPAGE; i++)
+            if (PAGES[i].group == g) {
+                const int on = i == ui.map_cur;
+                if (on)
+                    cv_rect(96, 34 + row * 16, 140, 15, C_WHITE);
+                cv_text(100, 35 + row * 16, &FONT_XS, PAGES[i].name, on ? C_BLACK : i == set.page ? C_HI : C_GRAY);
+                row++;
+            }
+    }
+    cv_oy = 0;
+}
+static uint16_t src_colour(int src)              /* a react source's colour (the knobs' arcs show what moves them) */
+{
+    switch (src) {
+    case SRC_BASS: case SRC_LOWS: case SRC_KICK: return RGB(240, 70, 50);
+    case SRC_MID: case SRC_MIDS: case SRC_SNARE: return RGB(250, 190, 40);
+    case SRC_HIGH: case SRC_HIGHS: case SRC_HAT: case SRC_BRIGHT: return RGB(60, 200, 250);
+    case SRC_BEAT: case SRC_NOTES: case SRC_VEL: return RGB(255, 255, 255);
+    case SRC_LFO: case SRC_TEMPO: case SRC_BAR: return RGB(90, 230, 110);
+    default: return RGB(200, 120, 255);
+    }
+}
+static void arc(int cx, int cy, int r, float a0, float a1, uint16_t c)   /* an arc, 3 px thick (angles in turns) */
+{
+    const int n = (int)((a1 - a0) * 60.0f) + 1;
+    int i;
+    for (i = 0; i <= n; i++) {
+        const float a = (a0 + (a1 - a0) * (float)i / (float)n) * FM_TWO_PI;
+        cv_rect(cx + (int)((float)r * fm_cosf(a)) - 1, cy + (int)((float)r * fm_sinf(a)) - 1, 3, 3, c);
+    }
+}
 static void draw_header(void)
 {
     char t[32];
@@ -1141,14 +1284,16 @@ static void draw_header(void)
             cv_text(x + 20, 6, &FONT_XS, m, RGB(230, 40, 40));
         }
     }
-    {   /* the beat and the bands, small, at the right */
+    {   /* the ear at the right: the spectrum (24 bands), the drums' lights, the tempo's */
         int i;
-        for (i = 0; i < VS_NBAND; i++) {
-            const int h = (int)(fm_minf(vs_band(i), 1.0f) * 16.0f);
-            cv_rect(200 + i * 6, 22 - h, 4, h, C_HI);
+        for (i = 0; i < VS_NSPEC; i++) {
+            const int h = fin.spec[i] * 16 / 255;
+            cv_rect(166 + i * 3, 23 - h, 2, h, i < 6 ? RGB(240, 70, 50) : i < 18 ? RGB(250, 190, 40) : RGB(60, 200, 250));
         }
-        if (vs_beat() > 0.5f)
-            cv_rect(190, 8, 6, 6, C_WHITE);
+        cv_rect(150, 5, 5, 5, fin.kick > 120 ? RGB(240, 70, 50) : C_LINE);
+        cv_rect(150, 12, 5, 5, fin.snare > 120 ? RGB(250, 190, 40) : C_LINE);
+        cv_rect(150, 19, 5, 5, fin.hat > 120 ? RGB(60, 200, 250) : C_LINE);
+        cv_rect(158, 5, 4, 19, ui.phase - fm_floorf(ui.phase) < 0.2f ? C_WHITE : C_LINE);   /* (the tempo) */
     }
 }
 static void draw_knobs(void)
@@ -1158,18 +1303,26 @@ static void draw_knobs(void)
         char n[16], v[16];
         const int k = knob_par(i), x = i * 60;
         knob_text(i, n, v);
-        cv_text(x + 4, 8, &FONT_XS, n, C_GRAY);
-        cv_text(x + 4, 28, &FONT_XS, v, C_WHITE);
-        if (k >= 0) {
+        cv_text(x + (60 - text_w(&FONT_XS, n)) / 2, 4, &FONT_XS, n, C_GRAY);
+        cv_text(x + (60 - text_w(&FONT_XS, v)) / 2, 52, &FONT_XS, v, C_WHITE);
+        if (k >= 0) {                            /* an arc from 7 to 5 o'clock: the value; past it, in the colour of
+                                                  * what moves it, where its react slots carry it now */
             const vs_par_t *p = vs_par_info(k);
-            const int w = (vs_get(k) - p->lo) * 50 / (p->hi - p->lo ? p->hi - p->lo : 1);
-            cv_rect(x + 4, 54, 50, 3, C_LINE);
-            cv_rect(x + 4, 54, w, 3, C_HI);
-            {
-                const int we = (vs_eff(k) - p->lo) * 50 / (p->hi - p->lo ? p->hi - p->lo : 1);
-                if (we != w)                     /* (where its react slots carry it now) */
-                    cv_rect(x + 4 + (we < 0 ? 0 : we > 50 ? 50 : we), 51, 2, 9, C_WHITE);
+            const float span = (float)(p->hi - p->lo ? p->hi - p->lo : 1), a0 = 0.375f, len = 0.75f,
+                        fv = (float)(vs_get(k) - p->lo) / span, fe = (float)(vs_eff(k) - p->lo) / span;
+            int s;
+            uint16_t mc = C_WHITE;
+            arc(x + 30, 33, 12, a0, a0 + len, C_LINE);
+            arc(x + 30, 33, 12, a0, a0 + len * fv, C_HI);
+            for (s = 0; s < VS_NSLOT; s++) {      /* (the first slot on it, or on All, gives the colour) */
+                const int b = ST_AR1S + s * VS_SLOT_W, tg = vs_get(b + 1);
+                if (vs_get(b) && vs_get(b + 2) && (tg == k - ST_VMODE + 1 || (tg >= VS_NTGT && p->hi - p->lo >= 10))) {
+                    mc = src_colour(vs_get(b));
+                    break;
+                }
             }
+            if (fe != fv)
+                arc(x + 30, 33, 8, a0 + len * fm_minf(fv, fe), a0 + len * fm_maxf(fv, fe), mc);
         }
     }
 }
@@ -1182,27 +1335,108 @@ static uint32_t ear_blocks_seen_t(void)
     }
     return ear_seen_t;
 }
+static uint16_t external_palette[256];
+
+/* Grade the incoming 3:3:2 colours on the FM-1. The Cortex palette keeps the source in colour. */
+static void prepare_video_palette(void)
+{
+    const unsigned levels = 8u - 6u * (unsigned)VPAR(VPOSTER) / 100u;
+    const unsigned gain = (unsigned)VPAR(VBRIGHT) + 50u;
+    const unsigned key = 2u * (unsigned)VPAR(VKEY);
+    unsigned pixel;
+    for (pixel = 0; pixel < 256; ++pixel) {
+        unsigned r = (pixel >> 5) * 255u / 7u, g = (pixel >> 2 & 7u) * 255u / 7u, b = (pixel & 3u) * 85u;
+        const unsigned luma = (r * 54u + g * 183u + b * 19u) >> 8;
+        if (luma < key) {
+            external_palette[pixel] = 0;
+            continue;
+        }
+        if (VPAR(VPAL)) {
+            const uint16_t c = vpal[luma];
+            r = (c >> 11) * 255u / 31u;
+            g = (c >> 5 & 63u) * 255u / 63u;
+            b = (c & 31u) * 255u / 31u;
+        }
+        if (VPAR(VPOSTER)) {
+            r = ((r * (levels - 1u) + 127u) / 255u) * 255u / (levels - 1u);
+            g = ((g * (levels - 1u) + 127u) / 255u) * 255u / (levels - 1u);
+            b = ((b * (levels - 1u) + 127u) / 255u) * 255u / (levels - 1u);
+        }
+        r = r * gain / 100u;
+        g = g * gain / 100u;
+        b = b * gain / 100u;
+        r = r > 255u ? 255u : r;
+        g = g > 255u ? 255u : g;
+        b = b > 255u ? 255u : b;
+        r = (r * (256u - vinv) + (255u - r) * vinv) >> 8;
+        g = (g * (256u - vinv) + (255u - g) * vinv) >> 8;
+        b = (b * (256u - vinv) + (255u - b) * vinv) >> 8;
+        external_palette[pixel] = swap16(RGB(r, g, b));
+    }
+}
+
+static void paint_video_band(int y0, int h, int ready)
+{
+    const uint8_t *image = video_pixels[video_rx.front];
+    const int size = VLINK_VIDEO_SIDE, mirror = VPAR(VMIRROR), block = 1 + VPAR(VPIXEL) / 15;
+    int y, x;
+    if (!ready) {
+        memset(cv_px, 0, (uint32_t)h * 240u * sizeof *cv_px);
+        return;
+    }
+    for (y = 0; y < h; ++y) {
+        int sy = (y + y0) / 4;
+        if (mirror >= 2 && sy >= size / 2)
+            sy = size - 1 - sy;
+        sy = sy / block * block;
+        for (x = 0; x < size; ++x) {
+            int sx = x, row = sy;
+            uint16_t *p = cv_px + y * 240 + x * 4;
+            if (mirror != 0 && mirror != 2 && sx >= size / 2)
+                sx = size - 1 - sx;
+            sx = sx / block * block;
+            if (mirror == 4 && sx > row) {
+                const int t = sx;
+                sx = row;
+                row = t;
+            }
+            p[0] = p[1] = p[2] = p[3] = external_palette[image[row * size + sx]];
+        }
+    }
+}
+
 static void draw_frame(void)                     /* the picture, the bars over it (unless hidden) */
 {
     static const int16_t BY[4] = {0, HDR_H, HDR_H + 72, KNB_Y}, BH[4] = {HDR_H, 72, 72, KNB_H};
-    const uint32_t idle = plat_ms() - ui.act_t;
+    const uint32_t idle = ui.map_on ? 0u : plat_ms() - ui.act_t;
     const int bars = vs_get(ST_VBARS),
               hide = ui.hide_now || (plat_ms() >= ui.msg_until &&
                                      (bars == 2 ? idle > 1500u : bars == 1 ? idle > (uint32_t)vs_get(ST_VDELAY) * 1000u : 0));
+    const int source = vs_get(ST_VMODE) >= VS_NMODE ? vs_get(ST_VMODE) - VS_NMODE + 1 : 0;
+    const int video_ready = source && lk.on && video_rx.shown_kind == source && plat_ms() - video_rx.shown_ms < 1500u;
     int b;
     uint32_t t = plat_ticks24(), lw, pt = 0;
+    if (video_ready)
+        prepare_video_palette();
     lcd_sync();
     lw = plat_ticks24() - t;
     for (b = 0; b < 4; b++) {
         t = plat_ticks24();
         cv_begin_pingpong(240, (uint32_t)BH[b], (uint32_t)b);
-        vs_paint(BY[b], BH[b], cv_px);
+        if (source)
+            paint_video_band(BY[b], BH[b], video_ready);
+        else
+            vs_paint(BY[b], BH[b], cv_px);
         if (!hide && b == 0) {
             dim(cv_px, 240u * HDR_H);
             draw_header();
         } else if (!hide && b == 3) {
             dim(cv_px, 240u * KNB_H);
             draw_knobs();
+        } else if (b == 1 || b == 2) {
+            if (b == 1 && source && !video_ready && !ui.map_on)
+                cv_text(12, 24, &FONT_XS, source == 1 ? "PC: open camera" : "PC: import video", C_GRAY);
+            draw_overlay(BY[b], BH[b]);
         }
         pt += plat_ticks24() - t;
         t = plat_ticks24();

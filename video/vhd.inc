@@ -18,17 +18,41 @@ static void vhd_rgb(uint16_t c565, uint8_t *rgb)  /* (RGB565, not swapped, to 8 
     const uint32_t r = c565 >> 11, g = c565 >> 5 & 63u, b = c565 & 31u;
     rgb[0] = (uint8_t)(r << 3 | r >> 2), rgb[1] = (uint8_t)(g << 2 | g >> 4), rgb[2] = (uint8_t)(b << 3 | b >> 2);
 }
-static void vhd_plot(int x, int y, const uint8_t *c, float a, int add)   /* a pixel, a over what is there */
+static void vhd_plot(int x, int y, const uint8_t *c, float a, int mode)   /* a pixel, a over what is there, BLEND's
+                                                                             * way (vobj.inc vo_mix) */
 {
     uint8_t *p;
+    float s[3];
     int k;
     if ((unsigned)x >= (unsigned)vhd_w || (unsigned)y >= (unsigned)vhd_w || a <= 0.0f)
         return;
     p = vhd_px + ((size_t)y * (size_t)vhd_w + (size_t)x) * 4u;
     a = a > 1.0f ? 1.0f : a;
+    for (k = 0; k < 3; k++)
+        s[k] = (float)c[k];
+    switch (mode) {
+    case 1:
+        for (k = 0; k < 3; k++)
+            s[k] = (float)p[k] + (float)c[k];
+        break;
+    case 3: {
+        const float l = 0.30f * (float)p[0] + 0.59f * (float)p[1] + 0.11f * (float)p[2], kk = l - (float)vo_key;
+        a *= kk <= 0.0f ? 1.0f : kk >= 32.0f ? 0.0f : 1.0f - kk / 32.0f;
+        break;
+    }
+    case 4:
+        for (k = 0; k < 3; k++)
+            s[k] = fm_fabsf((float)p[k] - (float)c[k]);
+        break;
+    case 5:
+        for (k = 0; k < 3; k++)
+            s[k] = (float)p[k] * (float)c[k] * (1.0f / 255.0f);
+        break;
+    default: break;
+    }
     for (k = 0; k < 3; k++) {
-        const float v = add ? (float)p[k] + (float)c[k] * a : (float)p[k] + ((float)c[k] - (float)p[k]) * a;
-        p[k] = (uint8_t)(v > 255.0f ? 255.0f : v);
+        const float v = (float)p[k] + (fm_minf(s[k], 255.0f) - (float)p[k]) * a;
+        p[k] = (uint8_t)(v > 255.0f ? 255.0f : v < 0.0f ? 0.0f : v);
     }
 }
 static void vhd_line(float x0, float y0, float x1, float y1, float r, const uint8_t *c, int add)
@@ -122,7 +146,7 @@ void vs_paint_hd(int S, uint8_t *rgba)
         }
     }
     for (y = 0; y < W; y++) {                    /* each row: between four widened rows, the map, the palette */
-        const int y240 = y / S, o = o240[y240] * S, spr = s240[y240] * S;
+        const int y240 = y / S, o = VPAR(FXV) ? 0 : o240[y240] * S, spr = VPAR(FXV) ? 0 : s240[y240] * S;
         uint8_t *out = rgba + (size_t)y * (size_t)W * 4u;
         static float line[240 * 4];
         static uint8_t idx[240 * 4];
@@ -191,8 +215,9 @@ void vs_paint_hd(int S, uint8_t *rgba)
             if (q > 1)
                 xa = xa / q * q, ya = ya / q * q, xb = xb / q * q, yb = yb / q * q;
             {
-                const int ra = ya < 0 ? 0 : ya > 239 ? 239 : ya, rb = yb < 0 ? 0 : yb > 239 ? 239 : yb;
-                vhd_line(((float)(xa + o240[ra]) + 0.5f) * fs, ((float)ya + 0.5f) * fs, ((float)(xb + o240[rb]) + 0.5f) * fs,
+                const int ra = ya < 0 ? 0 : ya > 239 ? 239 : ya, rb = yb < 0 ? 0 : yb > 239 ? 239 : yb,
+                          oa = VPAR(FXV) ? 0 : o240[ra], ob = VPAR(FXV) ? 0 : o240[rb];
+                vhd_line(((float)(xa + oa) + 0.5f) * fs, ((float)ya + 0.5f) * fs, ((float)(xb + ob) + 0.5f) * fs,
                          ((float)yb + 0.5f) * fs, 0.55f * fs, gc, 0);
             }
         }
@@ -239,7 +264,7 @@ void vs_paint_hd(int S, uint8_t *rgba)
             {                                    /* (the pixels whose middles are inside: neighbours meet, no seam) */
                 const int x0 = (int)-fm_floorf(0.5f - xl), x1 = (int)-fm_floorf(0.5f - xr);
                 for (x = x0 < 0 ? 0 : x0; x < x1 && x < W; x++)
-                    vhd_plot(x, y, c, 1.0f, vo_add);
+                    vhd_plot(x, y, c, 1.0f, vo_mode);
             }
         }
     }
@@ -250,9 +275,26 @@ void vs_paint_hd(int S, uint8_t *rgba)
                     x1 = (float)vwire[i].x1 * fs / 16.0f, y1 = (float)vwire[i].y1 * fs / 16.0f;
         vhd_rgb((uint16_t)(cs >> 8 | cs << 8), c);
         if (vo_pts)
-            vhd_line(x0, y0, x0, y0, 0.9f * fs, c, vo_add);
+            vhd_line(x0, y0, x0, y0, 0.9f * fs, c, vo_mode);
         else
-            vhd_line(x0, y0, x1, y1, 0.45f * fs, c, vo_add);
+            vhd_line(x0, y0, x1, y1, 0.45f * fs, c, vo_mode);
+    }
+    if (VPAR(FXV)) {                             /* TARGETS Video All: the rows shifted and split after everything */
+        static uint8_t row[960 * 4];
+        for (y = 0; y < W; y++) {
+            const int y240 = y / S, o = o240[y240] * S, s = s240[y240] * S;
+            uint8_t *p = rgba + (size_t)y * (size_t)W * 4u;
+            if (!o && !s)
+                continue;
+            memcpy(row, p, (size_t)W * 4u);
+            for (x = 0; x < W; x++) {
+                int xg = (x - o) % W, xr, xb;
+                xg += xg < 0 ? W : 0;
+                xr = (xg - s) % W, xr += xr < 0 ? W : 0;
+                xb = (xg + s) % W, xb += xb < 0 ? W : 0;
+                p[4 * x] = row[4 * xr], p[4 * x + 1] = row[4 * xg + 1], p[4 * x + 2] = row[4 * xb + 2];
+            }
+        }
     }
 }
 #endif

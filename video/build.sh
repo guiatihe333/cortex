@@ -39,7 +39,7 @@ ${CC:-cc} -O2 -ffp-contract=off -std=gnu99 -Wall -Wextra -Werror -Wno-unused-fun
 if command -v emcc >/dev/null; then
     emcc -O2 -ffp-contract=off -std=gnu99 -Wall -Werror -Wno-unused-function -I$V -Ibase/include \
         -DVS_HD $V/mirror/mirror.c $V/vsynth.c --no-entry -sSTANDALONE_WASM -sINITIAL_MEMORY=24MB \
-        -sEXPORTED_FUNCTIONS=_mx_in,_mx_rgba,_mx_msg,_mx_stat,_mx_lost_clear,_mx_beat,_mx_npage,_mx_page_name,_mx_page_group,_mx_page_knob,_mx_ngroup,_mx_group_name,_mx_npar,_mx_slot_w,_mx_nslot,_mx_par_name,_mx_par_lo,_mx_par_hi,_mx_par_get,_mx_par_eff,_mx_par_text,_mx_set_hd,_mx_size \
+        -sEXPORTED_FUNCTIONS=_mx_in,_mx_rgba,_mx_msg,_mx_stat,_mx_lost_clear,_mx_beat,_mx_npage,_mx_page_name,_mx_page_group,_mx_page_knob,_mx_ngroup,_mx_group_name,_mx_npar,_mx_slot_w,_mx_nslot,_mx_par_name,_mx_par_lo,_mx_par_hi,_mx_par_get,_mx_par_eff,_mx_par_text,_mx_set_hd,_mx_size,_mx_tr1s,_mx_video_source \
         -o $V/build/mirror/mirror.wasm
     node $V/tests/mirror_test.mjs $V/build/mirror/mirror.wasm "$T/link.syx" || fail=1
     node $V/tests/mirror_test.mjs $V/build/mirror/mirror.wasm "$T/stall.syx" 0 || fail=1

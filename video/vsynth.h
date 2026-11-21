@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 /* the engine's version: changes whenever the same input would draw another picture (the mirror must be the same) */
-#define VS_ENGINE 3
+#define VS_ENGINE 7
 #define VS_NBAND 6
 #define VS_WAVE_N 128
 #define VS_NVOX 3                                 /* (the lows, the mids, the highs: the old voices' orbs) */
@@ -33,22 +33,34 @@ enum {
     ST_VCORRUPT, ST_VSLICE, ST_VFOLD, ST_VPOSTER, ST_VPIXEL, ST_VKEY, ST_VOFREQ, ST_VOSHAPE, ST_VOANGLE, ST_VOSPEED,
     ST_VOFREQ2, ST_VOCOMB, ST_VOWARP, ST_VOSYNC, ST_VXZOOM, ST_VXROT, ST_VXSHX, ST_VXTGT, ST_VGEO2, ST_VSIDES2,
     ST_VSIZE2, ST_VSTROBE, ST_VINVERT,
-    /* the objects (vobj.inc): SHAPE, SIZE, DRAW, COLOUR; SPIN, TILT, ZOOM, MORPH; COUNT, ARRAY, SPREAD, REACT; SIDES,
-     * BLEND, LIGHT, PULSE */
-    ST_OSHAPE, ST_OSIZE, ST_ODRAW, ST_OCOLOR, ST_OSPIN, ST_OTILT, ST_OZOOM, ST_OMORPH, ST_OCOUNT, ST_OARRAY,
-    ST_OSPREAD, ST_OREACT, ST_OSIDES, ST_OBLEND, ST_OLIGHT, ST_OPULSE,   /* (the react matrix's targets: VMODE ..
-                                                                          * OPULSE, then All) */
+    /* the objects (vobj.inc): FORM, SIZE, DRAW, TINT; SYMMETRY, POINT, CURVE, SYMMETRY 2; HOLE, TWIST, DEPTH, DETAIL;
+     * SPIN, TILT, ZOOM, MORPH; EXPLODE, NOISE, SPECTRUM, PULSE; COUNT, ARRAY, SPREAD, REACT; the copies' steps: TURN,
+     * SCALE, HUE, LAG; BLEND, LIGHT, SYNC */
+    ST_OFORM, ST_OSIZE, ST_ODRAW, ST_OCOLOR, ST_OSYM, ST_OPINCH, ST_OCURVE, ST_OSYM2, ST_OHOLE, ST_OTWIST, ST_ODEPTH,
+    ST_ODETAIL, ST_OSPIN, ST_OTILT, ST_OZOOM, ST_OMORPH, ST_OEXPLODE, ST_ONOISE, ST_OSPEC, ST_OPULSE, ST_OCOUNT,
+    ST_OARRAY, ST_OSPREAD, ST_OREACT, ST_OSTROT, ST_OSTSCALE, ST_OSTHUE, ST_OSTTIME, ST_OBLEND, ST_OLIGHT,
+    ST_OKEY, ST_OLIFE,                            /* the objects' KEY (BLEND Behind's level), LIFE (the genome on them) */
+    ST_MLENS, ST_MSWIRL, ST_MGLOW, ST_MVEC,       /* MODULATE: the objects on the field: LENS (pushed out, pulled in),
+                                                   * SWIRL (turned round them), GLOW (their halo in it), VECTORS (MOSH's
+                                                   * blocks moved by their motion) (vobj.inc) */
+    ST_OSYNC,                                     /* (the react matrix's targets: VMODE .. OSYNC, then All) */
+    ST_FXV, ST_FXM, ST_FXC,                       /* TARGETS: VIDEO's (RGB, SYNC, SLICE's rows), MOSH's (MOSH, CORRUPT,
+                                                   * SORT), CHROMA's (COLORAMA, POSTER, PIXEL, KEY, INVERT, STROBE):
+                                                   * 0 the field alone, 1 the whole picture, the objects too */
+    ST_TR1S, ST_TR1A, ST_TR1N,                    /* three triggers: a SOURCE, an ACTION, an AMOUNT (vobj.inc) */
+    ST_TR3N = ST_TR1S + 8,
     ST_VBRIGHT, ST_VEAR, ST_VGAIN, ST_VBARS, ST_VDELAY,
     ST_AR1S, ST_AR1T, ST_AR1D, ST_AR1M, ST_AR1L,   /* a slot: SOURCE, TARGET, DEPTH, MODE (Direct, Invert, Beat hold,
                                                     * Gate), LAG (its smoothing); VS_NSLOT of them */
     ST_N = ST_AR1S + VS_SLOT_W * VS_NSLOT
 };
-#define VS_TGT_LAST ST_OPULSE
+#define VS_TGT_LAST ST_OSYNC
 #define VS_NTGT (VS_TGT_LAST - ST_VMODE + 2)      /* a slot's targets: 0 Off, 1 .. the settings VMODE .. OPULSE, All */
 enum { SRC_OFF, SRC_LEVEL, SRC_BASS, SRC_MID, SRC_HIGH, SRC_BEAT, SRC_LOWS, SRC_MIDS, SRC_HIGHS, SRC_NOTES,
        SRC_ROOT, SRC_LFO, SRC_RANDOM, SRC_TEMPO, SRC_BAR, SRC_CC, SRC_VEL, SRC_KICK, SRC_SNARE, SRC_HAT, SRC_BRIGHT,
        SRC_N };
-#define VS_NMODE 9                                /* VISUAL: Bloom .. Osc (CORTEX's Score is not here) */
+#define VS_NMODE 9                                /* built-in synthesis modes: Bloom .. Osc */
+enum { VS_LIVE_VIDEO = VS_NMODE, VS_IMPORTED_VIDEO, VS_NVISUAL };
 #define VS_OSC 8
 #define VS_NPAL 10
 

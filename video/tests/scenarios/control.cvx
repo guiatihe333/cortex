@@ -28,14 +28,37 @@ sysex F0 7D 43 56 10 00 06 02 F7
 expect look 2
 expect par0 8
 press SEL
-turn SELECT 1
+turn ALGO 1
 release SEL
 expect page 3
 press SEL
-turn SELECT 1
+turn ALGO 1
 release SEL
-expect page 7
+expect page 11
 press SEL
-turn SELECT -2
+turn ALGO -2
 release SEL
 expect page 0
+press SEL
+turn SELECT 2
+release SEL
+expect page 2
+tap HOME
+expect page 0
+tap HOME
+expect page 2
+turn SELECT -2
+expect page 0
+spin K1 3
+expect par0 10
+press GLO
+spin K1 1
+release GLO
+expect par0 5
+spin K3 10
+expect par2 90
+press SEL
+spin K3 3
+release SEL
+expect par2 93
+shot ui.png

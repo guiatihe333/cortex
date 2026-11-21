@@ -1,0 +1,33 @@
+# CORTEX VIDEO's iPhone app (video/ios), built on GitHub's macOS machines: no Mac needed. The result is an unsigned
+# CortexVideo.ipa (the run's artifact), which Sideloadly (Windows) signs with the owner's Apple ID and installs on the
+# iPhone by the cable. Runs when the app changes on the cortex-video branch, or by hand (Actions, Run workflow).
+name: CORTEX VIDEO iPhone app
+on:
+  push:
+    branches: [cortex-video]
+    paths: ['video/ios/**', '.github/workflows/ios-video.yml']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode
+        run: xcodebuild -version
+      - name: Build, unsigned
+        working-directory: video/ios
+        run: |
+          set -o pipefail
+          xcodebuild -project CortexVideo.xcodeproj -target CortexVideo -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" \
+            SYMROOT="$PWD/build" build | tail -150
+      - name: Package the .ipa
+        run: |
+          mkdir -p Payload
+          cp -R video/ios/build/Release-iphoneos/CortexVideo.app Payload/
+          zip -qr CortexVideo.ipa Payload
+          ls -la CortexVideo.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CortexVideo-ipa
+          path: CortexVideo.ipa

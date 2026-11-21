@@ -1,0 +1,44 @@
+// !$*UTF8*$!
+{archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+		C047E0000000000000000001 = {isa = PBXProject; attributes = {LastUpgradeCheck = 1600;}; buildConfigurationList = C047E0000000000000000008; compatibilityVersion = "Xcode 14.0"; developmentRegion = pt-BR; hasScannedForEncodings = 0; knownRegions = ("pt-BR", Base, en); mainGroup = C047E0000000000000000002; productRefGroup = C047E0000000000000000004; projectDirPath = ""; projectRoot = ""; targets = (C047E0000000000000000005,);};
+		C047E0000000000000000002 = {isa = PBXGroup; children = (C047E0000000000000000003, C047E0000000000000000004,); sourceTree = "<group>";};
+		C047E0000000000000000003 = {isa = PBXGroup; children = (C047E0000000000000000014, C047E0000000000000000015, C047E0000000000000000016, C047E0000000000000000017,); path = CortexVideo; sourceTree = "<group>";};
+		C047E0000000000000000004 = {isa = PBXGroup; children = (C047E000000000000000000B,); name = Products; sourceTree = "<group>";};
+		C047E0000000000000000005 = {isa = PBXNativeTarget; buildConfigurationList = C047E0000000000000000009; buildPhases = (C047E0000000000000000006, C047E0000000000000000007, C047E000000000000000000A,); buildRules = (); dependencies = (); name = CortexVideo; productName = CortexVideo; productReference = C047E000000000000000000B; productType = "com.apple.product-type.application";};
+		C047E0000000000000000006 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C047E000000000000000001E, C047E000000000000000001F, C047E0000000000000000020, C047E0000000000000000021,); runOnlyForDeploymentPostprocessing = 0;};
+		C047E0000000000000000007 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+		C047E000000000000000000A = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+		C047E0000000000000000008 = {isa = XCConfigurationList; buildConfigurations = (C047E000000000000000000C, C047E000000000000000000D,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+		C047E0000000000000000009 = {isa = XCConfigurationList; buildConfigurations = (C047E000000000000000000E, C047E000000000000000000F,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+		C047E000000000000000000B = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CortexVideo.app; sourceTree = BUILT_PRODUCTS_DIR;};
+		C047E000000000000000000C = {isa = XCBuildConfiguration; buildSettings = {IPHONEOS_DEPLOYMENT_TARGET = 16.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; ENABLE_USER_SCRIPT_SANDBOXING = YES;SWIFT_OPTIMIZATION_LEVEL = "-Onone"; ENABLE_TESTABILITY = YES;}; name = Debug;};
+		C047E000000000000000000D = {isa = XCBuildConfiguration; buildSettings = {IPHONEOS_DEPLOYMENT_TARGET = 16.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; ENABLE_USER_SCRIPT_SANDBOXING = YES; SWIFT_COMPILATION_MODE = wholemodule;}; name = Release;};
+		C047E000000000000000000E = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES;
+INFOPLIST_KEY_CFBundleDisplayName = "Cortex Video";
+INFOPLIST_KEY_NSCameraUsageDescription = "A câmera fornece vídeo ao Cortex Video e ao FM-1.";
+INFOPLIST_KEY_NSMicrophoneUsageDescription = "Use o microfone no áudio das gravações.";
+INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Salve gravações na biblioteca de Fotos.";
+INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+INFOPLIST_KEY_UIFileSharingEnabled = YES; INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = org.cortexvideo.ios; PRODUCT_NAME = "$(TARGET_NAME)";
+SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; TARGETED_DEVICE_FAMILY = 1;}; name = Debug;};
+		C047E000000000000000000F = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES;
+INFOPLIST_KEY_CFBundleDisplayName = "Cortex Video";
+INFOPLIST_KEY_NSCameraUsageDescription = "A câmera fornece vídeo ao Cortex Video e ao FM-1.";
+INFOPLIST_KEY_NSMicrophoneUsageDescription = "Use o microfone no áudio das gravações.";
+INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Salve gravações na biblioteca de Fotos.";
+INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+INFOPLIST_KEY_UIFileSharingEnabled = YES; INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = org.cortexvideo.ios; PRODUCT_NAME = "$(TARGET_NAME)";
+SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; TARGETED_DEVICE_FAMILY = 1;}; name = Release;};
+		C047E0000000000000000014 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CortexVideo.swift; sourceTree = "<group>";};
+		C047E000000000000000001E = {isa = PBXBuildFile; fileRef = C047E0000000000000000014;};
+		C047E0000000000000000015 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Capture.swift; sourceTree = "<group>";};
+		C047E000000000000000001F = {isa = PBXBuildFile; fileRef = C047E0000000000000000015;};
+		C047E0000000000000000016 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FM1Output.swift; sourceTree = "<group>";};
+		C047E0000000000000000020 = {isa = PBXBuildFile; fileRef = C047E0000000000000000016;};
+		C047E0000000000000000017 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoWire.swift; sourceTree = "<group>";};
+		C047E0000000000000000021 = {isa = PBXBuildFile; fileRef = C047E0000000000000000017;};
+}; rootObject = C047E0000000000000000001; }

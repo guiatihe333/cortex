@@ -1315,6 +1315,60 @@ static VS_RAM void vis_row(const uint8_t *a, const uint8_t *b, int wb, uint8_t *
         }
     }
 }
+static void vis_lut(void)                        /* CHROMA's map, once a frame: KEY, COLORAMA, POSTER; Rutt dims; BRIGHT,
+                                                  * INVERT, STROBE (the field's light to its palette index; the objects'
+                                                  * too with TARGETS Chroma All) */
+{
+    const float fo = (float)VPAR(VFOLD) * 0.01f, po = (float)VPAR(VPOSTER) * 0.01f;
+    const int kth = VPAR(VKEY) * 2, mul = 1 + (int)(fo * 7.0f), off = (int)(vt * 40.0f * fo),
+              lv = 2 + (int)((1.0f - po) * 14.0f), step = 255 / (lv - 1),
+              ps = 1 + (int)((float)VPAR(VPIXEL) * 0.09f * (1.0f + vband[0]));
+    int i;
+    if (ps > 1)
+        for (i = 0; i < VF_W; i++)
+            vpixel_x[i] = (uint8_t)(i / ps * ps);
+    for (i = 0; i < 256; i++) {
+        int v = i;
+        if (fo > 0.0f) {                         /* (folded back on itself: a triangle) */
+            const int m = (v * mul + off) & 511;
+            v = m < 256 ? m : 511 - m;
+        }
+        if (po > 0.0f)
+            v = (v + step / 2) / step * step;
+        if (i < kth)
+            v = 0;
+        if (vrutt)
+            v = v * 3 / 10;                      /* (Rutt: the picture under its lines) */
+        v = v * (VPAR(VBRIGHT) + 50) / 100;      /* BRIGHT */
+        v = v > 255 ? 255 : v;
+        if (vinv)                                /* INVERT (CORTEX VIDEO): the light turned over, as far as it says */
+            v += ((255 - 2 * v) * vinv) >> 8;
+        if (vflash)                              /* STROBE: towards white on the beat (or a key held) */
+            v += ((255 - v) * vflash) >> 8;
+        vlut[i] = (uint8_t)(v > 255 ? 255 : v < 0 ? 0 : v);
+        vpal_screen[i] = swap16(vpal[i]);
+    }
+}
+static void vis_post(int y0, int h, uint16_t *out)   /* TARGETS Video All: each row shifted (SYNC, SLICE) and its colour
+                                                  * planes split (RGB) after everything is in it */
+{
+    static uint16_t row[240];
+    int y, x;
+    for (y = y0; y < y0 + h; y++) {
+        uint16_t *p = out + (uint32_t)(y - y0) * 240u;
+        const int o = vpost_o[y], s = vpost_s[y];
+        if (!o && !s)
+            continue;
+        memcpy(row, p, sizeof row);
+        for (x = 0; x < 240; x++) {
+            int xg = (x - o) % 240, xr, xb;
+            xg += xg < 0 ? 240 : 0;
+            xr = (xg - s) % 240, xr += xr < 0 ? 240 : 0;
+            xb = (xg + s) % 240, xb += xb < 0 ? 240 : 0;
+            p[x] = s ? (uint16_t)((row[xr] & 0x00F8u) | (row[xg] & 0xE007u) | (row[xb] & 0x1F00u)) : row[xg];
+        }
+    }
+}
 static void vis_band(int y0, int h)
 {
     const float syn = (float)VPAR(VSYNC) * 0.01f, rgb = (float)VPAR(VRGB) * 0.01f;
@@ -1323,35 +1377,8 @@ static void vis_band(int y0, int h)
     const int ps = 1 + (int)((float)VPAR(VPIXEL) * 0.09f * (1.0f + vband[0])),   /* PIXEL: its blocks, cells */
               dith = !VPAR(VPOSTER);
     int y, x, i;
-    if (y0 == 0) {                               /* (once a frame) CHROMA's map: KEY, COLORAMA, POSTER; Rutt dims */
-        const float fo = (float)VPAR(VFOLD) * 0.01f, po = (float)VPAR(VPOSTER) * 0.01f;
-        const int kth = VPAR(VKEY) * 2, mul = 1 + (int)(fo * 7.0f), off = (int)(vt * 40.0f * fo),
-                  lv = 2 + (int)((1.0f - po) * 14.0f), step = 255 / (lv - 1);
-        if (ps > 1)
-            for (i = 0; i < VF_W; i++)
-                vpixel_x[i] = (uint8_t)(i / ps * ps);
-        for (i = 0; i < 256; i++) {
-            int v = i;
-            if (fo > 0.0f) {                     /* (folded back on itself: a triangle) */
-                const int m = (v * mul + off) & 511;
-                v = m < 256 ? m : 511 - m;
-            }
-            if (po > 0.0f)
-                v = (v + step / 2) / step * step;
-            if (i < kth)
-                v = 0;
-            if (vrutt)
-                v = v * 3 / 10;                  /* (Rutt: the picture under its lines) */
-            v = v * (VPAR(VBRIGHT) + 50) / 100;  /* BRIGHT */
-            v = v > 255 ? 255 : v;
-            if (vinv)                            /* INVERT (CORTEX VIDEO): the light turned over, as far as it says */
-                v += ((255 - 2 * v) * vinv) >> 8;
-            if (vflash)                          /* STROBE: towards white on the beat (or a key held) */
-                v += ((255 - v) * vflash) >> 8;
-            vlut[i] = (uint8_t)(v > 255 ? 255 : v < 0 ? 0 : v);
-            vpal_screen[i] = swap16(vpal[i]);
-        }
-    }
+    if (y0 == 0)                                 /* (once a frame: the same map vs_frame made for the objects) */
+        vis_lut();
     for (y = y0; y < y0 + h; y++) {
         const int fy2 = y - 1, ya = fy2 < 0 ? 0 : fy2 >> 1, yb = ya + 1 < VF_H ? ya + 1 : VF_H - 1,
                   wb = fy2 < 0 ? 0 : (fy2 & 1) ? 3 : 1;   /* (screen row y sits a quarter or three quarters between) */
@@ -1359,9 +1386,11 @@ static void vis_band(int y0, int h)
         uint8_t *col = vline[0], *ln = vline[1];
         uint16_t *out = vs_out + (uint32_t)(y - y0) * 240u;
         const int fi = y >> 1 < VF_H ? y >> 1 : VF_H - 1,
-                  o = 2 * ((int)((syn > 0.0f ? syn * 5.0f * fm_sinf((float)fi * 0.19f + vt * 2.3f) : 0.0f) + 0.5f) + vtear[fi]) +
+                  o0 = 2 * ((int)((syn > 0.0f ? syn * 5.0f * fm_sinf((float)fi * 0.19f + vt * 2.3f) : 0.0f) + 0.5f) + vtear[fi]) +
                       ((fi & 1) ? (int)((float)VPAR(VSLICE) * 0.06f * (vband[3] + vbeat)) : 0),   /* (interlace) */
-                  spr = sp + vchan[fi >> 3];
+                  s0 = sp + vchan[fi >> 3], whole = VPAR(FXV) != 0,
+                  o = whole ? 0 : o0, spr = whole ? 0 : s0;   /* (TARGETS Video All: after everything, vis_post) */
+        vpost_o[y] = (int16_t)(whole ? o0 : 0), vpost_s[y] = (int8_t)(whole ? s0 : 0);
         vrow_o[y - y0] = (int16_t)o;
         /* the 4 x 4 Bayer offsets already halved, as BAYER[][] / 2 was (C's division: toward zero) */
         static const int8_t BAYER2[4][4] = {{-3, 1, -2, 2}, {3, -1, 4, 0}, {-1, 2, -2, 1}, {4, 0, 3, 0}};

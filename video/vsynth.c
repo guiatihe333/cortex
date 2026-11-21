@@ -21,7 +21,7 @@
 
 /* ------------------------------------------------------------ settings --- */
 static const vs_par_t VPARS[ST_N] = {
-    {"Visual", 0, VS_NMODE - 1, 5}, {"Colour", 0, VS_NPAL - 1, 0}, {"Trails", 0, 100, 60}, {"React", 0, 100, 50},
+    {"Visual", 0, VS_NVISUAL - 1, 5}, {"Colour", 0, VS_NPAL - 1, 0}, {"Trails", 0, 100, 60}, {"React", 0, 100, 50},
     {"Feedback", 0, 100, 25},  {"RGB", 0, 100, 20},       {"Hue", 0, 100, 10},     {"Sync", 0, 100, 10},
     {"Geometry", 0, 16, 0},    {"Sides", 3, 12, 5},       {"Mirror", 0, 4, 0},     {"Speed", 0, 100, 50},
     {"Layer", 0, 9, 0},        {"Blend", 0, 4, 0},        {"Mix", 0, 100, 60},     {"Pulse", 0, 100, 50},
@@ -33,10 +33,20 @@ static const vs_par_t VPARS[ST_N] = {
     {"Zoom", -100, 100, 0},    {"Rotate", -100, 100, 0},  {"Shift", -100, 100, 0}, {"Target", 0, 2, 0},
     {"Geometry 2", 0, 16, 0},  {"Sides 2", 3, 12, 6},     {"Size 2", 10, 200, 60},
     {"Strobe", 0, 100, 0},     {"Invert", 0, 100, 0},
-    {"Object", 0, 12, 0},      {"Size", 0, 100, 45},      {"Draw", 0, 3, 0},       {"Tint", 0, 100, 60},
+    {"Form", 0, 5, 0},         {"Size", 0, 100, 45},      {"Draw", 0, 3, 0},       {"Tint", 0, 100, 60},
+    {"Symmetry", 0, 16, 0},    {"Point", 0, 100, 50},     {"Curve", 0, 100, 50},   {"Symmetry 2", 0, 16, 0},
+    {"Hole", 0, 100, 0},       {"Twist", -100, 100, 0},   {"Depth", 0, 100, 100},  {"Detail", 3, 16, 10},
     {"Spin", -100, 100, 25},   {"Tilt", 0, 100, 20},      {"Zoom", 0, 100, 40},    {"Morph", 0, 100, 0},
-    {"Count", 1, 16, 1},       {"Array", 0, 5, 1},        {"Spread", 0, 100, 50},  {"React", 0, 100, 40},
-    {"Detail", 3, 12, 8},      {"Blend", 0, 2, 0},        {"Light", 0, 100, 70},   {"Pulse", 0, 100, 40},
+    {"Explode", 0, 100, 0},    {"Noise", 0, 100, 0},      {"Spectrum", 0, 100, 0}, {"Pulse", 0, 100, 40},
+    {"Count", 1, 16, 1},       {"Array", 0, 6, 1},        {"Spread", 0, 100, 50},  {"React", 0, 100, 40},
+    {"Turn", -100, 100, 0},    {"Scale", -100, 100, 0},   {"Hue", 0, 100, 0},      {"Lag", 0, 100, 0},
+    {"Blend", 0, 5, 0},        {"Light", 0, 100, 70},     {"Key", 0, 100, 50},     {"Life", 0, 100, 30},
+    {"Lens", -100, 100, 0},    {"Swirl", -100, 100, 0},   {"Glow", 0, 100, 0},     {"Vectors", 0, 100, 0},
+    {"Sync", 0, 4, 0},
+    {"Video on", 0, 1, 1},     {"Mosh on", 0, 1, 1},      {"Chroma on", 0, 1, 1},
+    {"Trigger 1", 0, 6, 0},    {"Action 1", 0, 7, 0},     {"Amount 1", 0, 100, 60},
+    {"Trigger 2", 0, 6, 0},    {"Action 2", 0, 7, 1},     {"Amount 2", 0, 100, 60},
+    {"Trigger 3", 0, 6, 0},    {"Action 3", 0, 7, 3},     {"Amount 3", 0, 100, 60},
     {"Bright", 0, 100, 50},    {"Ear", 0, 100, 30},       {"Gain", 0, 100, 50},
     {"Bars", 0, 2, 1},         {"Delay", 1, 15, 4},
     {"Source 1", 0, SRC_N - 1, SRC_BASS},  {"Target 1", 0, VS_NTGT, ST_VFEED + 1},  {"Depth 1", -100, 100, 40},
@@ -73,8 +83,8 @@ static void vs_itoa(int v, char *b)
         *b++ = t[--n];
     *b = 0;
 }
-static const char *const VS_MODE_NAME[VS_NMODE] = {"Bloom", "Ridge", "Prism", "Swarm", "Tunnel", "Plasma",
-                                                   "Spiral", "XOR", "Osc"};
+static const char *const VS_MODE_NAME[VS_NVISUAL] = {"Bloom", "Ridge", "Prism", "Swarm", "Tunnel", "Plasma",
+                                                   "Spiral", "XOR", "Osc", "Live Video", "Video import."};
 static const char *const VS_SRC_NAME[SRC_N] = {"Off", "Level", "Bass", "Mid", "High", "Beat", "Lows", "Mids", "Highs",
                                                "Notes", "Root", "LFO", "Random", "Tempo", "Bar", "CC", "Velocity",
                                                "Kick", "Snare", "Hat", "Bright"};
@@ -106,23 +116,40 @@ const char *vs_par_text(int k, int v, char *buf)
     case ST_VBLEND: return VB[v];
     case ST_VBARS: return VB2[v];
     case ST_VMIRROR: return VR[v];
-    case ST_OSHAPE: {
-        static const char *const OS[13] = {"Off", "Disc", "Ring", "Polygon", "Star", "Bars", "Cube", "Sphere", "Torus",
-                                           "Icosa", "Tube", "Terrain", "Wave"};
-        return OS[v];
+    case ST_OFORM: {
+        static const char *const OF[6] = {"Off", "Flat", "Solid", "Ring", "Terrain", "Wave"};
+        return OF[v];
     }
     case ST_ODRAW: {
         static const char *const OD[4] = {"Solid", "Wire", "Points", "Solid+wire"};
         return OD[v];
     }
     case ST_OARRAY: {
-        static const char *const OA[6] = {"Grid", "Ring", "Line", "Spiral", "Scatter", "Orbit"};
+        static const char *const OA[7] = {"Grid", "Ring", "Line", "Spiral", "Scatter", "Orbit", "Cube grid"};
         return OA[v];
     }
+    case ST_OSYNC: {
+        static const char *const OY[5] = {"Free", "1 beat", "2 beats", "Bar", "2 bars"};
+        return OY[v];
+    }
+    case ST_OSYM: case ST_OSYM2:
+        if (!v)
+            return "Round";
+        break;
+    case ST_TR1S: case ST_TR1S + 3: case ST_TR1S + 6: {
+        static const char *const TS[7] = {"Off", "Kick", "Snare", "Hat", "Beat", "Note", "Bar"};
+        return TS[v];
+    }
+    case ST_TR1S + 1: case ST_TR1S + 4: case ST_TR1S + 7: {
+        static const char *const TA[8] = {"Explode", "Spin", "Colour", "Shuffle", "Throw", "Flash", "Invert", "Zoom"};
+        return TA[v];
+    }
     case ST_OBLEND: {
-        static const char *const OB[3] = {"Over", "Add", "Feed"};
+        static const char *const OB[6] = {"Over", "Add", "Feed", "Behind", "Difference", "Multiply"};
         return OB[v];
     }
+    case ST_FXV: case ST_FXM: case ST_FXC:
+        return v ? "All" : "Field";
     default: break;
     }
     if (k >= ST_AR1S && (k - ST_AR1S) % VS_SLOT_W == 0)
@@ -161,6 +188,8 @@ static inline uint16_t swap16(uint32_t c) { return (uint16_t)(((c >> 8) & 0xFFu)
 #endif
 static void vis_palette(void);
 static void vis_mutate(float amount);
+static int16_t vpost_o[240];                      /* (TARGETS Video All: each row's shift and colour split, after all) */
+static int8_t vpost_s[240];
 static float vdtk = 1.0f;                         /* this frame's time in 50 ms steps (CORTEX's frame): motion by the clock */
 static uint32_t vlast_ms;
 #include "vsynth_core.inc"
@@ -266,9 +295,17 @@ void vs_reset(uint32_t seed)                     /* every moving part as at the 
     vdst = vf;
     vinv = vflash = 0;
     vdtk = 1.0f, vlast_ms = 0;
+    memset(vpost_o, 0, sizeof vpost_o);
+    memset(vpost_s, 0, sizeof vpost_s);
     memset(vslot, 0, sizeof vslot);
     memset(vslot_h, 0, sizeof vslot_h);
     vntri = vnwire = 0, vo_spin = vo_grp = 0.0f, vo_land_w = 0;
+    vo_boom = vo_kick = vo_hue = vo_flash = vo_inv = vo_push = 0.0f;
+    memset(vo_jit, 0, sizeof vo_jit);
+    memset(vo_tr_was, 0, sizeof vo_tr_was);
+    memset(vmask, 0, sizeof vmask);
+    memset(vo_cprev, 0, sizeof vo_cprev);
+    memset(vo_chave, 0, sizeof vo_chave);
     memset(vo_land, 0, sizeof vo_land);
     memset(&vin, 0, sizeof vin);
     memset(vin_vox, 0, sizeof vin_vox);
@@ -286,13 +323,16 @@ void vs_frame(const vs_in_t *in)
         vis_mutate(vin.mutate == 1 ? 0.15f : vin.mutate == 2 ? 0.5f : 1.0f);
     vdtk = vlast_ms ? fm_clampf((float)(vin.ms - vlast_ms) * (1.0f / 50.0f), 0.25f, 3.0f) : 1.0f;
     vlast_ms = vin.ms ? vin.ms : 1u;
-    vis_step(vpar[ST_VMODE]);
-    vobj_frame(vdtk);
+    vis_step(vpar[ST_VMODE] < VS_NMODE ? vpar[ST_VMODE] : 5);  /* keep the synthesis in step under the preview */
     {
-        const float fl = fm_maxf(vin.strobe ? 1.0f : 0.0f, (float)VPAR(VSTROBE) * 0.01f * vbeat);
+        const float fl = fm_maxf(fm_maxf(vin.strobe ? 1.0f : 0.0f, (float)VPAR(VSTROBE) * 0.01f * vbeat), vo_flash);
         vflash = (int)(fl * 256.0f);
-        vinv = VPAR(VINVERT) * 256 / 100;
+        vinv = (int)(fm_maxf((float)VPAR(VINVERT) * 0.01f, vo_inv) * 256.0f);   /* (and the triggers' flash, invert, as
+                                                  * the last frame's triggers left them) */
     }
+    vis_lut();                                   /* (CHROMA's map now: the objects' colours take it too) */
+    vobj_frame(vdtk);
+    vobj_modulate();                             /* (MODULATE: the objects on the field, before it is painted) */
 }
 
 void vs_paint(int y0, int h, uint16_t *out)
@@ -302,6 +342,8 @@ void vs_paint(int y0, int h, uint16_t *out)
         h = 240;
     vis_band(y0, h);
     vobj_paint(y0, h, out);
+    if (VPAR(FXV))                               /* TARGETS Video All: the rows shifted and split, the objects with them */
+        vis_post(y0, h, out);
 }
 
 uint32_t vs_sum(void)                            /* (FNV-1a over the field, then the randoms and the clock) */

@@ -131,8 +131,17 @@ int main(int argc, char **argv)
         vs_set(ST_VMOSH, 40), vs_set(ST_VSORT, 30), vs_set(ST_VCORRUPT, 30), vs_set(ST_VSLICE, 30);
         vs_set(ST_VPIXEL, m == 4 ? 40 : 0), vs_set(ST_VSTROBE, 50), vs_set(ST_VINVERT, m == 7 ? 100 : 0);
         vs_set(ST_VMIRROR, m % 5), vs_set(ST_VXTGT, 2), vs_set(ST_VXROT, 30), vs_set(ST_VXZOOM, 20);
-        vs_set(ST_OSHAPE, 1 + m), vs_set(ST_ODRAW, m % 4), vs_set(ST_OCOUNT, 1 + m * 2), vs_set(ST_OARRAY, m % 6);
-        vs_set(ST_OMORPH, 40), vs_set(ST_OBLEND, m % 3), vs_set(ST_OSIDES, 12), vs_set(ST_OZOOM, m * 12);
+        vs_set(ST_OFORM, 1 + m % 5), vs_set(ST_ODRAW, m % 4), vs_set(ST_OCOUNT, 1 + m * 2), vs_set(ST_OARRAY, m % 7);
+        vs_set(ST_OMORPH, 40), vs_set(ST_OBLEND, m % 3), vs_set(ST_ODETAIL, 16), vs_set(ST_OZOOM, m * 12);
+        vs_set(ST_OSYM, m * 2), vs_set(ST_OSYM2, 8 - m), vs_set(ST_OPINCH, m * 11), vs_set(ST_OCURVE, 100 - m * 11);
+        vs_set(ST_OHOLE, m * 10), vs_set(ST_OTWIST, m * 20 - 80), vs_set(ST_OSPEC, 60), vs_set(ST_ONOISE, 40);
+        vs_set(ST_OEXPLODE, 70), vs_set(ST_OSTROT, 30), vs_set(ST_OSTSCALE, -20), vs_set(ST_OSTHUE, 50);
+        vs_set(ST_OSTTIME, 40), vs_set(ST_OSYNC, m % 5), vs_set(ST_OBLEND, m % 6), vs_set(ST_OKEY, 30 + m * 5);
+        vs_set(ST_OLIFE, 60), vs_set(ST_FXV, m & 1), vs_set(ST_FXM, (m >> 1) & 1), vs_set(ST_FXC, m < 6);
+        vs_set(ST_MLENS, m * 25 - 100), vs_set(ST_MSWIRL, 100 - m * 25), vs_set(ST_MGLOW, m * 10), vs_set(ST_MVEC, 80);
+        vs_set(ST_VFOLD, m == 2 ? 50 : 0), vs_set(ST_VPOSTER, m == 3 ? 60 : 0), vs_set(ST_VKEY, m == 5 ? 30 : 0);
+        vs_set(ST_TR1S, 1 + m % 6), vs_set(ST_TR1S + 1, m % 8), vs_set(ST_TR1S + 2, 80);
+        vs_set(ST_TR1S + 3, 4), vs_set(ST_TR1S + 4, (m + 3) % 8), vs_set(ST_TR1S + 5, 80);
         for (k = 0; k < VS_NSLOT; k++) {          /* every slot busy, every source in turn */
             vs_set(ST_AR1S + VS_SLOT_W * k, 1 + (k + m) % (SRC_N - 1));
             vs_set(ST_AR1S + VS_SLOT_W * k + 1, k == 7 ? VS_NTGT : 1 + (k * 5 + m) % (VS_NTGT - 1));
@@ -158,7 +167,9 @@ int main(int argc, char **argv)
         char t[16];
         CHECK(!strcmp(vs_par_text(ST_VMODE, 5, t), "Plasma"), "Visual 5");
         CHECK(!strcmp(vs_par_text(ST_AR1S + 1, VS_NTGT, t), "All"), "a target's All");
-        CHECK(!strcmp(vs_par_text(ST_AR1S + 1, VS_TGT_LAST + 1, t), "Pulse"), "the last target");
+        CHECK(!strcmp(vs_par_text(ST_AR1S + 1, VS_TGT_LAST + 1, t), "Sync"), "the last target");
+        CHECK(!strcmp(vs_par_text(ST_OFORM, 3, t), "Ring"), "a form");
+        CHECK(!strcmp(vs_par_text(ST_TR1S + 4, 3, t), "Shuffle"), "trigger 2's action");
         CHECK(!strcmp(vs_par_text(ST_AR1S + 3, 2, t), "Beat hold"), "a slot's mode");
         CHECK(!strcmp(vs_par_text(ST_AR1S + VS_SLOT_W, SRC_KICK, t), "Kick"), "slot 2's source");
         CHECK(!strcmp(vs_par_text(ST_VXZOOM, -40, t), "-40"), "a number");
