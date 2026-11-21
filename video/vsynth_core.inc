@@ -154,20 +154,83 @@ static void vis_note(int mode, int voice, int note, int vel)   /* a note began: 
             }
     }
 }
-static void vis_mirror(int m)                    /* MIRROR: the field folded (Mirror, Flip, Quad, Kaleido) */
+static void vis_fold(uint8_t (*f)[VF_W], int m)  /* MIRROR: a plane folded (Mirror, Flip, Quad, Kaleido) */
 {
     int x, y;
     if (m == 4)                                  /* Kaleido: the top-left quadrant's lower half its upper's mirror */
         for (y = 0; y < VF_H / 2; y++)
             for (x = 0; x < y; x++)
-                vf[y][x] = vf[x][y];
+                f[y][x] = f[x][y];
     if (m == 1 || m >= 3)
         for (y = 0; y < VF_H; y++)
             for (x = 0; x < VF_W / 2; x++)
-                vf[y][VF_W - 1 - x] = vf[y][x];
+                f[y][VF_W - 1 - x] = f[y][x];
     if (m == 2 || m >= 3)
         for (y = 0; y < VF_H / 2; y++)
-            memcpy(vf[VF_H - 1 - y], vf[y], VF_W);
+            memcpy(f[VF_H - 1 - y], f[y], VF_W);
+}
+
+/* the camera (vs_camera): its light, its two colour-difference planes, at the field's size (bilinear from 60 x 60) */
+static uint8_t vcy[VF_H][VF_W] VS_POOL;
+static int8_t vcb[VF_H][VF_W] VS_POOL, vcr[VF_H][VF_W] VS_POOL;
+static const uint8_t *vcam;
+static int vcam_on(void) { return VPAR(VMODE) >= VS_NMODE && vcam; }
+void vs_camera(const uint8_t *rgb332) { vcam = rgb332; }
+static void vis_cam_in(void)
+{
+    static uint8_t ty[256];
+    static int8_t tb[256], tr[256];
+    static uint8_t made;
+    static uint8_t sy[60][60];
+    static int8_t sb[60][60], sr[60][60];
+    int x, y;
+    if (!made) {                                 /* (RGB332 to Y, Cb, Cr: a table) */
+        int i;
+        for (i = 0; i < 256; i++) {
+            const int r = (i >> 5) * 255 / 7, g = (i >> 2 & 7) * 255 / 7, b = (i & 3) * 85;
+            ty[i] = (uint8_t)((77 * r + 150 * g + 29 * b) >> 8);
+            tb[i] = (int8_t)((-43 * r - 85 * g + 128 * b) >> 9);    /* (halved: -64 .. 63) */
+            tr[i] = (int8_t)((128 * r - 107 * g - 21 * b) >> 9);
+        }
+        made = 1;
+    }
+    for (y = 0; y < 60; y++)
+        for (x = 0; x < 60; x++) {
+            const uint8_t c = vcam[y * 60 + x];
+            sy[y][x] = ty[c], sb[y][x] = tb[c], sr[y][x] = tr[c];
+        }
+    for (y = 0; y < VF_H; y++) {                 /* (row Y: between source rows i0, i1, w1 quarters of i1) */
+        const int i0 = (y & 1) ? y >> 1 : (y >> 1) - 1 < 0 ? 0 : (y >> 1) - 1,
+                  i1 = (y & 1) ? ((y >> 1) + 1 < 60 ? (y >> 1) + 1 : 59) : y >> 1,
+                  w1 = (y & 1) ? 1 : 3;
+        for (x = 0; x < VF_W; x++) {
+            const int j0 = (x & 1) ? x >> 1 : (x >> 1) - 1 < 0 ? 0 : (x >> 1) - 1,
+                      j1 = (x & 1) ? ((x >> 1) + 1 < 60 ? (x >> 1) + 1 : 59) : x >> 1,
+                      v1 = (x & 1) ? 1 : 3;
+#define BI(P) (((P[i0][j0] * (4 - v1) + P[i0][j1] * v1) * (4 - w1) + (P[i1][j0] * (4 - v1) + P[i1][j1] * v1) * w1) >> 4)
+            vcy[y][x] = (uint8_t)BI(sy);
+            vcb[y][x] = (int8_t)BI(sb);
+            vcr[y][x] = (int8_t)BI(sr);
+#undef BI
+        }
+    }
+}
+static void vis_cam(float tr)                    /* the camera's light into the field, TRAILS its smear */
+{
+    const int kt = (int)(tr * tr * 200.0f);
+    int x, y;
+    vis_cam_in();
+    for (y = 0; y < VF_H; y++)
+        for (x = 0; x < VF_W; x++)
+            vf[y][x] = (uint8_t)((vcy[y][x] * (256 - kt) + vf[y][x] * kt) >> 8);
+}
+static void vis_mirror(int m)                    /* MIRROR: the field folded (the camera's colour with it) */
+{
+    vis_fold(vf, m);
+    if (vcam_on()) {
+        vis_fold((uint8_t (*)[VF_W])vcb, m);
+        vis_fold((uint8_t (*)[VF_W])vcr, m);
+    }
 }
 static void geo_lines(int geo, int sides);
 static void geo_transform(void);
@@ -848,8 +911,11 @@ static void vis_step(int mode)                   /* a frame of the field and the
         }
     }
     vamp = vnext >= 0 ? (int)(256.0f * (1.0f - vmw)) : 256;
-    vis_draw(mode, tr);
-    if (vnext >= 0) {
+    if (vcam_on())
+        vis_cam(tr);
+    else
+        vis_draw(mode, tr);
+    if (vnext >= 0 && !vcam_on()) {
         memset(vtmp, 0, sizeof vtmp);
         vdst = vtmp;
         vamp = (int)(256.0f * vmw);
@@ -1369,6 +1435,74 @@ static void vis_post(int y0, int h, uint16_t *out)   /* TARGETS Video All: each 
         }
     }
 }
+/* a row of the camera's picture: the field's light (sharpened, dithered, CHROMA's map) with the camera's colour put
+ * back; COLORAMA turns it to the palette's colour (all of it at 40); shifted by o, the RGB planes spr apart; PIXEL's
+ * blocks when ps > 1 */
+static void vis_row_cam(int ya, int yb, int wb, int ps, int fi, const int8_t *dr, int dith, uint16_t *out, int o,
+                        int spr)
+{
+    static uint8_t ly[240];
+    static int8_t lb[240], lr[240];
+    static uint16_t row[240];
+    const int pm = VPAR(VFOLD) >= 40 ? 256 : VPAR(VFOLD) * 256 / 40, neg = vinv > 128;
+    int x, pl;
+    if (ps > 1) {
+        const int qy = fi / ps * ps;
+        for (x = 0; x < 240; x++) {
+            const int fx = vpixel_x[x >> 1];
+            ly[x] = vf[qy][fx], lb[x] = vcb[qy][fx], lr[x] = vcr[qy][fx];
+        }
+    } else {
+        int c0 = (vf[ya][0] * (4 - wb) + vf[yb][0] * wb) >> 2, cl = c0;
+        for (x = 0; x < VF_W; x++) {
+            const int xr = x + 1 < VF_W ? x + 1 : VF_W - 1,
+                      cr = (vf[ya][xr] * (4 - wb) + vf[yb][xr] * wb) >> 2;
+            ly[2 * x] = (uint8_t)((3 * c0 + cl) >> 2);
+            ly[2 * x + 1] = (uint8_t)((3 * c0 + cr) >> 2);
+            lb[2 * x] = lb[2 * x + 1] = (int8_t)((vcb[ya][x] * (4 - wb) + vcb[yb][x] * wb) >> 2);
+            lr[2 * x] = lr[2 * x + 1] = (int8_t)((vcr[ya][x] * (4 - wb) + vcr[yb][x] * wb) >> 2);
+            cl = c0, c0 = cr;
+        }
+    }
+    pl = ly[0];
+    for (x = 0; x < 240; x++) {
+        const int c = ly[x];
+        int v = c, d, Y, cb = lb[x] * 2, cr = lr[x] * 2, r, g, b;
+        if (ps <= 1 && x > 0 && x < 239) {       /* (sharpened along the row, as the synthesis is) */
+            const int sh = 2 * c - pl - ly[x + 1];
+            v = c + sh / 3;
+            v = v < 0 ? 0 : v > 255 ? 255 : v;
+        }
+        pl = c;
+        d = dith && v > 8 ? v + dr[x & 3] : v;
+        Y = vlut[d < 0 ? 0 : d > 255 ? 255 : d];
+        if (neg)
+            cb = -cb, cr = -cr;
+        if (!Y)
+            cb = cr = 0;
+        r = Y + ((359 * cr) >> 8), g = Y - ((88 * cb + 183 * cr) >> 8), b = Y + ((454 * cb) >> 8);
+        if (pm) {
+            const uint32_t P = vpal[Y];
+            const int pr = (int)(P >> 11) << 3, pg = (int)(P >> 5 & 63u) << 2, pb = (int)(P & 31u) << 3;
+            r += ((pr - r) * pm) >> 8, g += ((pg - g) * pm) >> 8, b += ((pb - b) * pm) >> 8;
+        }
+        r = r < 0 ? 0 : r > 255 ? 255 : r;
+        g = g < 0 ? 0 : g > 255 ? 255 : g;
+        b = b < 0 ? 0 : b > 255 ? 255 : b;
+        row[x] = swap16((uint32_t)((r >> 3) << 11 | (g >> 2) << 5 | (b >> 3)));
+    }
+    for (x = 0; x < 240; x++) {
+        int xg = (x - o) % 240, xr, xb;
+        xg += xg < 0 ? 240 : 0;
+        if (!spr) {
+            out[x] = row[xg];
+            continue;
+        }
+        xr = (xg - spr) % 240, xr += xr < 0 ? 240 : 0;
+        xb = (xg + spr) % 240, xb += xb < 0 ? 240 : 0;
+        out[x] = (uint16_t)((row[xr] & 0x00F8u) | (row[xg] & 0xE007u) | (row[xb] & 0x1F00u));
+    }
+}
 static void vis_band(int y0, int h)
 {
     const float syn = (float)VPAR(VSYNC) * 0.01f, rgb = (float)VPAR(VRGB) * 0.01f;
@@ -1395,7 +1529,9 @@ static void vis_band(int y0, int h)
         /* the 4 x 4 Bayer offsets already halved, as BAYER[][] / 2 was (C's division: toward zero) */
         static const int8_t BAYER2[4][4] = {{-3, 1, -2, 2}, {3, -1, 4, 0}, {-1, 2, -2, 1}, {4, 0, 3, 0}};
         const int8_t *dr = BAYER2[y & 3];
-        if (ps <= 1) {                           /* (1.5.44: the row in RAM code) */
+        if (vcam_on()) {
+            vis_row_cam(ya, yb, wb, ps, fi, dr, dith, out, o, spr);
+        } else if (ps <= 1) {                    /* (1.5.44: the row in RAM code) */
             VS_FAR(vis_row)(a, b, wb, col, ln, dr, dith, vlut, vpal_screen, out, o, spr, VF_W);
         } else {                                 /* PIXEL: blocks of ps cells (Fairlight's mosaic) */
             const uint8_t *q = vf[fi / ps * ps];

@@ -28,7 +28,10 @@
 #define VLINK_MANU 0x7Du
 #define VLINK_ID0 0x43u
 #define VLINK_ID1 0x56u
-enum { VLINK_SYNC = 0x01, VLINK_FRAME = 0x02, VLINK_CMD = 0x10, VLINK_VIDEO = 0x11 };
+enum { VLINK_SYNC = 0x01, VLINK_FRAME = 0x02, VLINK_CMD = 0x10, VLINK_VIDEO = 0x11, VLINK_PHOTO = 0x12 };
+/* VLINK_PHOTO (the FM-1 to the iPhone app): a photo of the FM-1's picture, 120 x 120, a frame a row: its number,
+ * the row, 120 pixels RGB565 (high byte first) */
+enum { VLINK_PHOTO_SIDE = 120, VLINK_PHOTO_RAW = 2 + 2 * 120, VLINK_PHOTO_MAX = 5 + (VLINK_PHOTO_RAW * 8 + 6) / 7 + 1 };
 enum { VLINK_OFF = 0, VLINK_ON = 1, VLINK_RESYNC = 2, VLINK_SET = 3, VLINK_SCENE = 4, VLINK_UNDO = 5, VLINK_LOOK = 6 };
 /* VIDEO: source (1 live, 2 clip), frame ID, part index, then 180 RGB332 pixels in scan order. */
 enum { VLINK_VIDEO_SIDE = 60, VLINK_VIDEO_PART = 180, VLINK_VIDEO_PARTS = 20 };

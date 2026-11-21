@@ -200,10 +200,10 @@ static const struct {
     int16_t v[15];
 } LOOKS[] = {
     {"Default", 0, {0}, {0}},
-    {"Clean", 11, {ST_VFEED, ST_VRGB, ST_VHUE, ST_VSYNC, ST_VMUTATE, ST_VCHAOS, ST_VFLOW, ST_VPULSE, ST_AR1S + 2,
-                   ST_AR1S + 2 + VS_SLOT_W, ST_AR1S + 2 + 2 * VS_SLOT_W}, {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
-    {"Clean Camera", 10, {ST_VMODE, ST_VBARS, ST_VFEED, ST_VRGB, ST_VHUE, ST_VSYNC, ST_VPULSE, ST_AR1S + 2,
-                          ST_AR1S + 2 + VS_SLOT_W, ST_AR1S + 2 + 2 * VS_SLOT_W}, {VS_LIVE_VIDEO, 2, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {"Clean", 12, {ST_VTRAIL, ST_VFEED, ST_VRGB, ST_VHUE, ST_VSYNC, ST_VMUTATE, ST_VCHAOS, ST_VFLOW, ST_VPULSE, ST_AR1S + 2,
+                   ST_AR1S + 2 + VS_SLOT_W, ST_AR1S + 2 + 2 * VS_SLOT_W}, {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {"Clean Camera", 11, {ST_VTRAIL, ST_VMODE, ST_VBARS, ST_VFEED, ST_VRGB, ST_VHUE, ST_VSYNC, ST_VPULSE, ST_AR1S + 2,
+                          ST_AR1S + 2 + VS_SLOT_W, ST_AR1S + 2 + 2 * VS_SLOT_W}, {0, VS_LIVE_VIDEO, 2, 0, 0, 0, 0, 0, 0, 0, 0}},
     {"Tunnel", 12, {ST_VMODE, ST_VFEED, ST_VTRAIL, ST_VXTGT, ST_VXZOOM, ST_VXROT, ST_VPAL, ST_VHUE, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {4, 85, 80, 0, 45, 25, 2, 20, 0, 0, 0, 0}},
     {"LZX Grid", 13, {ST_VMODE, ST_VOFREQ, ST_VOSHAPE, ST_VOFREQ2, ST_VOCOMB, ST_VOSPEED, ST_VFEED, ST_VFOLD, ST_VPAL, ST_VMOSH, ST_VSORT, ST_VCORRUPT, ST_VSLICE}, {8, 45, 3, 45, 1, 25, 15, 55, 3, 0, 0, 0, 0}},
     {"Hydra", 13, {ST_VMODE, ST_VOFREQ, ST_VOSHAPE, ST_VOCOMB, ST_VOWARP, ST_VFEED, ST_VXROT, ST_VXZOOM, ST_VFOLD, ST_VHUE, ST_VMOSH, ST_VSORT, ST_VCORRUPT}, {8, 30, 0, 4, 65, 75, 12, 15, 35, 40, 0, 0, 10}},
@@ -234,6 +234,7 @@ static const struct {
     {"Clone Spiral", 11, {ST_VMODE, ST_OFORM, ST_OSYM, ST_OCOUNT, ST_OARRAY, ST_OSTROT, ST_OSTHUE, ST_OSTTIME, ST_OSTSCALE, ST_VFEED, ST_VPAL}, {5, 2, 5, 16, 3, 15, 60, 50, 10, 40, 6}},
     {"Kick Shatter", 12, {ST_VMODE, ST_OFORM, ST_OSYM, ST_OPINCH, ST_TR1S, ST_TR1A, ST_TR1N, ST_TR1S + 3, ST_TR1S + 4, ST_TR1S + 5, ST_OSYNC, ST_VPAL}, {7, 2, 5, 40, 1, 0, 90, 2, 3, 70, 3, 8}},
     {"Negative", 8, {ST_VMODE, ST_VINVERT, ST_VPAL, ST_VFEED, ST_VXZOOM, ST_VXROT, ST_VGEO, ST_VTRAIL}, {5, 100, 8, 70, 30, 15, 14, 80}},
+    {"Camera Glitch", 9, {ST_VTRAIL, ST_VMODE, ST_VBARS, ST_VMOSH, ST_VCORRUPT, ST_VSLICE, ST_VRGB, ST_VSYNC, ST_VFEED}, {20, VS_LIVE_VIDEO, 2, 70, 45, 35, 30, 30, 0}},
 };
 #define NLOOK ((int)(sizeof LOOKS / sizeof *LOOKS))
 #define PICTURE_LAST ST_TR3N                  /* (a look, a scene, the dice: VMODE .. VINVERT; not the ear, the screen,
@@ -848,15 +849,91 @@ static int photo_keep(const uint8_t *pix)
            plat_data_write(PHOTO_BASE + (uint32_t)slot * 0x1000u, buf, sizeof buf) == 0;
 }
 static const uint8_t *live_image(void);
+/* EDIT: a photo of the FM-1's picture (the effects in it), taken as the next frame is painted: 60 x 60 kept on the
+ * FM-1, 120 x 120 sent to the iPhone app (VLINK_PHOTO, a frame a row) over USB and over Bluetooth (its stream) */
+static uint8_t photo_req, photo_id;
+static uint8_t photo_frames[VLINK_PHOTO_SIDE][VLINK_PHOTO_MAX] PLAT_POOL;
+static uint8_t photo_small[PHOTO_PIX] PLAT_POOL;
+static uint16_t photo_len;
+static uint8_t photo_usb = VLINK_PHOTO_SIDE;
+static volatile uint8_t photo_ble = VLINK_PHOTO_SIDE;
+static volatile uint16_t photo_off;
+static int photo_ble_peek(uint32_t *pkt)
+{
+    const uint8_t r = photo_ble;
+    const uint8_t *f;
+    unsigned n;
+    if (r >= VLINK_PHOTO_SIDE)
+        return 0;
+    f = photo_frames[r] + photo_off;
+    n = photo_len - photo_off;
+    if (n > 3)
+        *pkt = 0x04u | (uint32_t)f[0] << 8 | (uint32_t)f[1] << 16 | (uint32_t)f[2] << 24;
+    else if (n == 3)
+        *pkt = 0x07u | (uint32_t)f[0] << 8 | (uint32_t)f[1] << 16 | (uint32_t)f[2] << 24;
+    else if (n == 2)
+        *pkt = 0x06u | (uint32_t)f[0] << 8 | (uint32_t)f[1] << 16;
+    else
+        *pkt = 0x05u | (uint32_t)f[0] << 8;
+    return 1;
+}
+static void photo_ble_pop(void)
+{
+    const unsigned n = photo_len - photo_off;
+    if (photo_ble >= VLINK_PHOTO_SIDE)
+        return;
+    if (n > 3) {
+        photo_off = (uint16_t)(photo_off + 3);
+    } else {
+        photo_off = 0;
+        photo_ble = (uint8_t)(photo_ble + 1);
+    }
+}
+static int photo_ble_mid(void) { return photo_ble < VLINK_PHOTO_SIDE && photo_off > 0; }
+static const struct plat_ble_stream photo_stream = {photo_ble_peek, photo_ble_pop, photo_ble_mid};
 static void phone_photo(void)
 {
-    const uint8_t *pix = live_image();
-    phone_cmd(PHONE_PHOTO);
-    if (!pix) {
-        app_say("PHOTO", "ON THE IPHONE");
+    if (!live_image()) {
+        app_say("PHOTO", "NO PICTURE YET");
         return;
     }
-    app_say("PHOTO", photo_keep(pix) ? "IPHONE + FM-1" : "FM-1 FAILED");
+    photo_req = 1;
+}
+static void photo_row(int y, const uint16_t *px)  /* (a screen row painted: its share of the photo) */
+{
+    if (!(y & 1)) {
+        uint8_t raw[VLINK_PHOTO_RAW];
+        int x;
+        raw[0] = photo_id, raw[1] = (uint8_t)(y >> 1);
+        for (x = 0; x < VLINK_PHOTO_SIDE; x++) {
+            const uint16_t c = px[2 * x];        /* (the screen's: high byte first in memory) */
+            memcpy(raw + 2 + 2 * x, &c, 2);
+        }
+        photo_len = (uint16_t)vlink_frame(VLINK_PHOTO, raw, sizeof raw, photo_frames[y >> 1]);
+    }
+    if (!(y & 3)) {
+        int x;
+        for (x = 0; x < 60; x++) {
+            const uint32_t c = swap16(px[4 * x]);
+            photo_small[(y >> 2) * 60 + x] = (uint8_t)((c >> 8 & 0xE0u) | (c >> 6 & 0x1Cu) | (c >> 3 & 0x03u));
+        }
+    }
+}
+static void photo_done(void)
+{
+    const int kept = photo_keep(photo_small);
+    photo_usb = 0;
+    photo_off = 0;
+    __asm__ volatile("" ::: "memory");
+    photo_ble = 0;
+    photo_id = (uint8_t)((photo_id + 1) & 127u);
+    app_say("PHOTO", kept ? "FM-1 + IPHONE" : "SENT, NOT KEPT");
+}
+static void photo_send(void)                     /* (the main loop: the rows to USB as the ring takes them) */
+{
+    while (photo_usb < VLINK_PHOTO_SIDE && plat_sysex_room() >= photo_len)
+        if (plat_sysex_send(photo_frames[photo_usb++], photo_len) < 0)
+            photo_usb = VLINK_PHOTO_SIDE;
 }
 static void photo_next(void)                     /* FX in the video modes: the kept photos, then live again */
 {
@@ -1695,9 +1772,10 @@ static void draw_frame(void)                     /* the picture, the bars over i
                                      (bars == 2 ? idle > 1500u : bars == 1 ? idle > (uint32_t)vs_get(ST_VDELAY) * 1000u : 0));
     const int source = vs_get(ST_VMODE) >= VS_NMODE ? vs_get(ST_VMODE) - VS_NMODE + 1 : 0;
     const int preview = source ? preview_state(source, plat_ms()) : 0;
-    const uint8_t *image = source && photo_view ? photo_nth(photo_view - 1) : 0;
-    if (!image)
-        image = preview == 4 ? video_ble_pixels[video_ble_front] : preview == 3 ? video_pixels[video_rx.front] : 0;
+    const uint8_t *kept = source && photo_view ? photo_nth(photo_view - 1) : 0,
+                  *live = preview == 4 ? video_ble_pixels[video_ble_front] : preview == 3 ? video_pixels[video_rx.front] : 0,
+                  *image = kept ? kept : live;   /* (live: through the engine, its effects; a kept photo as it is) */
+    const int snap = photo_req && live && !kept;
     int b;
     uint32_t t = plat_ticks24(), lw, pt = 0;
     if (image)
@@ -1707,10 +1785,15 @@ static void draw_frame(void)                     /* the picture, the bars over i
     for (b = 0; b < 4; b++) {
         t = plat_ticks24();
         cv_begin_pingpong(240, (uint32_t)BH[b], (uint32_t)b);
-        if (source)
-            paint_video_band(BY[b], BH[b], image);
+        if (source && (kept || !live))
+            paint_video_band(BY[b], BH[b], kept);
         else
             vs_paint(BY[b], BH[b], cv_px);
+        if (snap) {
+            int y;
+            for (y = 0; y < BH[b]; y++)
+                photo_row(BY[b] + y, cv_px + y * 240);
+        }
         if (!hide && b == 0) {
             dim(cv_px, 240u * HDR_H);
             draw_header();
@@ -1729,6 +1812,10 @@ static void draw_frame(void)                     /* the picture, the bars over i
     }
     ui.paint_us += ((int32_t)(pt / 24u) - (int32_t)ui.paint_us) / 8;
     ui.lcd_us += ((int32_t)(lw / 24u) - (int32_t)ui.lcd_us) / 8;
+    if (snap) {
+        photo_req = 0;
+        photo_done();
+    }
 }
 
 /* the whole screen in words (a screen reader asks; fm1_remote.py screen): the page, its knobs, and the frame's timing,
@@ -1833,7 +1920,7 @@ void app_init(void)
     plat_usb_audio_full(1);                      /* the USB recording at full level, MASTER for the speaker alone */
     plat_usb_play_gain(0);                       /* the computer's audio: played by the render itself (app_render) */
 }
-void app_ui_init(void) { ui.act_t = plat_ms(); }
+void app_ui_init(void) { ui.act_t = plat_ms(); plat_ble_stream(&photo_stream); }
 
 void app_frame(void)
 {
@@ -1858,9 +1945,12 @@ void app_frame(void)
         scenes_frame();
         frame_input();
         link_hold_back(saved, held);
+        vs_camera(photo_view ? 0 : live_image());
         vs_frame(&fin);
         ui.gen_us += ((int32_t)((plat_ticks24() - t0) / 24u) - (int32_t)ui.gen_us) / 8;
-        sum = lk.on ? vs_sum() : 0u;
+        sum = lk.on && !(video_mode() && !photo_view && live_image()) ? vs_sum() : 0u;   /* (0: the camera's,
+                                                  * which the mirror has not) */
+        photo_send();
         link_send(sum);
         for (k = 0; k < ST_N; k++)               /* (what did not fit goes with the next frame) */
             if (held[k])

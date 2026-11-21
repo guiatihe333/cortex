@@ -64,7 +64,7 @@ static inline int vfollow_msg(vfollow_t *s, const uint8_t *m, uint32_t n, uint16
         for (i = 0; i < f.nchg; i++)
             vs_set(f.chg_k[i], f.chg_v[i]);
         vs_frame(&f.in);
-        if (vs_sum() != f.sum) {
+        if (f.sum && vs_sum() != f.sum) {        /* (0: the FM-1's camera on: a picture the mirror has not) */
             s->mismatches++;
             s->lost = 1;
         }

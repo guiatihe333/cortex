@@ -99,6 +99,10 @@ int vs_eff(int k);                                /* as the last frame read it (
 void vs_frame(const vs_in_t *in);
 void vs_paint(int y0, int h, uint16_t *out);      /* rows y0 .. y0 + h - 1, every row once a frame, top to bottom */
 uint32_t vs_sum(void);
+/* CORTEX VIDEO's camera (Live Video, Video import): the picture this frame, 60 x 60 RGB332 (NULL: none; then the
+ * synthesis under it goes on). Its light goes into the field, so every effect breaks it as it breaks a synthesis;
+ * its colour comes back when painting (COLORAMA turns it to the palette's). Before vs_frame */
+void vs_camera(const uint8_t *rgb332);
 #ifdef VS_HD
 void vs_paint_hd(int S, uint8_t *rgba);           /* (the mirror's) the whole frame at 240 S square, RGBA, instead of
                                                    * vs_paint: the same picture, sharper (vhd.inc) */

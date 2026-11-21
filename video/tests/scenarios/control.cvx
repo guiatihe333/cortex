@@ -57,9 +57,9 @@ spin K1 1
 release GLO
 expect par0 5
 spin K3 10
-expect par2 90
+expect par2 30
 press SEL
 spin K3 3
 release SEL
-expect par2 93
+expect par2 33
 shot ui.png

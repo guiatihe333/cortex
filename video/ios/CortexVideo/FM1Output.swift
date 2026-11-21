@@ -2,6 +2,8 @@
 import CoreMIDI
 import CoreBluetooth
 import Foundation
+import CoreImage
+import UIKit
 
 // Owned by Studio on the main queue. Each timer tick writes at most one packet.
 final class FM1Output {
@@ -10,6 +12,7 @@ final class FM1Output {
     private var inPort: MIDIPortRef = 0
     private var source: MIDIEndpointRef = 0
     var command: ((UInt8) -> Void)?
+    var received: (([UInt8]) -> Void)?
     private var destination: MIDIEndpointRef = 0
     private var selected: VideoSource?
     private var pending: [UInt8] = []
@@ -23,13 +26,17 @@ final class FM1Output {
             MIDIOutputPortCreate(client, "FM-1" as CFString, &port)
             MIDIInputPortCreateWithBlock(client, "FM-1 in" as CFString, &inPort) { [weak self] list, _ in
                 var bytes: [UInt8] = []
-                for packet in list.unsafeSequence() {
-                    let count = min(Int(packet.pointee.length), 256)
-                    withUnsafeBytes(of: packet.pointee.data) { raw in bytes.append(contentsOf: raw.prefix(count)) }
+                let offset = MemoryLayout<MIDIPacket>.offset(of: \MIDIPacket.data) ?? 10
+                for packet in list.unsafeSequence() {      // (a SysEx packet may run past the 256 bytes declared)
+                    let data = UnsafeRawPointer(packet).advanced(by: offset)
+                    bytes.append(contentsOf: UnsafeRawBufferPointer(start: data, count: Int(packet.pointee.length)))
                 }
+                guard !bytes.isEmpty else { return }
                 let commands = FM1Remote.commands(bytes)
-                guard !commands.isEmpty else { return }
-                DispatchQueue.main.async { commands.forEach { self?.command?($0) } }
+                DispatchQueue.main.async {
+                    self?.received?(bytes)
+                    commands.forEach { self?.command?($0) }
+                }
             }
         }
     }
@@ -163,6 +170,96 @@ enum FM1Remote {
     }
 }
 
+// The FM-1's photo (EDIT): its picture with the effects, 120 x 120 RGB565, a SysEx a row (F0 7D 43 56 12, 7-in-8:
+// photo number, row, 240 bytes high first, F7), over USB and Bluetooth MIDI alike; each photo saved once.
+final class FM1Photo {
+    static let side = 120
+    var done: ((UIImage) -> Void)?
+    private var sysex: [UInt8]?
+    private var pixels = [UInt8](repeating: 0, count: 120 * 120 * 2)
+    private var rows = Set<Int>()
+    private var current = -1
+    private var finished = -1
+    private let context = CIContext()
+
+    func feed(_ bytes: [UInt8]) {                  // plain MIDI bytes (USB)
+        for byte in bytes { take(byte) }
+    }
+
+    func feedBLE(_ packet: [UInt8]) {              // a Bluetooth MIDI packet: its header, timestamps before statuses
+        var index = 1
+        while index < packet.count {
+            let byte = packet[index]
+            if byte < 0x80 {
+                take(byte)
+                index += 1
+            } else if index + 1 < packet.count, packet[index + 1] >= 0x80 {
+                take(packet[index + 1])           // (a timestamp, then a status)
+                index += 2
+            } else { index += 1 }                 // (a timestamp before running status)
+        }
+    }
+
+    private func take(_ byte: UInt8) {
+        if byte == 0xF0 { sysex = [] }
+        else if byte == 0xF7 { if let body = sysex { frame(body) }; sysex = nil }
+        else if byte < 0x80 { sysex?.append(byte) }
+        else if byte < 0xF8 { sysex = nil }
+    }
+
+    private func frame(_ body: [UInt8]) {
+        guard body.count > 4, body[0] == 0x7D, body[1] == 0x43, body[2] == 0x56, body[3] == 0x12 else { return }
+        var raw: [UInt8] = []
+        raw.reserveCapacity(242)
+        var index = 4
+        while index < body.count {
+            let high = body[index]
+            index += 1
+            var bit = 0
+            while bit < 7 && index < body.count {
+                raw.append(body[index] | ((high >> UInt8(bit)) & 1) << 7)
+                index += 1
+                bit += 1
+            }
+        }
+        guard raw.count >= 2 + FM1Photo.side * 2 else { return }
+        let id = Int(raw[0]), row = Int(raw[1])
+        guard id != finished, row < FM1Photo.side else { return }
+        if id != current { current = id; rows = [] }
+        pixels.replaceSubrange(row * 240..<(row + 1) * 240, with: raw[2..<242])
+        rows.insert(row)
+        if rows.count == FM1Photo.side || (row == FM1Photo.side - 1 && rows.count >= FM1Photo.side - 12) {
+            for missing in 1..<FM1Photo.side where !rows.contains(missing) {   // (a row lost: the one above)
+                pixels.replaceSubrange(missing * 240..<(missing + 1) * 240,
+                                       with: Array(pixels[(missing - 1) * 240..<missing * 240]))
+            }
+            finished = id
+            current = -1
+            if let image = makeImage() { done?(image) }
+        }
+    }
+
+    private func makeImage() -> UIImage? {
+        var rgba = [UInt8](repeating: 255, count: FM1Photo.side * FM1Photo.side * 4)
+        for index in 0..<(FM1Photo.side * FM1Photo.side) {
+            let c = Int(pixels[index * 2]) << 8 | Int(pixels[index * 2 + 1])
+            rgba[index * 4] = UInt8((c >> 11) << 3)
+            rgba[index * 4 + 1] = UInt8((c >> 5 & 63) << 2)
+            rgba[index * 4 + 2] = UInt8((c & 31) << 3)
+        }
+        guard let provider = CGDataProvider(data: Data(rgba) as CFData),
+              let small = CGImage(width: FM1Photo.side, height: FM1Photo.side, bitsPerComponent: 8, bitsPerPixel: 32,
+                                  bytesPerRow: FM1Photo.side * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                                  provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
+        else { return nil }
+        let big = CIImage(cgImage: small).applyingFilter("CILanczosScaleTransform",
+                                                         parameters: [kCIInputScaleKey: 8.0, kCIInputAspectRatioKey: 1.0])
+        guard let output = context.createCGImage(big, from: CGRect(x: 0, y: 0, width: 960, height: 960)) else { return nil }
+        return UIImage(cgImage: output)
+    }
+}
+
 // Bluetooth preview service (UUIDs match video/app.h). This does not use Core MIDI.
 
 final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
@@ -171,6 +268,7 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
     private let midiServiceID = CBUUID(string: "03B80E5A-EDE8-4B33-A751-6CE34EC4C700")
     private let midiDataID = CBUUID(string: "7772E5DB-3868-4112-A1A9-F2669D106BF3")
     var command: ((UInt8) -> Void)?
+    var receivedBLE: (([UInt8]) -> Void)?
     private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var characteristic: CBCharacteristic?
@@ -295,6 +393,8 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil, characteristic.uuid == midiDataID, let value = characteristic.value else { return }
-        FM1Remote.commands([UInt8](value)).forEach { command?($0) }
+        let bytes = [UInt8](value)
+        receivedBLE?(bytes)
+        FM1Remote.commands(bytes).forEach { command?($0) }
     }
 }

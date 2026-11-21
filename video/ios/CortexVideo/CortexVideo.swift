@@ -56,9 +56,13 @@ final class Studio: ObservableObject {
     private var microphoneAllowed = false
     private var clipBuffer: CVPixelBuffer?
     private let photoContext = CIContext()
+    private let fm1Photo = FM1Photo()
 
     init() {
         midi.command = { [weak self] cc in self?.remote(cc) }
+        midi.received = { [weak self] bytes in self?.fm1Photo.feed(bytes) }
+        bluetooth.receivedBLE = { [weak self] bytes in self?.fm1Photo.feedBLE(bytes) }
+        fm1Photo.done = { [weak self] image in self?.savePicture(image, what: "Foto do FM-1") }
         bluetooth.command = { [weak self] cc in self?.remote(cc) }
         camera.frame = { [weak self] frame in
             guard let self, self.source == .camera, !frame.isEmpty else { return }
@@ -205,7 +209,7 @@ final class Studio: ObservableObject {
         switch cc {
         case FM1Remote.record:
             if source == .camera { toggleRecording() } else { message = "FM-1: para gravar, abra a câmera." }
-        case FM1Remote.photo: takePhoto()
+        case FM1Remote.photo: break           // (the FM-1 sends its own picture: FM1Photo)
         case FM1Remote.run: toggleRunning()
         default: break
         }
@@ -239,7 +243,10 @@ final class Studio: ObservableObject {
             message = "A foto não pôde ser feita."
             return
         }
-        let image = UIImage(cgImage: cgImage)
+        savePicture(UIImage(cgImage: cgImage), what: "Foto do iPhone")
+    }
+
+    func savePicture(_ image: UIImage, what: String) {
         Task {
             let permission = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
             guard permission == .authorized || permission == .limited else {
@@ -250,7 +257,7 @@ final class Studio: ObservableObject {
                 try await PHPhotoLibrary.shared().performChanges {
                     PHAssetChangeRequest.creationRequestForAsset(from: image)
                 }
-                message = "Foto salva em Fotos."
+                message = what + " salva em Fotos."
             } catch { message = "Fotos não conseguiu salvar a foto. " + error.localizedDescription }
         }
     }
@@ -346,7 +353,7 @@ struct StudioView: View {
                 .buttonStyle(.bordered)
                 .disabled(studio.busy || studio.recording)
                 if studio.source != nil {
-                    Button("Tirar foto") { studio.takePhoto() }.buttonStyle(.bordered).disabled(studio.busy)
+                    Button("Foto do iPhone") { studio.takePhoto() }.buttonStyle(.bordered).disabled(studio.busy)
                 }
                 if studio.source == .camera {
                     Button(studio.recording ? "Parar gravação" : "Gravar vídeo") { studio.toggleRecording() }
@@ -359,7 +366,7 @@ struct StudioView: View {
                     }
                     .buttonStyle(.bordered)
                 }
-                Text("No FM-1 (Live Video / Video import): REC grava · EDIT tira foto · PLAY inicia ou para · FX mostra as fotos guardadas no FM-1.")
+                Text("No FM-1 (Live Video / Video import): REC grava · EDIT foto do FM-1 (com efeitos, salva em Fotos) · PLAY inicia ou para · FX mostra as fotos guardadas no FM-1.")
                     .font(.caption).foregroundStyle(.secondary)
                 if !studio.message.isEmpty {
                     Text(studio.message).font(.footnote).foregroundStyle(.secondary)
