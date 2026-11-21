@@ -271,8 +271,10 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
     var receivedBLE: (([UInt8]) -> Void)?
     // flow control: after a whole frame, wait for the FM-1's CC 105 (that frame's number) before the next, so no
     // queue piles up between the camera and the picture; an old FM-1 (none) after 0.4 s
-    private var waitingAck: UInt8?
-    private var sentAt: TimeInterval = 0
+    // two frames on their way at most (the radio busy while the FM-1 answers the one before); the next goes out as
+    // soon as an answer comes (ready)
+    private var inFlight: [(id: UInt8, at: TimeInterval)] = []
+    var ready: (() -> Void)?
     private var acks: [TimeInterval] = []
     private let codec = VideoCodec()
     private var sharpFrame = false
@@ -320,11 +322,12 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
         let now = CACurrentMediaTime()
         acks.removeAll { now - $0 > 2 }
         let rate = String(format: " · %.1f q/s", Double(acks.count) / 2)
-        if waitingAck != nil, pending.isEmpty, now - sentAt < 0.4 {
+        let before = inFlight.count
+        inFlight.removeAll { now - $0.at > 0.5 }
+        if inFlight.count < before { codec.forceKey = true }   // (one not answered: every block again)
+        if pending.isEmpty && inFlight.count >= 2 {
             return (sharpFrame ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
         }
-        if waitingAck != nil { codec.forceKey = true }   // (not answered: every block again)
-        waitingAck = nil
         let limit = min(VideoWire.blePayload, peripheral.maximumWriteValueLength(for: .withoutResponse) - 4)
         guard limit > 0 else { return "O FM-1 não aceitou pacotes de vídeo Bluetooth." }
         var sent = 0
@@ -344,8 +347,7 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
             sent += 1
             if offset == pending.count {
                 pending = []
-                waitingAck = frameID & 127
-                sentAt = now
+                inFlight.append((id: frameID & 127, at: now))
                 break
             }
         }
@@ -423,9 +425,10 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
         let bytes = [UInt8](value)
         if bytes.count >= 3 {
             for index in 0..<(bytes.count - 2) where bytes[index] == 0xBF && bytes[index + 1] == 105 {
-                if let waiting = waitingAck, bytes[index + 2] == waiting {
-                    waitingAck = nil
+                if let found = inFlight.firstIndex(where: { $0.id == bytes[index + 2] }) {
+                    inFlight.removeSubrange(0...found)          // (and any older: answered in order)
                     acks.append(CACurrentMediaTime())
+                    ready?()
                 }
             }
         }

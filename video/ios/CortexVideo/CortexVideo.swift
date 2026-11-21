@@ -72,6 +72,7 @@ final class Studio: ObservableObject {
         midi.command = { [weak self] cc in self?.remote(cc) }
         midi.received = { [weak self] bytes in self?.fm1Photo.feed(bytes) }
         bluetooth.receivedBLE = { [weak self] bytes in self?.fm1Photo.feedBLE(bytes) }
+        bluetooth.ready = { [weak self] in self?.tick() }
         fm1Photo.done = { [weak self] image in self?.savePicture(image, what: "Foto do FM-1") }
         bluetooth.command = { [weak self] cc in self?.remote(cc) }
         camera.frame = { [weak self] frame in
