@@ -325,7 +325,7 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
         let before = inFlight.count
         inFlight.removeAll { now - $0.at > 0.5 }
         if inFlight.count < before { codec.forceKey = true }   // (one not answered: every block again)
-        if pending.isEmpty && inFlight.count >= 3 {
+        if pending.isEmpty && inFlight.count >= 6 {
             return (sharpFrame ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
         }
         let limit = min(VideoWire.blePayload, peripheral.maximumWriteValueLength(for: .withoutResponse) - 4)

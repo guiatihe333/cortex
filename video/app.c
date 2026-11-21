@@ -1372,7 +1372,8 @@ static void input(void)
         plat_leds(btn | lit, keys | klit);
     }
 }
-void app_input_only(void) { input(); }
+static void video_ble_poll(uint32_t now);
+void app_input_only(void) { input(); video_ble_poll(plat_ms()); }   /* (the video between frames too: answered sooner) */
 
 /* ----------------------------------------------------------- the spectrum --- */
 /* a frame's look at the last 256 samples (11 kHz: 43 Hz a bin, up to 5.5 kHz): a Hann window, an FFT, 24 bands log
@@ -1963,6 +1964,8 @@ static void draw_frame(void)                     /* the picture, the bars over i
         t = plat_ticks24();
         cv_blit(0, (uint32_t)BY[b]);
         lw += plat_ticks24() - t;
+        if (b < 3)
+            video_ble_poll(plat_ms());           /* (and between the bands: a frame whole is answered at once) */
     }
     ui.paint_us += ((int32_t)(pt / 24u) - (int32_t)ui.paint_us) / 8;
     ui.vsp_us += ((int32_t)(tv / 24u) - (int32_t)ui.vsp_us) / 8;
@@ -2017,6 +2020,19 @@ static void speak(void)
                 vs_itoa((int)ble_hw_multi_evt, u2), cat_n(t, u2);
                 cat_n(t, " most ");
                 vs_itoa((int)ble_hw_most_evt, u2), cat_n(t, u2);
+            }
+            {
+                extern void ble_hw_app_stats(uint32_t v[4]);
+                uint32_t h[4];
+                ble_hw_app_stats(h);
+                cat_n(t, " ev ");
+                vs_itoa((int)h[0], u2), cat_n(t, u2);
+                cat_n(t, " rep ");
+                vs_itoa((int)h[1], u2), cat_n(t, u2);
+                cat_n(t, " crc ");
+                vs_itoa((int)h[2], u2), cat_n(t, u2);
+                cat_n(t, " isr ");
+                vs_itoa((int)h[3], u2), cat_n(t, u2);
             }
 #endif
             cat_n(t, " lost ");
