@@ -36,6 +36,21 @@ final class Studio: ObservableObject {
     @Published private(set) var recording = false
     @Published private(set) var busy = false
     @Published private(set) var lastRecording: URL?
+    @Published var recordingInput = RecordingInput.automatic {
+        didSet {
+            guard source == .camera, microphoneAllowed else { return }
+            do { try recordingInput.activate(); updateAudioRoute() }
+            catch { message = error.localizedDescription }
+        }
+    }
+    @Published private(set) var audioRoute = "Aguardando entrada de áudio"
+    private var nextRouteCheck: TimeInterval = 0
+
+    private func updateAudioRoute() {
+        let name = AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName
+            ?? "Nenhuma entrada de áudio ativa"
+        if audioRoute != name { audioRoute = name }
+    }
 
     let camera = CameraCapture()
     private let midi = FM1Output()
@@ -106,7 +121,7 @@ final class Studio: ObservableObject {
         clearMovie()
         changeSource(.camera)
         message = microphoneAllowed ? "" : "As gravações serão feitas sem microfone."
-        camera.start(microphone: microphoneAllowed) { [weak self] started in
+        camera.start(microphone: microphoneAllowed, input: recordingInput) { [weak self] started in
             guard let self else { return }
             self.busy = false
             if !started {
@@ -206,11 +221,11 @@ final class Studio: ObservableObject {
                                                         appropriateFor: nil, create: true)
             let url = documents.appendingPathComponent("Cortex-" + String(UUID().uuidString.prefix(8)) + ".mov")
             busy = true
-            camera.record(url) { [weak self] started in
+            camera.record(url, input: recordingInput) { [weak self] error in
                 guard let self else { return }
                 self.busy = false
-                self.recording = started
-                self.message = started ? "" : "A gravação não pôde começar."
+                self.recording = error == nil
+                self.message = error ?? ""
             }
         } catch { message = error.localizedDescription }
     }
@@ -291,6 +306,11 @@ final class Studio: ObservableObject {
     func tick() {
         guard active else { return }
         let now = CACurrentMediaTime()
+        if now >= nextRouteCheck {
+            nextRouteCheck = now + 0.5
+            updateAudioRoute()
+            if recording && !busy && !recordingInput.isCurrent { toggleRecording() }
+        }
         if source == .clip, now >= nextSample, let videoOutput {
             nextSample = now + 0.03
             let itemTime = videoOutput.itemTime(forHostTime: now)
@@ -309,7 +329,7 @@ final class Studio: ObservableObject {
         guard self.active != active else { return }
         self.active = active
         if active {
-            if source == .camera { camera.start(microphone: microphoneAllowed) { _ in } }
+            if source == .camera { camera.start(microphone: microphoneAllowed, input: recordingInput) { _ in } }
             if source == .clip { player?.play() }
         } else {
             player?.pause()
@@ -333,13 +353,23 @@ struct StudioView: View {
     @StateObject private var studio = Studio()
     @State private var selection: PhotosPickerItem?
     @State private var filePicker = false
+    @State private var showMirror = false
     @Environment(\.scenePhase) private var scenePhase
     private let clock = Timer.publish(every: 0.024, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("CORTEX VIDEO").font(.title2.bold())
+                HStack {
+                    Text("CORTEX VIDEO").font(.title2.bold())
+                    Spacer()
+                    Button("Espelho") {
+                        studio.setActive(false)
+                        showMirror = true
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(studio.busy || studio.recording)
+                }
                 Picker("Conexão com FM-1", selection: $studio.useBluetooth) {
                     Text("Bluetooth").tag(true)
                     Text("USB").tag(false)
@@ -368,6 +398,11 @@ struct StudioView: View {
                     Button("Foto do iPhone") { studio.takePhoto() }.buttonStyle(.bordered).disabled(studio.busy)
                 }
                 if studio.source == .camera {
+                    Picker("Áudio da gravação", selection: $studio.recordingInput) {
+                        ForEach(RecordingInput.allCases) { input in Text(input.rawValue).tag(input) }
+                    }
+                    .disabled(studio.busy || studio.recording)
+                    Text("Entrada ativa: " + studio.audioRoute).font(.caption).foregroundStyle(.secondary)
                     Button(studio.recording ? "Parar gravação" : "Gravar vídeo") { studio.toggleRecording() }
                         .buttonStyle(.borderedProminent).tint(.red).disabled(studio.busy)
                 }
@@ -387,7 +422,12 @@ struct StudioView: View {
             .padding()
         }
         .onReceive(clock) { _ in studio.tick() }
-        .onChange(of: scenePhase) { studio.setActive($0 != .background) }
+        .onChange(of: scenePhase) { studio.setActive($0 != .background && !showMirror) }
+        .fullScreenCover(isPresented: $showMirror, onDismiss: {
+            studio.setActive(scenePhase != .background)
+        }) {
+            MirrorScreen()
+        }
         .onChange(of: selection) { item in
             guard let item else { return }
             Task { await studio.importPhotos(item); selection = nil }

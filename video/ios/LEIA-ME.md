@@ -27,3 +27,21 @@ No FM-1 selecione VISUAL → Live Video para câmera ou Video import. para clipe
 Cortex Video enquanto a fonte externa estiver selecionada. No app escolha Bluetooth, permita o acesso e abra
 a câmera ou o clipe. A conexão é feita no próprio app. Em USB, continua valendo o cabo de dados e USB-MIDI.
 O desempenho da prévia Bluetooth depende do tamanho de pacote negociado e deve ser medido no aparelho.
+
+
+## Espelho e Zoom R20
+
+No Zoom R20, escolha **Audio Interface → Stereo Mix** para gravar a mixagem estéreo. Ligue o R20 ao iPhone com
+um cabo de dados. Em iPhone Lightning, use o adaptador de câmera USB. Para usar os dois aparelhos ao mesmo tempo,
+o FM-1 pode receber a imagem por Bluetooth enquanto o R20 ocupa o USB.
+
+- Na câmera nativa, selecione **Áudio da gravação → Zoom R20 (USB)** e confira **Entrada ativa** antes de gravar.
+- Em **Espelho**, use os controles e efeitos do espelho do PC. **Conectar FM-1 (USB)** libera os controles do
+  motor e das cenas. Para enviar a câmera ou o clipe sem cabo, escolha o Visual correspondente no FM-1 e toque
+  em **Enviar por Bluetooth**. O espelho envia prévia de 60 × 60; a câmera nativa oferece o modo nítido de 120 × 120.
+- Em **Áudio gravado**, toque em **Capturar áudio do Zoom R20** e confira o medidor. **Gravar aqui** salva a
+  composição com o áudio em Arquivos. Use o menu **Gravação** do iPhone para compartilhar ou salvar o MP4 em Fotos.
+
+O espelho usa as APIs de câmera, áudio e gravação do WebKit. A visibilidade do R20 e os formatos de gravação
+dependem da versão do iOS e da rota USB. Para atualizar o espelho incorporado, rode `video/build.sh --test` e
+copie `video/build/mirror/cortex-video-mirror.html` para `video/ios/CortexVideo/Mirror.html`.

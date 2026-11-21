@@ -50,6 +50,38 @@ final class FrameSampler {
     }
 }
 
+enum RecordingInput: String, CaseIterable, Identifiable {
+    case automatic = "Automático"
+    case zoom = "Zoom R20 (USB)"
+    var id: Self { self }
+
+    func activate() throws {
+        let audio = AVAudioSession.sharedInstance()
+        try audio.setCategory(.playAndRecord, mode: .videoRecording)
+        try audio.setActive(true)
+        if self == .automatic {
+            try audio.setPreferredInput(nil)
+            return
+        }
+        guard let zoom = audio.availableInputs?.first(where: Self.isZoom) else {
+            throw NSError(domain: "CortexAudio", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Zoom R20 não detectado. Ative Audio Interface no R20 e confira o cabo USB."
+            ])
+        }
+        try audio.setPreferredInput(zoom)
+    }
+
+    static func isZoom(_ port: AVAudioSessionPortDescription) -> Bool {
+        port.portType == .usbAudio &&
+            (port.portName.localizedCaseInsensitiveContains("R20") ||
+             port.portName.localizedCaseInsensitiveContains("Zoom"))
+    }
+
+    var isCurrent: Bool {
+        self == .automatic || AVAudioSession.sharedInstance().currentRoute.inputs.contains(where: Self.isZoom)
+    }
+}
+
 final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureFileOutputRecordingDelegate {
     let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "cortex.camera", qos: .userInitiated)
@@ -66,8 +98,9 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     var frame: (([UInt8]) -> Void)?
     var finished: ((URL, Error?) -> Void)?
 
-    func start(microphone: Bool, completion: @escaping (Bool) -> Void) {
+    func start(microphone: Bool, input: RecordingInput, completion: @escaping (Bool) -> Void) {
         queue.async {
+            if microphone { try? input.activate() }
             let ready = self.configured || self.configure(microphone: microphone)
             if ready && !self.session.isRunning { self.session.startRunning() }
             let running = ready && self.session.isRunning
@@ -82,12 +115,24 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         }
     }
 
-    func record(_ url: URL, completion: @escaping (Bool) -> Void) {
+    func record(_ url: URL, input: RecordingInput, completion: @escaping (String?) -> Void) {
         queue.async {
+            if input == .zoom {
+                do {
+                    try input.activate()
+                    guard input.isCurrent, self.movies.connection(with: .audio)?.isActive == true else {
+                        DispatchQueue.main.async { completion("A entrada do R20 ainda não está ativa. Confira a permissão de microfone e tente novamente.") }
+                        return
+                    }
+                } catch {
+                    DispatchQueue.main.async { completion(error.localizedDescription) }
+                    return
+                }
+            }
             let ready = self.session.isRunning && self.movies.connection(with: .video)?.isActive == true
                 && !self.movies.isRecording
             if ready { self.movies.startRecording(to: url, recordingDelegate: self) }
-            DispatchQueue.main.async { completion(ready) }
+            DispatchQueue.main.async { completion(ready ? nil : "A gravação não pôde começar.") }
         }
     }
 
@@ -106,6 +151,7 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private func configure(microphone: Bool) -> Bool {
         guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
               let device = try? AVCaptureDeviceInput(device: camera) else { return false }
+        session.automaticallyConfiguresApplicationAudioSession = false
         session.beginConfiguration()
         defer {
             if !configured {

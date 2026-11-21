@@ -57,6 +57,7 @@ final class FM1Output {
 
     func stop() {
         if destination != 0 { _ = send(VideoWire.command([0])) }
+        if source != 0 { MIDIPortDisconnectSource(inPort, source); source = 0 }
         pending = []
         destination = 0
         needsSetup = true
@@ -66,18 +67,7 @@ final class FM1Output {
         guard port != 0 else { return "Core MIDI indisponível." }
         guard let selected else { return "Escolha câmera ou vídeo." }
         if destination == 0 || now >= nextKeep {
-            let found = findFM1()
-            let input = findFM1Source()
-            if input != source, inPort != 0 {
-                if source != 0 { MIDIPortDisconnectSource(inPort, source) }
-                source = input
-                if input != 0 { MIDIPortConnectSource(inPort, input, nil) }
-            }
-            if destination != found {
-                destination = found
-                needsSetup = true
-                pending = []
-            }
+            _ = attach()
         }
         guard destination != 0 else { return "Conecte o CORTEX VIDEO FM-1 ao iPhone por USB." }
         guard let pixels else { return "FM-1 conectado · aguardando imagem." }
@@ -103,6 +93,31 @@ final class FM1Output {
         part += 1
         if part == VideoWire.partCount { pending = [] }
         return "FM-1 conectado · prévia 60 × 60."
+    }
+
+    func attach() -> Bool {
+        guard port != 0, inPort != 0 else { return false }
+        let found = findFM1()
+        let input = findFM1Source()
+        if input != source {
+            if source != 0 { MIDIPortDisconnectSource(inPort, source) }
+            source = 0
+            if input != 0 && MIDIPortConnectSource(inPort, input, nil) == noErr { source = input }
+        }
+        if destination != found {
+            destination = found
+            needsSetup = true
+            pending = []
+        }
+        return destination != 0 && source != 0
+    }
+
+    func writeMirror(_ bytes: [UInt8]) -> Bool {
+        guard destination != 0, (6...256).contains(bytes.count),
+              Array(bytes.prefix(4)) == [0xF0, 0x7D, 0x43, 0x56], bytes.last == 0xF7,
+              [0x10, 0x11].contains(bytes[4]),
+              !bytes.dropFirst().dropLast().contains(where: { $0 >= 0x80 }) else { return false }
+        return send(bytes)
     }
 
     private func disconnect() -> String {
