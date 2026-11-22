@@ -105,6 +105,7 @@ struct MirrorWebView: UIViewRepresentable {
         private let midi = FM1Output()
         private let bluetooth = BluetoothVideoOutput()
         private let r20Network = R20NetworkInput()
+        private let pcLink = PCMirrorLink()
         private var midiBuffer: [UInt8] = []
         private var downloads: [ObjectIdentifier: URL] = [:]
         private var timer: Timer?
@@ -131,6 +132,7 @@ struct MirrorWebView: UIViewRepresentable {
             midi.stop()
             stopBluetooth()
             r20Network.stop()
+            pcLink.stop()
             view?.evaluateJavaScript("window.cortexPause?.()")
         }
 
@@ -205,6 +207,17 @@ struct MirrorWebView: UIViewRepresentable {
                 }
                 do { try r20Network.connect(address: address, code: code); replyHandler(true, nil) }
                 catch { replyHandler(nil, error.localizedDescription) }
+            case "espelhoConnect":
+                guard let address = request["address"] as? String, let code = request["code"] as? String else {
+                    replyHandler(nil, "Informe o endereço e o código do PC."); return
+                }
+                pcLink.connect(address: address, code: code) { offer, error in replyHandler(offer, error) }
+            case "espelhoDisconnect":
+                pcLink.stop()
+                replyHandler(true, nil)
+            case "espelhoAnswer":
+                guard let answer = request["answer"] as? String else { replyHandler(nil, "Resposta vazia."); return }
+                pcLink.answer(answer) { error in replyHandler(error == nil, error) }
             case "r20Disconnect":
                 r20Network.stop()
                 replyHandler(true, nil)
@@ -391,6 +404,100 @@ private final class R20NetworkInput {
             guard let self else { return }
             self.audio?(data, rate, channels)
             self.readAudio(stream, rate: rate, channels: channels)
+        }
+    }
+}
+
+
+// The PC mirror's bridge (video/tools/espelho-wifi.py): the code; its OFFER (the PC's WebRTC offer, one line of JSON);
+// our ANSWER; OK. The picture and the sound then go straight from the PC's Chrome to the web view.
+@MainActor
+private final class PCMirrorLink {
+    private var connection: NWConnection?
+    private var buffer = Data()
+
+    func connect(address: String, code: String, offer: @escaping (String?, String?) -> Void) {
+        let parts = address.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: ":", omittingEmptySubsequences: false)
+        let port = parts.count == 1 ? UInt16(8783) : UInt16(parts.last ?? "")
+        guard (1...2).contains(parts.count), let host = parts.first, let ipv4 = IPv4Address(String(host)),
+              Self.isPrivate([UInt8](ipv4.rawValue)), let number = port, number > 0,
+              let endpointPort = NWEndpoint.Port(rawValue: number),
+              code.utf8.count == 16, code.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
+            offer(nil, "Informe o IPv4:porta do PC e o código de 16 caracteres da ponte do espelho.")
+            return
+        }
+        stop()
+        let stream = NWConnection(host: .ipv4(ipv4), port: endpointPort, using: .tcp)
+        connection = stream
+        var replied = false
+        let reply: (String?, String?) -> Void = { text, error in
+            if replied { return }
+            replied = true
+            offer(text, error)
+        }
+        stream.stateUpdateHandler = { [weak self, weak stream] state in
+            Task { @MainActor in
+                guard let self, let stream, self.connection === stream else { return }
+                switch state {
+                case .ready:
+                    stream.send(content: Data((code + "\n").utf8), completion: .contentProcessed { _ in })
+                    self.readLine(stream) { line in
+                        guard let line else { reply(nil, "A ponte do PC fechou a conexão."); return }
+                        if line == "NOPE" { reply(nil, "Código incorreto."); return }
+                        if line == "BUSY" { reply(nil, "A transmissão já está em uso."); return }
+                        guard line.hasPrefix("OFFER ") else { reply(nil, "Resposta inválida da ponte do PC."); return }
+                        reply(String(line.dropFirst(6)), nil)
+                    }
+                case .failed:
+                    reply(nil, "Sem conexão com o PC. Confira o endereço, a rede local, o firewall e a ponte.")
+                default: break
+                }
+            }
+        }
+        stream.start(queue: .main)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 95) { [weak self, weak stream] in
+            guard let self, let stream, self.connection === stream else { return }
+            reply(nil, "Tempo esgotado: no espelho do PC, toque em Transmitir ao iPhone.")
+        }
+    }
+
+    func answer(_ text: String, done: @escaping (String?) -> Void) {
+        guard let stream = connection else { done("Sem conexão com a ponte do PC."); return }
+        stream.send(content: Data(("ANSWER " + text + "\n").utf8), completion: .contentProcessed { _ in })
+        readLine(stream) { [weak self] line in
+            done(line == "OK" ? nil : "A ponte do PC não aceitou a resposta.")
+            self?.stop()
+        }
+    }
+
+    func stop() {
+        let previous = connection
+        connection = nil
+        buffer = Data()
+        previous?.stateUpdateHandler = nil
+        previous?.cancel()
+    }
+
+    private static func isPrivate(_ bytes: [UInt8]) -> Bool {
+        bytes.count == 4 && (bytes[0] == 10
+            || (bytes[0] == 172 && (16...31).contains(bytes[1]))
+            || (bytes[0] == 192 && bytes[1] == 168))
+    }
+
+    private func readLine(_ stream: NWConnection, _ done: @escaping (String?) -> Void) {
+        if let end = buffer.firstIndex(of: 10) {
+            let line = String(decoding: buffer[buffer.startIndex..<end], as: UTF8.self)
+            buffer.removeSubrange(buffer.startIndex...end)
+            done(line)
+            return
+        }
+        stream.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, _, _ in
+            Task { @MainActor in
+                guard let self, self.connection === stream else { done(nil); return }
+                guard let data, !data.isEmpty, self.buffer.count + data.count <= 65_552 else { done(nil); return }
+                self.buffer.append(data)
+                self.readLine(stream, done)
+            }
         }
     }
 }

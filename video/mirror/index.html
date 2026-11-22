@@ -165,6 +165,13 @@ meter { width:100%; height:10px; }
         <option value="32000000">32 Mbit/s</option>
       </select></label>
     </section>
+    <section id="toPhone">
+      <h2>Enviar ao iPhone (Wi-Fi)</h2>
+      <p class="note">Abra “Abrir ponte espelho.cmd” (pasta tools) neste PC. Vão o vídeo daqui e o som da entrada de
+        “Áudio gravado” (o R20, por exemplo), direto pela rede local.</p>
+      <div class="row"><button id="phoneBtn">Transmitir ao iPhone</button></div>
+      <p class="note" id="phoneState" role="status">parado</p>
+    </section>
     <section>
       <h2>Gravação</h2>
       <label>Seguir o REC do FM-1 <select id="follow"><option value="1">sim</option><option value="0">não</option></select></label>
@@ -725,6 +732,118 @@ async function openAudio() {
   audioCtx.createMediaStreamSource(audioStream).connect(analyser);
 }
 
+/* ---- to the iPhone app over the local network: WebRTC straight from here; the bridge (tools/espelho-wifi.py)
+ * only passes the offer and the answer. The picture as recorded here, the sound of "Áudio gravado" */
+const BRIDGE = "http://127.0.0.1:8782";
+let phone = null;
+function phoneSay(text) { $("phoneState").textContent = text; }
+function opusStereo(sdp) {                       // (the sound in stereo, 256 kbit/s, not a voice call's)
+  const m = sdp.match(/a=rtpmap:(\d+) opus\/48000/i);
+  if (!m) return sdp;
+  return sdp.replace(new RegExp(`a=fmtp:${m[1]} ([^\r\n]*)`), (all, p) =>
+    `a=fmtp:${m[1]} ${p};stereo=1;sprop-stereo=1;maxaveragebitrate=256000`);
+}
+function iceGathered(pc) {
+  if (pc.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise(done => {
+    const timer = setTimeout(done, 3000);
+    pc.addEventListener("icegatheringstatechange", () => {
+      if (pc.iceGatheringState === "complete") { clearTimeout(timer); done(); }
+    });
+  });
+}
+async function startPhone() {
+  if (phone) return;
+  if (!$("out").captureStream || !window.RTCPeerConnection) {
+    phoneSay("Abra o espelho no Chrome ou Edge para transmitir.");
+    return;
+  }
+  const session = { pc: null, video: [], poll: 0, active: true };
+  phone = session;
+  $("phoneBtn").textContent = "Parar transmissão";
+  phoneSay("Preparando a transmissão…");
+  try {
+    const response = await fetch(BRIDGE + "/session");
+    if (!response.ok) throw Error("Abra o espelho pelo atalho local e inicie a ponte.");
+    const info = await response.json();
+    if (!session.active) return;
+    let audio = audioStream?.getAudioTracks().filter(track => track.readyState === "live") || [];
+    if (!audio.length) {
+      await startAudio();
+      if (!session.active) return;
+      const r20 = [...$("audioIn").options].find(option => /zoom|r20/i.test(option.text));
+      if (r20) {
+        $("audioIn").value = r20.value;
+        await openAudio();
+        audio = audioStream?.getAudioTracks().filter(track => track.readyState === "live") || [];
+      }
+    }
+    if (!session.active) return;
+    if (!audio.length) throw Error("Escolha o Zoom R20 em Áudio gravado e tente novamente.");
+    $("audioIn").disabled = true;
+    for (const track of audio) track.addEventListener("ended", () => {
+      if (session.active) stopPhone("A entrada de áudio foi desligada. Reconecte o R20.");
+    }, { once: true });
+    const video = $("out").captureStream(30).getVideoTracks();
+    const stream = new MediaStream([...video, ...audio]);
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    session.pc = pc;
+    session.video = video;
+    for (const track of stream.getTracks()) pc.addTrack(track, stream);
+    pc.onconnectionstatechange = () => {
+      if (!session.active) return;
+      if (pc.connectionState === "connected") phoneSay("iPhone conectado: enviando vídeo e som.");
+      else if (["failed", "disconnected"].includes(pc.connectionState)) {
+        stopPhone("Conexão encerrada. Toque em Transmitir ao iPhone para reconectar.");
+      }
+    };
+    const offer = await pc.createOffer();
+    offer.sdp = opusStereo(offer.sdp);
+    await pc.setLocalDescription(offer);
+    for (const sender of pc.getSenders()) if (sender.track?.kind === "video") {
+      const params = sender.getParameters();
+      params.encodings[0].maxBitrate = 8000000;
+      await sender.setParameters(params).catch(() => {});
+    }
+    await iceGathered(pc);
+    if (!session.active) return;
+    const posted = await fetch(BRIDGE + "/offer", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                  body: JSON.stringify(pc.localDescription) });
+    if (!posted.ok) throw Error("A ponte recusou a oferta do espelho.");
+    phoneSay(`No app: Espelho → Receber do PC. Endereço ${info.address} · código ${info.code}`);
+    const maxWait = performance.now() + 90000;
+    session.poll = setInterval(async () => {
+      if (!session.active || session.polling) return;
+      if (performance.now() >= maxWait) { stopPhone("O iPhone não respondeu. Inicie uma nova transmissão."); return; }
+      session.polling = true;
+      try {
+        const reply = await fetch(BRIDGE + "/answer");
+        if (reply.status !== 200 || !session.active) return;
+        await pc.setRemoteDescription(await reply.json());
+        clearInterval(session.poll);
+        if (pc.connectionState !== "connected") phoneSay("Conectando ao iPhone…");
+      } catch (error) {
+        if (session.active) stopPhone("Resposta do iPhone inválida: " + error.message);
+      } finally { session.polling = false; }
+    }, 500);
+  } catch (error) {
+    if (session.active) stopPhone("Não foi possível transmitir: " + error.message);
+  }
+}
+function stopPhone(message = "parado") {
+  if (phone) {
+    phone.active = false;
+    clearInterval(phone.poll);
+    phone.pc?.close();
+    phone.video.forEach(track => track.stop());
+    phone = null;
+    fetch(BRIDGE + "/offer", { method: "DELETE", keepalive: true }).catch(() => {});
+  }
+  $("phoneBtn").textContent = "Transmitir ao iPhone";
+  $("audioIn").disabled = false;
+  phoneSay(message);
+}
+
 /* ---- recording */
 function mimes() {
   const c = [["video/mp4;codecs=avc1.640033,mp4a.40.2", "MP4 (H.264 + AAC)"], ["video/mp4", "MP4"],
@@ -928,8 +1047,9 @@ $("avDelay").oninput = () => {
 $("hd").onchange = () => { if (wx) setHD(); };
 $("size").onchange = layout;
 $("recBtn").onclick = () => recorder ? stopRec() : startRec();
+$("phoneBtn").onclick = () => phone ? stopPhone() : startPhone();
 $("shot").onclick = snapshot;
-window.addEventListener("beforeunload", () => send(OFF));
+window.addEventListener("beforeunload", () => { send(OFF); if (phone) stopPhone(); });
 mimes();
 layout();
 setInterval(stats, 250);

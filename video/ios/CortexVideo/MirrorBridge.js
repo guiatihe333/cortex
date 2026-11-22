@@ -4,6 +4,7 @@
   const native = window.cortexNative;
   if (!native) return;
   $("iphoneUsb").hidden = true;
+  if ($("toPhone")) $("toPhone").hidden = true;                    // (the PC's: here the app receives, below)
   $("connect").textContent = "Conectar FM-1 (USB)";
   // Keep an already selected microphone alive when connecting the FM-1.
   startAudio = async () => {
@@ -28,6 +29,154 @@
     parent.append(control);
     return control;
   }
+  // Receive the PC mirror's picture and sound over the local network (WebRTC; the PC's bridge passes the offer and
+  // the answer): shown here in place of this mirror's own, recorded to an MP4 as the mirror's takes are.
+  (() => {
+    const section = document.createElement("section");
+    section.innerHTML = '<h2>Receber do PC (Wi-Fi)</h2><p class="note">No PC: abra “Abrir ponte espelho.cmd”, ' +
+      'e no espelho do PC toque em “Transmitir ao iPhone”. Digite aqui o endereço e o código mostrados.</p>';
+    const address = document.createElement("input"), code = document.createElement("input");
+    address.placeholder = "192.168.0.10:8783"; code.placeholder = "código de 16 caracteres";
+    address.setAttribute("aria-label", "Endereço do espelho");
+    code.setAttribute("aria-label", "Código do espelho");
+    address.autocapitalize = code.autocapitalize = "off";
+    address.autocomplete = code.autocomplete = "off";
+    for (const field of [address, code]) { field.style.width = "100%"; field.style.margin = "4px 0"; section.append(field); }
+    const row = document.createElement("div");
+    row.className = "row";
+    section.append(row);
+    const connectButton = button("Conectar ao PC", row, () => pcLink ? stopPc() : startPc());
+    const recButton = button("● Gravar", row, () => pcRec ? stopPcRec() : startPcRec());
+    recButton.disabled = true;
+    const listen = button("Ouvir no iPhone", row, () => {
+      video.muted = !video.muted;
+      listen.textContent = video.muted ? "Ouvir no iPhone" : "Silenciar prévia";
+      if (!video.muted) video.play().catch(() => say("Não foi possível tocar a prévia."));
+    });
+    listen.disabled = true;
+    const state = document.createElement("p");
+    state.className = "note"; state.role = "status"; state.textContent = "desconectado";
+    section.append(state);
+    const target = document.querySelector("main") || document.body;
+    section.style.gridColumn = "1 / -1";
+    target.prepend(section);
+    const video = document.createElement("video");
+    video.playsInline = true; video.autoplay = true; video.muted = true;
+    video.style.width = "100%"; video.style.background = "#000"; video.hidden = true;
+    $("out").parentElement.prepend(video);
+    let pcLink = null, pcStream = null, pcRec = null;
+    try {
+      address.value = localStorage.getItem("cortexPcAddress") || "";
+    } catch (e) {}
+
+    function say(text) { state.textContent = text; }
+    function stereo(sdp) {
+      const m = sdp.match(/a=rtpmap:(\d+) opus\/48000/i);
+      if (!m) return sdp;
+      return sdp.replace(new RegExp(`a=fmtp:${m[1]} ([^\r\n]*)`), (all, p) => `a=fmtp:${m[1]} ${p};stereo=1;sprop-stereo=1`);
+    }
+    async function startPc() {
+      try { localStorage.setItem("cortexPcAddress", address.value.trim()); } catch (e) {}
+      connectButton.textContent = "Desconectar do PC";
+      say("Conectando à ponte do PC… (no PC, toque em Transmitir ao iPhone)");
+      let pc;
+      try { pc = new RTCPeerConnection({ iceServers: [] }); }
+      catch (error) { stopPc(); say("WebRTC indisponível: " + error.message); return; }
+      pcLink = pc;
+      const tracks = new MediaStream();
+      const update = () => {
+        if (pcLink !== pc || pc.connectionState !== "connected" ||
+            !tracks.getVideoTracks().length || !tracks.getAudioTracks().length) return;
+        if (pcStream !== tracks) {
+          stopBluetooth();
+          releaseVideo();
+          if (recorder) stopRec();
+          pcStream = tracks;
+          video.srcObject = tracks;
+          video.hidden = false;
+          $("out").style.display = "none";
+          video.play().catch(() => {});
+        }
+        recButton.disabled = listen.disabled = false;
+        say("Recebendo vídeo e som do PC.");
+      };
+      pc.ontrack = event => {
+        if (pcLink !== pc) return;
+        tracks.addTrack(event.track);
+        update();
+      };
+      pc.onconnectionstatechange = () => {
+        if (pcLink !== pc) return;
+        if (pc.connectionState === "connected") update();
+        else if (["failed", "disconnected"].includes(pc.connectionState)) {
+          stopPc();
+          say("Transmissão encerrada. Reinicie no PC e conecte de novo.");
+        }
+      };
+      try {
+        const offer = await native("espelhoConnect", { address: address.value.trim(), code: code.value.trim().toLowerCase() });
+        if (pcLink !== pc) return;
+        await pc.setRemoteDescription(JSON.parse(offer));
+        const answer = await pc.createAnswer();
+        answer.sdp = stereo(answer.sdp);
+        await pc.setLocalDescription(answer);
+        await new Promise(done => {
+          if (pc.iceGatheringState === "complete") return done();
+          const timer = setTimeout(done, 3000);
+          pc.addEventListener("icegatheringstatechange", () => {
+            if (pc.iceGatheringState === "complete") { clearTimeout(timer); done(); }
+          });
+        });
+        if (pcLink !== pc) return;
+        await native("espelhoAnswer", { answer: JSON.stringify(pc.localDescription) });
+        if (pcLink === pc && pc.connectionState !== "connected") say("Conectando ao vídeo do PC…");
+      } catch (error) {
+        if (pcLink === pc) { stopPc(); say(error.message || "Não foi possível conectar ao PC."); }
+      }
+    }
+    function stopPc() {
+      stopPcRec();
+      if (pcLink) pcLink.close();
+      pcLink = null; pcStream = null;
+      native("espelhoDisconnect").catch(() => {});
+      video.srcObject = null; video.hidden = true; video.muted = true;
+      $("out").style.display = "";
+      recButton.disabled = listen.disabled = true;
+      listen.textContent = "Ouvir no iPhone";
+      connectButton.textContent = "Conectar ao PC";
+      say("desconectado");
+    }
+    function startPcRec() {
+      if (!pcStream || pcRec || recorder) return;
+      if (!window.MediaRecorder) { say("Gravação WebRTC indisponível neste iOS."); return; }
+      const mime = ["video/mp4;codecs=avc1,mp4a.40.2", "video/mp4"].find(m => MediaRecorder.isTypeSupported(m)) || "";
+      const chunks = [];
+      try {
+        pcRec = new MediaRecorder(pcStream, mime ? { mimeType: mime, videoBitsPerSecond: 12000000, audioBitsPerSecond: 256000 } : {});
+      } catch (e) { say("Gravação indisponível: " + e.message); return; }
+      const recording = pcRec;
+      recording.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+      recording.onstop = () => {
+        if (chunks.length) saveTake(recording.mimeType || mime || "video/webm", chunks);
+        else say("A gravação não recebeu quadros.");
+        native("recording", { active: false }).catch(() => {});
+      };
+      try { recording.start(1000); }
+      catch (error) { pcRec = null; say("Gravação indisponível: " + error.message); return; }
+      native("recording", { active: true }).catch(() => {});
+      recButton.textContent = "■ Parar";
+      say("Gravando o que vem do PC.");
+    }
+    function stopPcRec() {
+      if (!pcRec) return;
+      const rec = pcRec;
+      if (rec.state !== "inactive") rec.stop();
+      pcRec = null;
+      recButton.textContent = "● Gravar";
+    }
+    window.cortexStopPc = () => { if (pcLink || pcRec) stopPc(); };
+  })();
+
   let loop = null;
   let writing = false;
   const bluetooth = button("Enviar por Bluetooth", $("openCamera").parentElement, toggleBluetooth);
@@ -265,6 +414,7 @@
     native("recording", { active }).catch(() => {});
   }).observe($("recBtn"), { attributes: true, attributeFilter: ["class"] });
   window.cortexPause = () => {
+    window.cortexStopPc?.();
     if (recorder) stopRec();
     releaseNetwork();
     stopBluetooth();
