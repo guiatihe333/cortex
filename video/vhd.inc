@@ -90,6 +90,122 @@ static void vhd_line(float x0, float y0, float x1, float y1, float r, const uint
         }
 }
 
+/* STYLE on the finished HD frame, as the FM-1's app.c post_fx does on its screen (the same settings, at S times the
+ * size: its cells and its rows S wide): VHS, EDGES, EMBOSS, SOLARIZE, SWAP, SATURATION, CRT, HALFTONE, LED. MOTION is
+ * the FM-1's clean camera's alone. Its own randoms (VHS): the engine's stay untouched, the mirror in step */
+static void vhd_post(uint8_t *px, int W, int S)
+{
+    const int crt = VPAR(CCRT), vhs = VPAR(CVHS), edge = VPAR(CEDGE), emboss = VPAR(CEMBOSS), half = VPAR(CHALF),
+              led = VPAR(CLED), solar = VPAR(CSOLAR), swap = VPAR(CSWAP), sat = VPAR(CSAT);
+    static uint8_t lp[960], lc[960], ln[960], row[960 * 4];
+    static int8_t jit[240];
+    static uint32_t seed = 12345u;
+    static int band;
+    int x, y, vb = -100, vh = 0;
+    if (!(crt | vhs | edge | emboss | half | led | solar | swap) && sat == 100)
+        return;
+    if (vhs) {                                   /* (the rows' wobble, the tracking band rolling down) */
+        for (y = 0; y < 240; y++) {
+            seed = seed * 1664525u + 1013904223u;
+            jit[y] = (int8_t)(((int)(seed >> 29) - 3) * vhs / 50);
+        }
+        band = (band + 3) % 300;
+        vb = band - 30, vh = 6 + vhs / 6;
+        for (y = vb; y < vb + vh; y++)
+            if (y >= 0 && y < 240)
+                jit[y] = (int8_t)(jit[y] * 3 + 8);
+    }
+#define LUMA(p) ((uint8_t)((77u * (p)[0] + 150u * (p)[1] + 29u * (p)[2]) >> 8))
+    for (x = 0; x < W; x++)
+        lc[x] = LUMA(px + 4 * x), lp[x] = lc[x];
+    for (y = 0; y < W; y++) {
+        uint8_t *r0 = px + (size_t)y * (size_t)W * 4u;
+        const uint8_t *below = px + (size_t)(y + 1 < W ? y + 1 : y) * (size_t)W * 4u;
+        const int y240 = y / S, hc = 4 + half / 10, lcell = 4 + led / 10;
+        memcpy(row, r0, (size_t)W * 4u);
+        for (x = 0; x < W; x++)
+            ln[x] = LUMA(below + 4 * x);
+        for (x = 0; x < W; x++) {
+            int xs = x, r, g, b;
+            const int x240 = x / S;
+            if (vhs) {
+                xs = x - jit[y240] * S;
+                while (xs < 0) xs += W;
+                while (xs >= W) xs -= W;
+            }
+            r = row[4 * xs], g = row[4 * xs + 1], b = row[4 * xs + 2];
+            if (vhs) {
+                const int k = (1 + vhs / 25) * S, xl = xs - k < 0 ? 0 : xs - k, xr = xs + k >= W ? W - 1 : xs + k;
+                r = (r + row[4 * xl]) >> 1, b = (b + row[4 * xr + 2]) >> 1;
+                if (y240 >= vb && y240 < vb + vh) {
+                    const int n = (int)(((uint32_t)x240 * 2654435761u + (uint32_t)y240 * 40503u + seed) >> 25) - 64;
+                    r += n, g += n, b += n;
+                }
+            }
+            if (edge) {
+                const int xl = x > 0 ? x - 1 : 0, xr = x < W - 1 ? x + 1 : W - 1;
+                int e = lc[xr] - lc[xl], e2 = ln[x] - lp[x];
+                e = ((e < 0 ? -e : e) + (e2 < 0 ? -e2 : e2)) * (2 + edge / 12) * S;   /* (the steps of S pixels) */
+                e = e > 255 ? 255 : e;
+                {
+                    const int keep = 256 - edge * 2;
+                    r = ((r * keep) >> 8) + ((vhd_pal[e][0] * e) >> 8);
+                    g = ((g * keep) >> 8) + ((vhd_pal[e][1] * e) >> 8);
+                    b = ((b * keep) >> 8) + ((vhd_pal[e][2] * e) >> 8);
+                }
+            }
+            if (emboss) {
+                const int xl = x > 0 ? x - 1 : 0, xr = x < W - 1 ? x + 1 : W - 1, a = emboss * 256 / 100;
+                int v = 128 + (ln[xr] - lp[xl]) * (1 + emboss / 20) * S;
+                v = v < 0 ? 0 : v > 255 ? 255 : v;
+                r += ((v - r) * a) >> 8, g += ((v - g) * a) >> 8, b += ((v - b) * a) >> 8;
+            }
+            if (solar) {
+                if (r > 128) r += ((255 - 2 * r) * solar) / 100;
+                if (g > 128) g += ((255 - 2 * g) * solar) / 100;
+                if (b > 128) b += ((255 - 2 * b) * solar) / 100;
+            }
+            if (swap) {
+                const int s = r;
+                if (swap >= 50)
+                    r = g, g = b, b = s;
+                else
+                    r = b, b = s;
+            }
+            if (sat != 100) {
+                const int Y = (77 * r + 150 * g + 29 * b) >> 8;
+                r = Y + (r - Y) * sat / 100, g = Y + (g - Y) * sat / 100, b = Y + (b - Y) * sat / 100;
+            }
+            if (crt) {
+                const int k = x240 % 3, d = crt * 2;
+                if (y240 & 1)
+                    r = r * (256 - d) >> 8, g = g * (256 - d) >> 8, b = b * (256 - d) >> 8;
+                if (k)
+                    r = r * (256 - d / 2) >> 8;
+                if (k != 1)
+                    g = g * (256 - d / 2) >> 8;
+                if (k != 2)
+                    b = b * (256 - d / 2) >> 8;
+            }
+            if (half || led) {                   /* (a round dot a cell: its size the light's, at the cell's middle) */
+                const int isled = led > half, c = (isled ? lcell : hc) * S, px0 = x % c, py0 = y % c,
+                          dx = px0 - c / 2, dy = py0 - c / 2, cx = x - px0 + c / 2 < W ? x - px0 + c / 2 : W - 1;
+                const int L = lc[cx], rad = isled ? c * c * 3 / 16 : (L * c * c) >> 9;
+                if (dx * dx + dy * dy > rad) {
+                    const int a = (isled ? led : half) * 256 / 100;
+                    r -= (r * a) >> 8, g -= (g * a) >> 8, b -= (b * a) >> 8;
+                }
+            }
+            r0[4 * x] = (uint8_t)(r < 0 ? 0 : r > 255 ? 255 : r);
+            r0[4 * x + 1] = (uint8_t)(g < 0 ? 0 : g > 255 ? 255 : g);
+            r0[4 * x + 2] = (uint8_t)(b < 0 ? 0 : b > 255 ? 255 : b);
+        }
+        for (x = 0; x < W; x++)
+            lp[x] = lc[x], lc[x] = ln[x];
+    }
+#undef LUMA
+}
+
 void vs_paint_hd(int S, uint8_t *rgba)
 {
     const int W = 240 * S, ps = 1 + (int)((float)VPAR(VPIXEL) * 0.09f * (1.0f + vband[0]));
@@ -218,7 +334,7 @@ void vs_paint_hd(int S, uint8_t *rgba)
                 const int ra = ya < 0 ? 0 : ya > 239 ? 239 : ya, rb = yb < 0 ? 0 : yb > 239 ? 239 : yb,
                           oa = VPAR(FXV) ? 0 : o240[ra], ob = VPAR(FXV) ? 0 : o240[rb];
                 vhd_line(((float)(xa + oa) + 0.5f) * fs, ((float)ya + 0.5f) * fs, ((float)(xb + ob) + 0.5f) * fs,
-                         ((float)yb + 0.5f) * fs, 0.55f * fs, gc, 0);
+                         ((float)yb + 0.5f) * fs, 1.0f * fs, gc, 0);   /* (two of the FM-1's pixels wide, as vis_seg) */
             }
         }
     }
@@ -296,5 +412,6 @@ void vs_paint_hd(int S, uint8_t *rgba)
             }
         }
     }
+    vhd_post(rgba, W, S);                        /* STYLE, as the FM-1 shows it */
 }
 #endif
