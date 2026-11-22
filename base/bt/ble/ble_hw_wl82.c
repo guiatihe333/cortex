@@ -158,6 +158,12 @@ struct ble_hw_stats {
     uint32_t events, rx, rx_repeat, rx_error, tx, acked, connects, late_instant, isr_max_ticks;
 };
 static struct ble_hw_stats ble_hw_stat;
+void ble_hw_app_stats(uint32_t v[4]);          /* (for an app's diagnostics: events, repeats, CRC errors, ISR max us) */
+void ble_hw_app_stats(uint32_t v[4])
+{
+    v[0] = ble_hw_stat.events, v[1] = ble_hw_stat.rx_repeat, v[2] = ble_hw_stat.rx_error;
+    v[3] = ble_hw_stat.isr_max_ticks / FM1_TICKS_PER_US;
+}
 
 /* ------------------------------------------------------------------------------- diagnostics (blell) --- */
 
