@@ -17,6 +17,7 @@ enum VideoWire {
     static let sharpSide = 120
     static let sharpChroma = 30
     static let sharpRGBA = 120 * 120 * 4               // (what the sampler gives; VideoCodec codes it)
+    static let cleanRGBA = 240 * 240 * 4               // (the clean picture: 240 x 240, no effects on the FM-1)
     static let blePayload = 240
 
     static func command(_ body: [UInt8]) -> [UInt8] {

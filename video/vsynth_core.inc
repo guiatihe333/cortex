@@ -8,7 +8,13 @@
 #define VIS_SCORE 9
 #define VSEG_N 270
 static uint8_t vf[VF_H][VF_W] VS_POOL;
-static uint8_t vtmp[VF_H][VF_W] VS_POOL;      /* FEEDBACK: the last frame, turned and zoomed, before it comes back */
+/* four planes of the field's size, together: FEEDBACK's (vtmp: the last frame, turned and zoomed, before it comes
+ * back), the camera's light (vcy) and colour (vcb, vcr). Lent whole (vs_lend: 240 x 240 bytes) to the app's clean
+ * picture while the engine is idle */
+static uint8_t vshared[4][VF_H][VF_W] VS_POOL __attribute__((aligned(4)));
+#define vtmp (vshared[0])
+uint8_t *vs_lend(void) { return &vshared[0][0][0]; }
+void vs_unlend(void) { memset(vshared, 0, sizeof vshared); }
 static uint16_t vpal_screen[256] VS_POOL;     /* screen byte order, prepared once per visual frame */
 static uint16_t vpal[256] VS_POOL;            /* (RGB565, not yet swapped: its planes taken apart) */
 static uint8_t vline[2][240] VS_POOL __attribute__((aligned(4)));         /* (a screen row of the field, smoothed; its colour index) */
@@ -171,8 +177,9 @@ static void vis_fold(uint8_t (*f)[VF_W], int m)  /* MIRROR: a plane folded (Mirr
 }
 
 /* the camera (vs_camera): its light, its two colour-difference planes, at the field's size (bilinear from 60 x 60) */
-static uint8_t vcy[VF_H][VF_W] VS_POOL;
-static int8_t vcb[VF_H][VF_W] VS_POOL, vcr[VF_H][VF_W] VS_POOL;
+#define vcy (vshared[1])
+#define vcb (*(int8_t (*)[VF_H][VF_W])vshared[2])
+#define vcr (*(int8_t (*)[VF_H][VF_W])vshared[3])
 static const uint8_t *vcam;
 static int vcam_hq;
 static int vcam_on(void) { return VPAR(VMODE) >= VS_NMODE && vcam; }

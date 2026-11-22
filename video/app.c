@@ -478,6 +478,171 @@ static int codec_decode(const uint8_t *p, unsigned n)
     }
     return 1;
 }
+
+/* the clean picture's code (flags bit 1; the iPhone's VideoCodec, clean): the light 240 x 240 in 30 x 30 blocks of 8
+ * x 8, its colour 60 x 60 in 15 x 15 blocks of 4 x 4, each part apart: 2 bytes its length, flags, the scale, 113
+ * bytes a bit a light block, 29 a bit a colour block; then bits: the light blocks in it (DC against the one before,
+ * the others as runs), then the colour blocks in it (Cb then Cr, each so). Decoded into the engine's planes, lent
+ * (vs_lend: the clean picture is painted as it is, no effects), and the colour into video_sharp's */
+static uint8_t clean_on;                         /* (the last sharp frame was a clean one: the engine's planes lent) */
+static int codec_decode240(const uint8_t *p, unsigned n)
+{
+    uint8_t *luma = vs_lend(), *cb = video_sharp + VLINK_HQ_LUMA, *cr = cb + 3600;
+    int step[64], cstep[16], b, k, dc = 0, cdc[2] = {0, 0};
+    if (idct_t[0][0] == 0.0f || idct4[0][0] == 0.0f)
+        codec_decode(p, 0);                      /* (only its tables: nothing decoded from 0 bytes) */
+    if (n < 146 || (unsigned)(p[0] | p[1] << 8) != n || !p[3])
+        return 0;
+    codec_scale = p[3];
+    for (k = 0; k < 64; k++) {
+        const int s = (QBASE[k] * p[3] + 8) / 16;
+        step[k] = s < 1 ? 1 : s;
+    }
+    for (k = 0; k < 16; k++) {
+        const int s = (QC4[k] * p[3] + 8) / 16;
+        cstep[k] = s < 1 ? 1 : s;
+    }
+    cbits.p = p + 146, cbits.pos = 0, cbits.end = (n - 146u) * 8u, cbits.bad = 0;
+    for (b = 0; b < 900; b++) {
+        const int by = b / 30, bx = b - by * 30;
+        float F[64], T[64];
+        int pos = 0, x, y, u, nz;
+        if (!(p[4 + (b >> 3)] >> (b & 7) & 1u))
+            continue;
+        memset(F, 0, sizeof F);
+        dc += cb_seg();
+        F[0] = (float)(dc * step[0]);
+        nz = (int)cb_eg();
+        while (nz-- > 0) {
+            int v;
+            pos += 1 + (int)cb_eg();
+            v = 1 + (int)cb_eg();
+            if (cb_get(1))
+                v = -v;
+            if (cbits.bad || pos > 63)
+                return 0;
+            F[ZZ[pos]] = (float)(v * step[ZZ[pos]]);
+        }
+        if (cbits.bad)
+            return 0;
+        for (y = 0; y < 8; y++)
+            for (x = 0; x < 8; x++) {
+                float s = 0.0f;
+                for (u = 0; u < 8; u++)
+                    s += idct_t[x][u] * F[y * 8 + u];
+                T[y * 8 + x] = s;
+            }
+        for (y = 0; y < 8; y++)
+            for (x = 0; x < 8; x++) {
+                float s = 128.0f;
+                int v;
+                for (u = 0; u < 8; u++)
+                    s += idct_t[y][u] * T[u * 8 + x];
+                v = (int)(s + 0.5f);
+                luma[(by * 8 + y) * 240 + bx * 8 + x] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+            }
+    }
+    for (b = 0; b < 225; b++) {
+        const int by = b / 15, bx = b - by * 15;
+        int comp;
+        if (!(p[117 + (b >> 3)] >> (b & 7) & 1u))
+            continue;
+        for (comp = 0; comp < 2; comp++) {
+            uint8_t *pl = comp ? cr : cb;
+            float G[16], H[16];
+            int p4 = 0, n4, x4, y4, u4;
+            memset(G, 0, sizeof G);
+            cdc[comp] += cb_seg();
+            G[0] = (float)(cdc[comp] * cstep[0]);
+            n4 = (int)cb_eg();
+            while (n4-- > 0) {
+                int v;
+                p4 += 1 + (int)cb_eg();
+                v = 1 + (int)cb_eg();
+                if (cb_get(1))
+                    v = -v;
+                if (cbits.bad || p4 > 15)
+                    return 0;
+                G[ZZ4[p4]] = (float)(v * cstep[ZZ4[p4]]);
+            }
+            if (cbits.bad)
+                return 0;
+            for (y4 = 0; y4 < 4; y4++)
+                for (x4 = 0; x4 < 4; x4++) {
+                    float s = 0.0f;
+                    for (u4 = 0; u4 < 4; u4++)
+                        s += idct4[x4][u4] * G[y4 * 4 + u4];
+                    H[y4 * 4 + x4] = s;
+                }
+            for (y4 = 0; y4 < 4; y4++)
+                for (x4 = 0; x4 < 4; x4++) {
+                    float s = 128.0f;
+                    int v;
+                    for (u4 = 0; u4 < 4; u4++)
+                        s += idct4[y4][u4] * H[u4 * 4 + x4];
+                    v = (int)(s + 0.5f);
+                    pl[(by * 4 + y4) * 60 + bx * 4 + x4] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+                }
+        }
+    }
+    return 1;
+}
+static void clean_off(void)                      /* (the engine's planes back to it, cleared) */
+{
+    if (clean_on) {
+        clean_on = 0;
+        vs_unlend();
+    }
+}
+
+/* the clean picture painted: each screen row its light as it came, its colour between the four nearest of the 60 x 60
+ * (bilinear), to the screen through tables (each plane's share of the pixel, its bytes swapped: no clamps). RAM code:
+ * the paint's loop */
+static uint16_t clean_tr[768], clean_tg[768], clean_tb[768];
+static uint8_t clean_j0[240], clean_wx[240];
+static PLAT_RAM_CODE void clean_row(const uint8_t *L, const uint8_t *cb0, const uint8_t *cb1, const uint8_t *cr0,
+                                    const uint8_t *cr1, int wy, const uint8_t *j0, const uint8_t *wxs,
+                                    const uint16_t *TR, const uint16_t *TG, const uint16_t *TB, int16_t *vb,
+                                    int16_t *vr, uint16_t *out)
+{
+    int x;
+    for (x = 0; x < 60; x++) {
+        vb[x] = (int16_t)((((int)cb0[x] - 128) * (256 - wy) + ((int)cb1[x] - 128) * wy) >> 8);
+        vr[x] = (int16_t)((((int)cr0[x] - 128) * (256 - wy) + ((int)cr1[x] - 128) * wy) >> 8);
+    }
+    vb[60] = vb[59], vr[60] = vr[59];
+    for (x = 0; x < 240; x++) {
+        const int j = j0[x], w = wxs[x], Y = L[x] + 256;
+        const int cb = (vb[j] * (256 - w) + vb[j + 1] * w) >> 8, cr = (vr[j] * (256 - w) + vr[j + 1] * w) >> 8;
+        out[x] = (uint16_t)(TR[Y + ((359 * cr) >> 8)] | TG[Y - ((88 * cb + 183 * cr) >> 8)] | TB[Y + ((454 * cb) >> 8)]);
+    }
+}
+static void paint_clean_band(int y0, int h)
+{
+    static int16_t vb[61], vr[61];
+    const uint8_t *L = vs_lend(), *cb = video_sharp + VLINK_HQ_LUMA, *cr = cb + 3600;
+    int y;
+    if (!clean_tr[767]) {
+        int i;
+        for (i = 0; i < 768; i++) {
+            const int v = i - 256 < 0 ? 0 : i - 256 > 255 ? 255 : i - 256;
+            clean_tr[i] = swap16((uint16_t)((v >> 3) << 11));
+            clean_tg[i] = swap16((uint16_t)((v >> 2) << 5));
+            clean_tb[i] = swap16((uint16_t)(v >> 3));
+        }
+        for (i = 0; i < 240; i++) {              /* (the colour's column: (x + 0.5) / 4 - 0.5, in 256ths) */
+            const int fx = i * 64 - 96;
+            clean_j0[i] = (uint8_t)(fx < 0 ? 0 : fx >> 8);
+            clean_wx[i] = (uint8_t)(fx < 0 ? 0 : fx & 255);
+        }
+    }
+    for (y = 0; y < h; y++) {
+        const int Y = y0 + y, fy = Y * 64 - 96, i0 = fy < 0 ? 0 : fy >> 8, i1 = i0 + 1 < 60 ? i0 + 1 : 59,
+                  wy = fy < 0 ? 0 : fy & 255;
+        PLAT_FAR(clean_row)(L + Y * 240, cb + i0 * 60, cb + i1 * 60, cr + i0 * 60, cr + i1 * 60, wy, clean_j0,
+                            clean_wx, clean_tr + 256, clean_tg + 256, clean_tb + 256, vb, vr, cv_px + y * 240);
+    }
+}
 static volatile uint32_t video_ble_taken, video_ble_full;   /* (diagnostics: packets queued, refused: the queue full) */
 static uint32_t video_ble_bad;                   /* (packets out of order: a frame lost) */
 static uint8_t video_ble_shown_kind;
@@ -541,10 +706,16 @@ static void video_ble_poll(uint32_t now)
                 video_ble_offset = (uint16_t)(offset + count);
                 video_ble_part_ms = now;
                 if (video_ble_offset == size && video_ble_sharp == data[0] >> 7) {
-                    if (video_ble_sharp) {
+                    if (video_ble_sharp && size > 2 && (video_ble_rx[2] & 2u)) {
+                        clean_on = 1;            /* (the engine idle from now: its planes the picture's) */
+                        if (!codec_decode240(video_ble_rx, size))
+                            video_ble_bad += 1000u;
+                    } else if (video_ble_sharp) {
+                        clean_off();
                         if (!codec_decode(video_ble_rx, size))
                             video_ble_bad += 1000u;
                     } else {
+                        clean_off();
                         memcpy(video_ble_pixels[0], video_ble_rx, size);
                     }
                     video_ble_hq[video_ble_front ^ 1u] = video_ble_sharp;
@@ -1992,6 +2163,8 @@ static void draw_frame(void)                     /* the picture, the bars over i
             const uint32_t t1 = plat_ticks24();
             if (source && (kept || !live))
                 paint_video_band(BY[b], BH[b], kept);
+            else if (clean_on && source)
+                paint_clean_band(BY[b], BH[b]);
             else
                 vs_paint(BY[b], BH[b], cv_px);
             tv += plat_ticks24() - t1;
@@ -2204,13 +2377,15 @@ void app_frame(void)
         scenes_frame();
         frame_input();
         link_hold_back(saved, held);
-        {
+        if (clean_on && !video_mode())
+            clean_off();                         /* (a synthesis again: the engine's planes back) */
+        if (!clean_on) {
             const uint8_t *cam = photo_view ? 0 : live_image();
             vs_camera(cam, live_hq);
+            vs_frame(&fin);
         }
-        vs_frame(&fin);
         ui.gen_us += ((int32_t)((plat_ticks24() - t0) / 24u) - (int32_t)ui.gen_us) / 8;
-        sum = lk.on && !(video_mode() && !photo_view && live_image()) ? vs_sum() : 0u;   /* (0: the camera's,
+        sum = lk.on && !clean_on && !(video_mode() && !photo_view && live_image()) ? vs_sum() : 0u;   /* (0: the camera's,
                                                   * which the mirror has not) */
         photo_send();
         link_send(sum);

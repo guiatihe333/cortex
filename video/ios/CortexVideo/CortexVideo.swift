@@ -62,7 +62,10 @@ final class Studio: ObservableObject {
         }
     }
     @Published var sharp = true { didSet { applySharp() } }   // (Bluetooth only: USB keeps 60 x 60)
+    @Published var clean = false { didSet { applySharp() } }  // (240 x 240, the FM-1 shows it with no effects)
     private func applySharp() {
+        camera.clean = clean
+        sampler.clean = clean
         let on = sharp && useBluetooth
         camera.sharp = on
         sampler.sharp = on
@@ -376,6 +379,8 @@ struct StudioView: View {
                 }
                 .pickerStyle(.segmented)
                 Toggle("Imagem nítida (120 × 120, Bluetooth)", isOn: $studio.sharp)
+                Toggle("Câmera limpa 240 × 240 (sem efeitos no FM-1)", isOn: $studio.clean)
+                    .disabled(!studio.sharp || !studio.useBluetooth)
                 Text(studio.status).font(.subheadline).foregroundStyle(.secondary)
                 ZStack {
                     Rectangle().fill(.black)

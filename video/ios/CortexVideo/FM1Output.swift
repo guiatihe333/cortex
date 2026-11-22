@@ -348,14 +348,14 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
         let fresh = pixels != lastPixels || now - lastFrameAt > 0.5
         if pending.isEmpty && (!fresh || inFlight.count >= 4) {
             if fresh { blocked = true }               // (a new picture waits: the link is the limit)
-            return (sharpFrame ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
+            return (sharpFrame ? (pixels.count == VideoWire.cleanRGBA ? "Bluetooth · limpa 240 × 240" : "Bluetooth · nítido 120 × 120") : "Bluetooth · 60 × 60") + rate
         }
         let limit = min(VideoWire.blePayload, peripheral.maximumWriteValueLength(for: .withoutResponse) - 4)
         guard limit > 0 else { return "O FM-1 não aceitou pacotes de vídeo Bluetooth." }
         var sent = 0
         while sent < 16 && peripheral.canSendWriteWithoutResponse {   // (as much as the link takes this tick)
             if pending.isEmpty {
-                sharpFrame = pixels.count == VideoWire.sharpRGBA
+                sharpFrame = pixels.count == VideoWire.sharpRGBA || pixels.count == VideoWire.cleanRGBA
                 codec.congested = blocked         // (it waited for answers since the last frame)
                 blocked = false
                 pending = sharpFrame ? codec.encode(pixels) : pixels
@@ -377,7 +377,7 @@ final class BluetoothVideoOutput: NSObject, CBCentralManagerDelegate, CBPeripher
                 break                                 // (one frame a call: the next waits for a new picture)
             }
         }
-        return (sharpFrame ? "Bluetooth · nítido 120 × 120" : "Bluetooth · 60 × 60") + rate
+        return (sharpFrame ? (pixels.count == VideoWire.cleanRGBA ? "Bluetooth · limpa 240 × 240" : "Bluetooth · nítido 120 × 120") : "Bluetooth · 60 × 60") + rate
     }
 
     private func scan() {
