@@ -44,6 +44,48 @@ final class Studio: ObservableObject {
         }
     }
     @Published private(set) var audioRoute = "Aguardando entrada de áudio"
+    // the R20's sound over the network (the PC's r20-wifi.py), for the camera's recordings
+    @Published var r20Address = UserDefaults.standard.string(forKey: "cortexR20Address") ?? ""
+    @Published var r20Code = ""
+    @Published var r20DelayMs: Double = UserDefaults.standard.object(forKey: "cortexR20Delay") as? Double ?? 150 {
+        didSet {
+            camera.networkAudioDelay = r20DelayMs / 1000
+            UserDefaults.standard.set(r20DelayMs, forKey: "cortexR20Delay")
+        }
+    }
+    @Published private(set) var r20State = "R20 desconectado"
+    @Published private(set) var r20Connected = false
+    private let r20 = R20NetworkInput()
+    private var r20LastAudio: TimeInterval = 0
+
+    func connectR20() {
+        if r20Connected || r20State.hasPrefix("Conectando") {
+            r20.stop()
+            r20Connected = false
+            r20State = "R20 desconectado"
+            return
+        }
+        UserDefaults.standard.set(r20Address, forKey: "cortexR20Address")
+        r20.audio = { [weak self] pcm, rate, channels in
+            guard let self else { return }
+            self.camera.appendNetworkAudio(pcm, rate: rate, channels: channels)
+            let now = CACurrentMediaTime()
+            if !self.r20Connected || now - self.r20LastAudio > 1 {
+                self.r20Connected = true
+                self.r20State = "R20 conectado · \(rate / 1000) kHz, \(channels == 2 ? "estéreo" : "mono")"
+            }
+            self.r20LastAudio = now
+        }
+        r20.problem = { [weak self] message in
+            self?.r20Connected = false
+            self?.r20State = message
+        }
+        do {
+            camera.networkAudioDelay = r20DelayMs / 1000
+            r20State = "Conectando à ponte do R20…"
+            try r20.connect(address: r20Address, code: r20Code.trimmingCharacters(in: .whitespaces).lowercased())
+        } catch { r20State = error.localizedDescription }
+    }
     private var nextRouteCheck: TimeInterval = 0
 
     private func updateAudioRoute() {
@@ -214,6 +256,10 @@ final class Studio: ObservableObject {
 
     func toggleRecording() {
         guard source == .camera, !busy else { return }
+        if !recording && recordingInput == .r20Wifi && !r20Connected {
+            message = "Conecte o R20 por Wi-Fi antes de gravar (o código da ponte r20-wifi no PC)."
+            return
+        }
         if recording {
             busy = true
             camera.finishRecording()
@@ -407,7 +453,25 @@ struct StudioView: View {
                         ForEach(RecordingInput.allCases) { input in Text(input.rawValue).tag(input) }
                     }
                     .disabled(studio.busy || studio.recording)
-                    Text("Entrada ativa: " + studio.audioRoute).font(.caption).foregroundStyle(.secondary)
+                    if studio.recordingInput == .r20Wifi {
+                        TextField("Endereço da ponte do R20 (ex.: 192.168.0.24:8771)", text: $studio.r20Address)
+                            .keyboardType(.numbersAndPunctuation).textInputAutocapitalization(.never)
+                            .disableAutocorrection(true).textFieldStyle(.roundedBorder)
+                        TextField("Código da ponte", text: $studio.r20Code)
+                            .textInputAutocapitalization(.never).disableAutocorrection(true)
+                            .textFieldStyle(.roundedBorder)
+                        Button(studio.r20Connected ? "Desconectar R20" : "Conectar R20 por Wi-Fi") { studio.connectR20() }
+                            .buttonStyle(.bordered).disabled(studio.recording)
+                        Text(studio.r20State).font(.caption).foregroundStyle(.secondary)
+                        HStack {
+                            Text("Atraso do áudio")
+                            Slider(value: $studio.r20DelayMs, in: 0...500, step: 10)
+                            Text("\(Int(studio.r20DelayMs)) ms").monospacedDigit()
+                        }
+                        .font(.caption)
+                    } else {
+                        Text("Entrada ativa: " + studio.audioRoute).font(.caption).foregroundStyle(.secondary)
+                    }
                     Button(studio.recording ? "Parar gravação" : "Gravar vídeo") { studio.toggleRecording() }
                         .buttonStyle(.borderedProminent).tint(.red).disabled(studio.busy)
                 }

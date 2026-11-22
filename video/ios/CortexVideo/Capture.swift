@@ -55,13 +55,14 @@ final class FrameSampler {
 enum RecordingInput: String, CaseIterable, Identifiable {
     case automatic = "Automático"
     case zoom = "Zoom R20 (USB)"
+    case r20Wifi = "Zoom R20 (Wi-Fi)"              // (the PC's R20 bridge: the camera's picture with its sound)
     var id: Self { self }
 
     func activate() throws {
         let audio = AVAudioSession.sharedInstance()
         try audio.setCategory(.playAndRecord, mode: .videoRecording)
         try audio.setActive(true)
-        if self == .automatic {
+        if self == .automatic || self == .r20Wifi {
             try audio.setPreferredInput(nil)
             return
         }
@@ -80,7 +81,8 @@ enum RecordingInput: String, CaseIterable, Identifiable {
     }
 
     var isCurrent: Bool {
-        self == .automatic || AVAudioSession.sharedInstance().currentRoute.inputs.contains(where: Self.isZoom)
+        self == .automatic || self == .r20Wifi ||
+            AVAudioSession.sharedInstance().currentRoute.inputs.contains(where: Self.isZoom)
     }
 }
 
@@ -100,6 +102,17 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     }
     private var configured = false
     private var lastFrame: TimeInterval = -.infinity
+    // recording with the R20's sound over the network: the camera's own frames into an H.264 file, the bridge's PCM
+    // as AAC beside them, on the host clock (the sound's arrival less its delay, then continuous)
+    private var writer: AVAssetWriter?
+    private var writerVideo: AVAssetWriterInput?
+    private var writerAudio: AVAssetWriterInput?
+    private var writerURL: URL?
+    private var writerStart = CMTime.invalid
+    private var audioNext = CMTime.invalid
+    private var audioFormat: CMAudioFormatDescription?
+    private var audioFormatKey = 0
+    var networkAudioDelay: Double = 0.15            // (seconds: the R20's sound reaches the phone this late)
     private var latest: CVPixelBuffer?
     var frame: (([UInt8]) -> Void)?
     var finished: ((URL, Error?) -> Void)?
@@ -122,6 +135,10 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     }
 
     func record(_ url: URL, input: RecordingInput, completion: @escaping (String?) -> Void) {
+        if input == .r20Wifi {
+            recordWithNetworkAudio(url, completion: completion)
+            return
+        }
         queue.async {
             if input == .zoom {
                 do {
@@ -151,7 +168,119 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     }
 
     func finishRecording() {
-        queue.async { if self.movies.isRecording { self.movies.stopRecording() } }
+        queue.async {
+            if let writer = self.writer {
+                self.writer = nil
+                self.writerVideo?.markAsFinished()
+                self.writerAudio?.markAsFinished()
+                let url = self.writerURL
+                writer.finishWriting {
+                    let error = writer.status == .completed ? nil : writer.error
+                    DispatchQueue.main.async { if let url { self.finished?(url, error) } }
+                }
+                return
+            }
+            if self.movies.isRecording { self.movies.stopRecording() }
+        }
+    }
+
+    private func recordWithNetworkAudio(_ url: URL, completion: @escaping (String?) -> Void) {
+        queue.async {
+            guard self.session.isRunning, self.writer == nil, !self.movies.isRecording else {
+                DispatchQueue.main.async { completion("A gravação não pôde começar.") }
+                return
+            }
+            do {
+                let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+                let video = self.samples.recommendedVideoSettingsForAssetWriter(writingTo: .mov)   // (the camera's own:
+                    ?? [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 1080, AVVideoHeightKey: 1920]  // HEVC, its size)
+                let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: video)
+                videoInput.expectsMediaDataInRealTime = true
+                let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+                    AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 2,
+                    AVEncoderBitRateKey: 256_000
+                ])
+                audioInput.expectsMediaDataInRealTime = true
+                guard writer.canAdd(videoInput), writer.canAdd(audioInput) else {
+                    DispatchQueue.main.async { completion("O gravador não aceitou vídeo e áudio.") }
+                    return
+                }
+                writer.add(videoInput)
+                writer.add(audioInput)
+                guard writer.startWriting() else {
+                    DispatchQueue.main.async { completion(writer.error?.localizedDescription ?? "A gravação não pôde começar.") }
+                    return
+                }
+                self.writer = writer
+                self.writerVideo = videoInput
+                self.writerAudio = audioInput
+                self.writerURL = url
+                self.writerStart = .invalid
+                self.audioNext = .invalid
+                DispatchQueue.main.async { completion(nil) }
+            } catch {
+                DispatchQueue.main.async { completion(error.localizedDescription) }
+            }
+        }
+    }
+
+    // a block of the bridge's sound (16-bit, interleaved, little-endian), as it arrives
+    func appendNetworkAudio(_ pcm: Data, rate: Int, channels: Int) {
+        let arrived = CMClockGetTime(CMClockGetHostTimeClock())
+        queue.async {
+            guard let input = self.writerAudio, self.writer != nil, self.writerStart.isValid,
+                  channels > 0, rate > 0 else { return }
+            let frames = pcm.count / (2 * channels)
+            guard frames > 0 else { return }
+            let length = CMTime(value: CMTimeValue(frames), timescale: CMTimeScale(rate))
+            let due = CMTimeSubtract(CMTimeSubtract(arrived, CMTime(seconds: self.networkAudioDelay,
+                                                                    preferredTimescale: 48_000)), length)
+            // (continuous: each block after the last; a gap or a run ahead past 0.25 s starts again from its arrival)
+            if !self.audioNext.isValid || abs(CMTimeGetSeconds(CMTimeSubtract(due, self.audioNext))) > 0.25 {
+                self.audioNext = due
+            }
+            let pts = self.audioNext
+            self.audioNext = CMTimeAdd(self.audioNext, length)
+            guard CMTimeCompare(pts, self.writerStart) >= 0, input.isReadyForMoreMediaData,
+                  let buffer = self.audioSample(pcm, frames: frames, rate: rate, channels: channels, at: pts)
+            else { return }
+            input.append(buffer)
+        }
+    }
+
+    private func audioSample(_ pcm: Data, frames: Int, rate: Int, channels: Int, at pts: CMTime) -> CMSampleBuffer? {
+        if audioFormat == nil || audioFormatKey != rate * 8 + channels {
+            var asbd = AudioStreamBasicDescription(
+                mSampleRate: Float64(rate), mFormatID: kAudioFormatLinearPCM,
+                mFormatFlags: kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked,
+                mBytesPerPacket: UInt32(2 * channels), mFramesPerPacket: 1, mBytesPerFrame: UInt32(2 * channels),
+                mChannelsPerFrame: UInt32(channels), mBitsPerChannel: 16, mReserved: 0)
+            var format: CMAudioFormatDescription?
+            guard CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &asbd, layoutSize: 0,
+                                                 layout: nil, magicCookieSize: 0, magicCookie: nil,
+                                                 extensions: nil, formatDescriptionOut: &format) == noErr
+            else { return nil }
+            audioFormat = format
+            audioFormatKey = rate * 8 + channels
+        }
+        var block: CMBlockBuffer?
+        guard CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil,
+                                                 blockLength: pcm.count, blockAllocator: kCFAllocatorDefault,
+                                                 customBlockSource: nil, offsetToData: 0, dataLength: pcm.count,
+                                                 flags: 0, blockBufferOut: &block) == noErr,
+              let block else { return nil }
+        let copied = pcm.withUnsafeBytes { raw -> OSStatus in
+            guard let base = raw.baseAddress else { return -1 }
+            return CMBlockBufferReplaceDataBytes(with: base, blockBuffer: block, offsetIntoDestination: 0,
+                                                 dataLength: pcm.count)
+        }
+        guard copied == noErr, let format = audioFormat else { return nil }
+        var sample: CMSampleBuffer?
+        guard CMAudioSampleBufferCreateReadyWithPacketDescriptions(
+            allocator: kCFAllocatorDefault, dataBuffer: block, formatDescription: format,
+            sampleCount: frames, presentationTimeStamp: pts, packetDescriptions: nil,
+            sampleBufferOut: &sample) == noErr else { return nil }
+        return sample
     }
 
     private func configure(microphone: Bool) -> Bool {
@@ -191,6 +320,14 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+        if writer != nil, let input = writerVideo {    // (every frame into the file, the R20's sound beside)
+            let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+            if !writerStart.isValid {
+                writer?.startSession(atSourceTime: pts)
+                writerStart = pts
+            }
+            if input.isReadyForMoreMediaData { input.append(sampleBuffer) }
+        }
         let now = CACurrentMediaTime()
         guard now - lastFrame >= 0.03, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lastFrame = now

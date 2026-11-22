@@ -297,7 +297,7 @@ struct MirrorWebView: UIViewRepresentable {
 }
 
 @MainActor
-private final class R20NetworkInput {
+final class R20NetworkInput {
     private var connection: NWConnection?
     private var authenticated = false
     var audio: ((Data, Int, Int) -> Void)?

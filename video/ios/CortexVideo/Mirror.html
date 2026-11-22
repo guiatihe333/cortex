@@ -96,7 +96,7 @@ meter { width:100%; height:10px; }
       <h2>Áudio gravado</h2>
       <label>Entrada <select id="audioIn"></select></label>
       <meter id="level" min="0" max="1" value="0"></meter>
-      <label>Atraso do áudio <input id="avDelay" type="range" min="0" max="200" value="50" step="5"><output id="avDelayV">50 ms</output></label>
+      <label>Atraso do áudio <input id="avDelay" type="range" min="0" max="400" value="80" step="5"><output id="avDelayV">80 ms</output></label>
       <p class="note">“A entrada enviada ao FM-1” grava o som da seção acima direto, na qualidade da placa, atrasado para cair junto com a imagem (o FM-1 leva uns 50 ms para reagir). Ou escolha “Linha (CORTEX VIDEO FM-1)”: o som que o FM-1 recebeu, de volta pelo USB.</p>
     </section>
     <section>
@@ -205,7 +205,7 @@ const OFF = [0xF0, 0x7D, 0x43, 0x56, 0x10, 0x00, 0x00, 0xF7];
 const RESYNC = [0xF0, 0x7D, 0x43, 0x56, 0x10, 0x00, 0x02, 0xF7];
 let wx, midi, inPort, outPort, keepTimer, lastResync = 0;
 let lcd = $("lcd").getContext("2d"), out = $("out").getContext("2d"), img = lcd.createImageData(240, 240);
-let resyncs = [], frameTimes = [], audioStream = null, audioCtx = null, analyser = null;
+let resyncs = [], frameTimes = [], audioStream = null, audioCtx = null, analyser = null, audioRaw = null, inputDelay = null;
 let recorder = null, recStart = 0, recByFM1 = false;
 
 const sourceVideo = $("sourceVideo");
@@ -714,7 +714,8 @@ async function openRoute() {
 }
 async function openAudio() {
   if (audioStream && audioStream !== (routeDest && routeDest.stream)) audioStream.getTracks().forEach(t => t.stop());
-  audioStream = null; analyser = null;
+  if (audioRaw) audioRaw.getTracks().forEach(t => t.stop());
+  audioStream = null; audioRaw = null; inputDelay = null; analyser = null;
   const id = $("audioIn").value;
   if (!id) return;
   if (id === "__route") {                         // (the bridge's input, delayed: it falls with the picture)
@@ -723,13 +724,22 @@ async function openAudio() {
     analyser = routeAnalyser;
     return;
   }
-  audioStream = await navigator.mediaDevices.getUserMedia({ audio: {
+  audioRaw = await navigator.mediaDevices.getUserMedia({ audio: {
     deviceId: { exact: id }, echoCancellation: false, noiseSuppression: false, autoGainControl: false,
     channelCount: 2, sampleRate: 48000 } });
-  audioCtx = audioCtx || new AudioContext();
+  audioCtx = audioCtx || new AudioContext({ sampleRate: 48000, latencyHint: "interactive" });
+  if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 1024;
-  audioCtx.createMediaStreamSource(audioStream).connect(analyser);
+  // (the sound held back by AUDIO DELAY: the picture comes from the FM-1 a little after the sound it answers, so
+  // the recording here and the stream to the iPhone keep them together)
+  const source = audioCtx.createMediaStreamSource(audioRaw), dest = audioCtx.createMediaStreamDestination();
+  dest.channelCount = 2;
+  inputDelay = audioCtx.createDelay(1.0);
+  inputDelay.delayTime.value = +$("avDelay").value / 1000;
+  source.connect(analyser);
+  source.connect(inputDelay).connect(dest);
+  audioStream = dest.stream;
 }
 
 /* ---- to the iPhone app over the local network: WebRTC straight from here; the bridge (tools/espelho-wifi.py)
@@ -1047,6 +1057,7 @@ $("routeIn").onchange = $("routeOut").onchange = $("routeMon").onchange = openRo
 $("avDelay").oninput = () => {
   $("avDelayV").textContent = $("avDelay").value + " ms";
   if (routeDelay) routeDelay.delayTime.value = +$("avDelay").value / 1000;
+  if (inputDelay) inputDelay.delayTime.value = +$("avDelay").value / 1000;
 };
 $("hd").onchange = () => { if (wx) setHD(); };
 $("size").onchange = layout;
