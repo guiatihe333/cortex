@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 /* the engine's version: changes whenever the same input would draw another picture (the mirror must be the same) */
-#define VS_ENGINE 8
+#define VS_ENGINE 9
 #define VS_NBAND 6
 #define VS_WAVE_N 128
 #define VS_NVOX 3                                 /* (the lows, the mids, the highs: the old voices' orbs) */
@@ -50,9 +50,12 @@ enum {
     ST_TR1S, ST_TR1A, ST_TR1N,                    /* three triggers: a SOURCE, an ACTION, an AMOUNT (vobj.inc) */
     ST_TR3N = ST_TR1S + 8,
     ST_VBRIGHT, ST_VEAR, ST_VGAIN, ST_VBARS, ST_VDELAY,
-    ST_CSTYLE, ST_CAMT, ST_CSAT, ST_CSEG,         /* the clean camera (240 x 240): a STYLE (CRT, VHS, Edges, Emboss,
-                                                   * Halftone, LED, Solarize, Swap, Motion), its AMOUNT, the colour's
-                                                   * SATURATION, SEGMENTS (a tunnel, a kaleidoscope of 2 .. 12) */
+    ST_CCRT, ST_CVHS, ST_CEDGE, ST_CEMBOSS, ST_CHALF, ST_CLED, ST_CSOLAR, ST_CSWAP, ST_CMOTION, ST_CSAT,
+    ST_CSEG,                                      /* STYLE (app.c post_fx, on the finished picture, every visual):
+                                                   * CRT, VHS, EDGES, EMBOSS, HALFTONE, LED, SOLARIZE, SWAP, MOTION
+                                                   * (the clean camera's moving blocks), each its own amount, together;
+                                                   * SATURATION; SEGMENTS (the clean camera: a tunnel, a kaleidoscope
+                                                   * of 2 .. 12) */
     ST_AR1S, ST_AR1T, ST_AR1D, ST_AR1M, ST_AR1L,   /* a slot: SOURCE, TARGET, DEPTH, MODE (Direct, Invert, Beat hold,
                                                     * Gate), LAG (its smoothing); VS_NSLOT of them */
     ST_N = ST_AR1S + VS_SLOT_W * VS_NSLOT

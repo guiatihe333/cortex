@@ -314,6 +314,7 @@ final class VideoCodec {
         let clean = rgba.count == VideoWire.cleanRGBA
         if clean != wasClean {                       // (the other kind: every block again, from nothing)
             wasClean = clean
+            scale = min(scale, clean ? 16 : 32)
             forceKey = true
             refLuma = [Float](repeating: -1000, count: clean ? 57600 : 14400)
             refChroma = [Float](repeating: -1000, count: 7200)
@@ -332,7 +333,8 @@ final class VideoCodec {
         // finer, down to scale 4 (JPEG's quality ~87)
         if congested { busy += 1 } else { calm += 1 }
         if busy + calm >= 15 {
-            if busy > 6 { scale = min(32, scale + scale / 8 + 1) }   // (never coarser than 32: half JPEG's 50)
+            if busy > 6 { scale = min(wasClean ? 16 : 32, scale + scale / 8 + 1) }   // (the clean picture: never
+                                                     // coarser than 16 (JPEG's 50), fewer frames instead; else 32)
             else if busy < 2 { scale = max(4, scale - scale / 10 - 1) }
             busy = 0
             calm = 0

@@ -31,6 +31,18 @@
   let loop = null;
   let writing = false;
   const bluetooth = button("Enviar por Bluetooth", $("openCamera").parentElement, toggleBluetooth);
+  // the picture the FM-1 gets: sharp 120 x 120 (its effects all on), or clean 240 x 240; filled, cut at the long
+  // sides, as the app's own camera sends it (VideoCodec codes the RGBA)
+  const sizeChoice = document.createElement("select");
+  for (const [value, text] of [["120", "Nítida 120 × 120 (todos os efeitos)"], ["240", "Limpa 240 × 240"]]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = text;
+    sizeChoice.append(option);
+  }
+  $("openCamera").parentElement.append(sizeChoice);
+  const sendCanvas = document.createElement("canvas");
+  const sendContext = sendCanvas.getContext("2d", { willReadFrequently: true });
   function stopBluetooth() {
     if (!loop) return;
     clearInterval(loop);
@@ -58,17 +70,17 @@
     if (writing || !loop) return;
     writing = true;
     try {
-      const output = $("out");
-      previewContext.fillStyle = "#000";
-      previewContext.fillRect(0, 0, 60, 60);
-      const scale = 60 / Math.max(output.width, output.height);
+      const output = $("out"), side = sizeChoice.value === "240" ? 240 : 120;
+      if (sendCanvas.width !== side) sendCanvas.width = sendCanvas.height = side;
+      sendContext.fillStyle = "#000";
+      sendContext.fillRect(0, 0, side, side);
+      const scale = side / Math.min(output.width, output.height);   // (fill: cut at the long sides)
       const width = output.width * scale, height = output.height * scale;
-      previewContext.drawImage(output, (60 - width) / 2, (60 - height) / 2, width, height);
-      const data = previewContext.getImageData(0, 0, 60, 60).data;
+      sendContext.drawImage(output, (side - width) / 2, (side - height) / 2, width, height);
+      const data = sendContext.getImageData(0, 0, side, side).data;
       let encoded = "";
-      for (let i = 0; i < data.length; i += 4) {
-        encoded += String.fromCharCode((data[i] & 224) | ((data[i + 1] & 224) >> 3) | (data[i + 2] >> 6));
-      }
+      for (let i = 0; i < data.length; i += 8192)
+        encoded += String.fromCharCode.apply(null, data.subarray(i, i + 8192));
       await native("ble", { source: sourceKind === "camera" ? 1 : 2, pixels: btoa(encoded) });
     } catch (error) { videoStatus(error.message); stopBluetooth(); }
     finally { writing = false; }

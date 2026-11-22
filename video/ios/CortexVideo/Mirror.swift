@@ -182,8 +182,9 @@ struct MirrorWebView: UIViewRepresentable {
                 replyHandler(midi.writeMirror(bytes), nil)
             case "ble":
                 guard let type = request["source"] as? UInt8, let source = VideoSource(rawValue: type),
-                      let encoded = request["pixels"] as? String, encoded.count == 4800,
-                      let data = Data(base64Encoded: encoded), data.count == VideoWire.side * VideoWire.side
+                      let encoded = request["pixels"] as? String,
+                      let data = Data(base64Encoded: encoded),
+                      data.count == VideoWire.sharpRGBA || data.count == VideoWire.cleanRGBA   // (RGBA 120 or 240)
                 else { replyHandler(false, nil); return }
                 if timer == nil {
                     midi.stop()

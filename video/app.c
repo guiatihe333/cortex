@@ -177,53 +177,70 @@ static set_t set;
 static scenes_t scn;
 static uint8_t set_dirty, scn_dirty;
 
-/* the store before CAMERA 240's four settings (ST_CSTYLE .. ST_CSEG, between DELAY and the react slots): the same
- * objects with four settings fewer, carried over (the new ones at their defaults) */
-#define ST_NEW_AT ST_CSTYLE
-#define ST_NEW_N 4
+/* the store from before STYLE's eleven settings (ST_CCRT .. ST_CSEG, between DELAY and the react slots): eleven
+ * fewer (before the camera), or 2026-11-21's four (STYLE, AMOUNT, SATURATION, SEGMENTS: 7 fewer). Carried over, the
+ * new ones at their defaults */
+#define ST_NEW_AT ST_CCRT
 static uint8_t video_ble_rx[VLINK_CODEC_MAX] PLAT_POOL;          /* (a frame coming in: 60 x 60 RGB332, or coded;
                                                   * at the start, the store's old objects read for carrying over) */
 #define store_old video_ble_rx
 _Static_assert(VLINK_CODEC_MAX >= PLAT_STORE_MAX, "the old objects fit");
-static int old_index(int i) { return i < ST_NEW_AT ? i : i + ST_NEW_N; }
+static int old_index(int i, int oldn)            /* (an old setting's place now; -1 gone) */
+{
+    if (i < ST_NEW_AT)
+        return i;
+    if (oldn == ST_N - 11)
+        return i + 11;
+    if (i < ST_NEW_AT + 4)                       /* (the night before's: SATURATION and SEGMENTS kept) */
+        return i == ST_NEW_AT + 2 ? ST_CSAT : i == ST_NEW_AT + 3 ? ST_CSEG : -1;
+    return i + 7;
+}
 static void set_defaults(void);
 static int store_migrate_set(void)
 {
-    const int got = plat_store_load(OBJ_SET, store_old, sizeof store_old);
+    const int got = plat_store_load(OBJ_SET, store_old, PLAT_STORE_MAX);
     uint32_t magic, n;
     int i;
     if (got < 8)
         return 0;
     memcpy(&magic, store_old, 4), memcpy(&n, store_old + 4, 4);
-    if (magic != SET_MAGIC || n != ST_N - ST_NEW_N || got != (int)(sizeof set - 2u * ST_NEW_N))
+    if (magic != SET_MAGIC || (n != ST_N - 11 && n != ST_N - 7) || got != (int)(sizeof set - 2u * (ST_N - n)))
         return 0;
     set_defaults();
-    for (i = 0; i < (int)n; i++)
-        memcpy(&set.par[old_index(i)], store_old + 8 + 2 * i, 2);
+    for (i = 0; i < (int)n; i++) {
+        const int k = old_index(i, (int)n);
+        if (k >= 0)
+            memcpy(&set.par[k], store_old + 8 + 2 * i, 2);
+    }
     memcpy(&set.page, store_old + 8 + 2 * n, sizeof set - __builtin_offsetof(set_t, page));
-    if (set.page >= 21)                          /* (a page past MODULATE: one on, CAMERA 240 came before it) */
-        set.page++;
+    if (n == ST_N - 11 && set.page >= 21)        /* (past MODULATE: STYLE's three pages before it) */
+        set.page = (uint8_t)(set.page + 3);
+    else if (n == ST_N - 7 && set.page >= 22)
+        set.page = (uint8_t)(set.page + 2);
     set.n = ST_N;
     set_dirty = 1;
     return 1;
 }
 static int store_migrate_scenes(void)
 {
-    const int got = plat_store_load(OBJ_SCENES, store_old, sizeof store_old);
+    const int got = plat_store_load(OBJ_SCENES, store_old, PLAT_STORE_MAX);
     uint32_t magic, n, used;
     int s, i;
     if (got < 12)
         return 0;
     memcpy(&magic, store_old, 4), memcpy(&n, store_old + 4, 4), memcpy(&used, store_old + 8, 4);
-    if (magic != SET_MAGIC || n != ST_N - ST_NEW_N || got < (int)(12u + NSCENE * n))
+    if (magic != SET_MAGIC || (n != ST_N - 11 && n != ST_N - 7) || got < (int)(12u + NSCENE * n))
         return 0;
     memset(&scn, 0, sizeof scn);
     scn.magic = SET_MAGIC, scn.n = ST_N, scn.used = used;
     for (s = 0; s < NSCENE; s++) {
         for (i = 0; i < ST_N; i++)               /* (the new ones: their defaults, over their low ends) */
             scn.par[s][i] = (uint8_t)(vs_par_info(i)->def - vs_par_info(i)->lo);
-        for (i = 0; i < (int)n; i++)
-            scn.par[s][old_index(i)] = store_old[12 + s * n + i];
+        for (i = 0; i < (int)n; i++) {
+            const int k = old_index(i, (int)n);
+            if (k >= 0)
+                scn.par[s][k] = store_old[12 + s * n + i];
+        }
     }
     scn_dirty = 1;
     return 1;
@@ -955,7 +972,7 @@ static void clean_frame_fx(void)                 /* (once a frame: the effects' 
     cfx.ps = vs_pixel_size();
     for (i = 0; i < 240; i++)
         clean_qx[i] = (uint8_t)(cfx.ps > 1 ? i / (2 * cfx.ps) * (2 * cfx.ps) : i);
-    cfx.style = vs_get(ST_CSTYLE), cfx.amt = vs_eff(ST_CAMT);
+    cfx.style = CS_OFF, cfx.amt = 0;             /* (the styles: post_fx, on every picture) */
     cfx.halfc = 4 + cfx.amt / 10;
     for (i = 0; i < 240; i++)
         clean_hpos[i] = (uint8_t)(i % cfx.halfc);
@@ -963,7 +980,8 @@ static void clean_frame_fx(void)                 /* (once a frame: the effects' 
     cfx.blur = feed > 0 ? (int)((float)feed * (0.25f + 0.75f * beat) * 0.25f) : 0;   /* (1/256 of the way a step) */
     {                                            /* HUE turns the camera's colour above 10, SATURATION */
         static float hue_ang;
-        const float s = (float)sat * 0.01f;
+        const float s = 1.0f;                    /* (SATURATION: post_fx) */
+        (void)sat;
         if (hue > 10)
             hue_ang += (float)(hue - 10) * 0.002f;
         cfx.hc = (int)(256.0f * s * fm_cosf(hue_ang)), cfx.hs = (int)(256.0f * s * fm_sinf(hue_ang));
@@ -2549,6 +2567,169 @@ static const uint8_t *live_image(void)
            preview == 3 ? video_pixels[0] : 0;
 }
 
+#define VS_SW16P(v) ((uint16_t)(((v) >> 8 & 0xFFu) | ((v) & 0xFFu) << 8))
+
+/* STYLE, on the finished picture (every visual), a band at a time, before the bars: VHS (the rows wobbling, the colour
+ * bleeding sideways, a tracking band rolling down), EDGES (neon lines, the palette's colour), EMBOSS (a relief),
+ * SOLARIZE, SWAP (red and blue, or the planes round), SATURATION, MOTION (the clean camera's blocks that moved, lit),
+ * CRT (scanlines, the phosphors' triads), HALFTONE (dots the light's size), LED (round lamps). Each its own amount,
+ * together. RAM code: no calls */
+struct post_fx {
+    int crt, vhs, edge, emboss, half, led, solar, swap, motion, sat, clean;
+    int hc, lc;                                  /* (HALFTONE's, LED's cell) */
+    const uint8_t *hpos, *lpos, *age;            /* (x mod the cells; the clean camera's blocks' ages) */
+    const int8_t *jit;                           /* (VHS: each row's wobble) */
+    const uint16_t *pal;
+    int vband, vh;                               /* (VHS: the tracking band) */
+    uint32_t seed;
+};
+static struct post_fx pfx;
+static uint8_t post_hpos[240], post_lpos[240];
+static int8_t post_jit[240];
+static PLAT_RAM_CODE void post_row(const struct post_fx *f, int y, uint16_t *px, const uint16_t *below,
+                                   uint8_t *prevL, uint8_t *curL, uint8_t *nextL, uint16_t *orig)
+{
+    int x;
+    for (x = 0; x < 240; x++)                    /* (the row as painted; its light, and the one below's) */
+        orig[x] = px[x];
+    for (x = 0; x < 240; x++) {
+        const uint32_t c = VS_SW16P(below[x]);
+        nextL[x] = (uint8_t)((77u * ((c >> 11) << 3) + 150u * ((c >> 5 & 63u) << 2) + 29u * ((c & 31u) << 3)) >> 8);
+    }
+    for (x = 0; x < 240; x++) {
+        int xs = x, r, g, b, Y;
+        uint32_t c;
+        if (f->vhs) {                            /* VHS: the row's wobble */
+            xs = x - f->jit[y];
+            while (xs < 0) xs += 240;
+            while (xs >= 240) xs -= 240;
+        }
+        c = VS_SW16P(orig[xs]);
+        r = (int)(c >> 11) << 3, g = (int)(c >> 5 & 63u) << 2, b = (int)(c & 31u) << 3;
+        if (f->vhs) {                            /* ... the colour bleeding: red behind, blue ahead; the band's noise */
+            const int k = 1 + f->vhs / 25;
+            const uint32_t cr = VS_SW16P(orig[xs - k < 0 ? 0 : xs - k]), cb = VS_SW16P(orig[xs + k > 239 ? 239 : xs + k]);
+            r = (r + ((int)(cr >> 11) << 3)) >> 1, b = (b + ((int)(cb & 31u) << 3)) >> 1;
+            if (y >= f->vband && y < f->vband + f->vh) {
+                const int n = (int)(((uint32_t)x * 2654435761u + (uint32_t)y * 40503u + f->seed) >> 25) - 64;
+                r += n, g += n, b += n;
+            }
+        }
+        if (f->edge) {                           /* EDGES: the light's steps, the palette's neon */
+            const int xl = x > 0 ? x - 1 : 0, xr = x < 239 ? x + 1 : 239;
+            int e = curL[xr] - curL[xl], e2 = nextL[x] - prevL[x];
+            e = ((e < 0 ? -e : e) + (e2 < 0 ? -e2 : e2)) * (2 + f->edge / 12);
+            e = e > 255 ? 255 : e;
+            {
+                const uint32_t P = f->pal[e];
+                const int keep = 256 - f->edge * 2;
+                r = ((r * keep) >> 8) + ((((int)(P >> 11) << 3) * e) >> 8);
+                g = ((g * keep) >> 8) + ((((int)(P >> 5 & 63u) << 2) * e) >> 8);
+                b = ((b * keep) >> 8) + ((((int)(P & 31u) << 3) * e) >> 8);
+            }
+        }
+        if (f->emboss) {                         /* EMBOSS: lit from the top left */
+            const int xl = x > 0 ? x - 1 : 0, xr = x < 239 ? x + 1 : 239;
+            int v = 128 + (nextL[xr] - prevL[xl]) * (1 + f->emboss / 20);
+            const int a = f->emboss * 256 / 100;
+            v = v < 0 ? 0 : v > 255 ? 255 : v;
+            r += ((v - r) * a) >> 8, g += ((v - g) * a) >> 8, b += ((v - b) * a) >> 8;
+        }
+        if (f->solar) {                          /* SOLARIZE: what is over the half turned back */
+            if (r > 128) r += ((255 - 2 * r) * f->solar) / 100;
+            if (g > 128) g += ((255 - 2 * g) * f->solar) / 100;
+            if (b > 128) b += ((255 - 2 * b) * f->solar) / 100;
+        }
+        if (f->swap) {                           /* SWAP: red and blue; past 50 the planes round */
+            const int s = r;
+            if (f->swap >= 50)
+                r = g, g = b, b = s;
+            else
+                r = b, b = s;
+        }
+        if (f->sat != 100) {                     /* SATURATION */
+            Y = (77 * r + 150 * g + 29 * b) >> 8;
+            r = Y + (r - Y) * f->sat / 100, g = Y + (g - Y) * f->sat / 100, b = Y + (b - Y) * f->sat / 100;
+        }
+        if (f->motion && f->clean) {             /* MOTION: what moved lit and warmed */
+            const int a = f->age[(y >> 3) * 30 + (x >> 3)] * f->motion / 100;
+            r += ((255 - r) * a) >> 8, b -= (b * a) >> 9;
+        }
+        if (f->crt) {                            /* CRT: the scanlines, the triads */
+            const int k = x % 3, d = f->crt * 2;
+            if (y & 1)
+                r = r * (256 - d) >> 8, g = g * (256 - d) >> 8, b = b * (256 - d) >> 8;
+            if (k)
+                r = r * (256 - d / 2) >> 8;
+            if (k != 1)
+                g = g * (256 - d / 2) >> 8;
+            if (k != 2)
+                b = b * (256 - d / 2) >> 8;
+        }
+        if (f->half || f->led) {                 /* HALFTONE, LED: a round dot a cell (the larger of the two) */
+            const int led = f->led > f->half, c = led ? f->lc : f->hc, pos = led ? f->lpos[x] : f->hpos[x];
+            const int dx = pos - c / 2, dy = (led ? f->lpos[y] : f->hpos[y]) - c / 2;
+            const int cx = x - pos + c / 2 > 239 ? 239 : x - pos + c / 2;
+            const int L = curL[cx], rad = led ? c * c * 3 / 16 : (L * c * c) >> 9;
+            if (dx * dx + dy * dy > rad) {
+                const int a = (led ? f->led : f->half) * 256 / 100;
+                r -= (r * a) >> 8, g -= (g * a) >> 8, b -= (b * a) >> 8;
+            }
+        }
+        r = r < 0 ? 0 : r > 255 ? 255 : r;
+        g = g < 0 ? 0 : g > 255 ? 255 : g;
+        b = b < 0 ? 0 : b > 255 ? 255 : b;
+        {
+            const uint32_t v = (uint32_t)((r >> 3) << 11 | (g >> 2) << 5 | (b >> 3));
+            px[x] = (uint16_t)VS_SW16P(v);
+        }
+    }
+    for (x = 0; x < 240; x++)                    /* (this row's light: the next row's above) */
+        prevL[x] = curL[x], curL[x] = nextL[x];
+}
+static int post_frame(void)                      /* (once a frame: STYLE's settings; 0: none on) */
+{
+    int i;
+    pfx.crt = vs_eff(ST_CCRT), pfx.vhs = vs_eff(ST_CVHS), pfx.edge = vs_eff(ST_CEDGE);
+    pfx.emboss = vs_eff(ST_CEMBOSS), pfx.half = vs_eff(ST_CHALF), pfx.led = vs_eff(ST_CLED);
+    pfx.solar = vs_eff(ST_CSOLAR), pfx.swap = vs_eff(ST_CSWAP), pfx.motion = vs_eff(ST_CMOTION);
+    pfx.sat = vs_eff(ST_CSAT), pfx.clean = clean_on;
+    if (!(pfx.crt | pfx.vhs | pfx.edge | pfx.emboss | pfx.half | pfx.led | pfx.solar | pfx.swap |
+          (pfx.motion && clean_on)) && pfx.sat == 100)
+        return 0;
+    pfx.pal = vs_pal(), pfx.age = clean_age;
+    pfx.hc = 4 + pfx.half / 10, pfx.lc = 4 + pfx.led / 10;
+    for (i = 0; i < 240; i++)
+        post_hpos[i] = (uint8_t)(i % pfx.hc), post_lpos[i] = (uint8_t)(i % pfx.lc);
+    pfx.hpos = post_hpos, pfx.lpos = post_lpos;
+    if (pfx.vhs) {                               /* VHS: the rows' wobble, the tracking band rolling down */
+        static int band;
+        for (i = 0; i < 240; i++)
+            post_jit[i] = (int8_t)(((int)(clean_rand() & 7u) - 3) * pfx.vhs / 50);
+        band = (band + 3) % 300;
+        pfx.vband = band - 30, pfx.vh = 6 + pfx.vhs / 6;
+        for (i = pfx.vband; i < pfx.vband + pfx.vh; i++)
+            if (i >= 0 && i < 240)
+                post_jit[i] = (int8_t)(post_jit[i] * 3 + 8);
+        pfx.seed = clean_rand();
+    }
+    pfx.jit = post_jit;
+    return 1;
+}
+static void post_band(int y0, int h)             /* (the band's rows, top to bottom; at its edges the row itself) */
+{
+    static uint8_t prevL[240], curL[240], nextL[240];
+    static uint16_t orig[240];
+    int y, x;
+    for (x = 0; x < 240; x++) {
+        const uint32_t c = VS_SW16P(cv_px[x]);
+        curL[x] = (uint8_t)((77u * ((c >> 11) << 3) + 150u * ((c >> 5 & 63u) << 2) + 29u * ((c & 31u) << 3)) >> 8);
+        prevL[x] = curL[x];
+    }
+    for (y = 0; y < h; y++)
+        PLAT_FAR(post_row)(&pfx, y0 + y, cv_px + y * 240, cv_px + (y + 1 < h ? y + 1 : y) * 240, prevL, curL, nextL, orig);
+}
+
 static void draw_frame(void)                     /* the picture, the bars over it (unless hidden) */
 {
     static const int16_t BY[4] = {0, HDR_H, HDR_H + 72, KNB_Y}, BH[4] = {HDR_H, 72, 72, KNB_H};
@@ -2562,6 +2743,7 @@ static void draw_frame(void)                     /* the picture, the bars over i
                   *live = preview == 4 || preview == 3 ? live_image() : 0,
                   *image = kept ? kept : live;   /* (live: through the engine, its effects; a kept photo as it is) */
     const int snap = photo_req && live && !kept;
+    static int post_on;
     int b;
     uint32_t t = plat_ticks24(), lw, pt = 0, tv = 0, tw = 0;
     if (image)
@@ -2580,6 +2762,10 @@ static void draw_frame(void)                     /* the picture, the bars over i
                 paint_clean_band(BY[b], BH[b]);
             else
                 vs_paint(BY[b], BH[b], cv_px);
+            if (b == 0)
+                post_on = !kept && post_frame();
+            if (post_on)
+                post_band(BY[b], BH[b]);
             tv += plat_ticks24() - t1;
         }
         if (snap) {

@@ -53,7 +53,9 @@ static const vs_par_t VPARS[ST_N] = {
     {"Trigger 3", 0, 6, 0},    {"Action 3", 0, 7, 3},     {"Amount 3", 0, 100, 60},
     {"Bright", 0, 100, 50},    {"Ear", 0, 100, 30},       {"Gain", 0, 100, 50},
     {"Bars", 0, 2, 1},         {"Delay", 1, 15, 4},
-    {"Style", 0, 9, 0},        {"Amount", 0, 100, 60},    {"Saturation", 0, 200, 100}, {"Segments", 0, 12, 0},
+    {"CRT", 0, 100, 0},        {"VHS", 0, 100, 0},        {"Edges", 0, 100, 0},    {"Emboss", 0, 100, 0},
+    {"Halftone", 0, 100, 0},   {"LED", 0, 100, 0},        {"Solarize", 0, 100, 0}, {"Swap", 0, 100, 0},
+    {"Motion", 0, 100, 0},     {"Saturation", 0, 200, 100}, {"Segments", 0, 12, 0},
     {"Source 1", 0, SRC_N - 1, SRC_BASS},  {"Target 1", 0, VS_NTGT, ST_VFEED + 1},  {"Depth 1", -100, 100, 40},
     {"Mode 1", 0, 3, 0},  {"Lag 1", 0, 100, 0},
     {"Source 2", 0, SRC_N - 1, SRC_HIGH},  {"Target 2", 0, VS_NTGT, ST_VRGB + 1},  {"Depth 2", -100, 100, 35},
@@ -121,11 +123,6 @@ const char *vs_par_text(int k, int v, char *buf)
     case ST_VBLEND: return VB[v];
     case ST_VBARS: return VB2[v];
     case ST_VMIRROR: return VR[v];
-    case ST_CSTYLE: {
-        static const char *const CS[10] = {"Off", "CRT", "VHS", "Edges", "Emboss", "Halftone", "LED", "Solarize",
-                                           "Swap", "Motion"};
-        return CS[v];
-    }
     case ST_CSEG: {
         static const char *const SG[13] = {"Off", "Tunnel", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"};
         return SG[v];
