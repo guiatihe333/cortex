@@ -204,7 +204,10 @@ static int store_migrate_set(void)
     if (got < 8)
         return 0;
     memcpy(&magic, store_old, 4), memcpy(&n, store_old + 4, 4);
-    if (magic != SET_MAGIC || (n != ST_N - 11 && n != ST_N - 7) || got != (int)(sizeof set - 2u * (ST_N - n)))
+    /* (the fields after the settings lie the same whatever their count, which is even in bytes; only the padding at
+     * the end differs: up to RSV's start must be there) */
+    if (magic != SET_MAGIC || (n != ST_N - 11 && n != ST_N - 7) ||
+        got < (int)(8u + 2u * n + __builtin_offsetof(set_t, rsv) - __builtin_offsetof(set_t, page)))
         return 0;
     set_defaults();
     for (i = 0; i < (int)n; i++) {
@@ -212,7 +215,7 @@ static int store_migrate_set(void)
         if (k >= 0)
             memcpy(&set.par[k], store_old + 8 + 2 * i, 2);
     }
-    memcpy(&set.page, store_old + 8 + 2 * n, sizeof set - __builtin_offsetof(set_t, page));
+    memcpy(&set.page, store_old + 8 + 2 * n, __builtin_offsetof(set_t, rsv) - __builtin_offsetof(set_t, page));
     if (n == ST_N - 11 && set.page >= 21)        /* (past MODULATE: STYLE's three pages before it) */
         set.page = (uint8_t)(set.page + 3);
     else if (n == ST_N - 7 && set.page >= 22)
