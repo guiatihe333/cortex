@@ -556,6 +556,7 @@ static int codec_decode(const uint8_t *p, unsigned n)
  * the others as runs), then the colour blocks in it (Cb then Cr, each so). Decoded into the engine's planes, lent
  * (vs_lend: the clean picture is painted as it is, no effects), and the colour into video_sharp's */
 static uint8_t clean_on;                         /* (the last sharp frame was a clean one: the engine's planes lent) */
+static uint32_t ui_dec_us;                       /* (diagnostics: the last clean frame's decoding) */
 static uint8_t clean_age[900];                   /* (each light block: 255 when it last came, falling: STYLE Motion) */
 static uint32_t clean_rnd = 0x2545F491u;
 static uint32_t clean_rand(void) { clean_rnd ^= clean_rnd << 13, clean_rnd ^= clean_rnd >> 17, clean_rnd ^= clean_rnd << 5; return clean_rnd; }
@@ -1142,8 +1143,10 @@ static void video_ble_poll(uint32_t now)
                 if (video_ble_offset == size && video_ble_sharp == data[0] >> 7) {
                     if (video_ble_sharp && size > 2 && (video_ble_rx[2] & 2u)) {
                         clean_on = 1;            /* (the engine idle from now: its planes the picture's) */
+                        const uint32_t td = plat_ticks24();
                         if (!codec_decode240(video_ble_rx, size))
                             video_ble_bad += 1000u;
+                        ui_dec_us = (plat_ticks24() - td) / 24u;
                     } else if (video_ble_sharp) {
                         clean_off();
                         if (!codec_decode(video_ble_rx, size))
@@ -1200,7 +1203,7 @@ int app_sysex(const uint8_t *p, uint32_t n)      /* (the bytes between F0 and F7
 /* --------------------------------------------------------------------- UI --- */
 static struct {
     uint32_t btn, keys, act_t, msg_until, frame_t, frame_us, frame_n, tap_t[4];
-    uint32_t gen_us, paint_us, lcd_us, gap_ms, gap_max, vsp_us, wait_us;   /* (a frame's parts, averaged: generate, paint, the LCD's
+    uint32_t gen_us, paint_us, lcd_us, gap_ms, gap_max, vsp_us, wait_us, post_us, dec_us;   /* (a frame's parts, averaged: generate, paint, the LCD's
                                                        * waits; the time between frames, its most) */
     char msg[2][24];
     uint8_t hold, mutate, strobe_key, hide_now, ntap;
@@ -2748,7 +2751,7 @@ static void draw_frame(void)                     /* the picture, the bars over i
     const int snap = photo_req && live && !kept;
     static int post_on;
     int b;
-    uint32_t t = plat_ticks24(), lw, pt = 0, tv = 0, tw = 0;
+    uint32_t t = plat_ticks24(), lw, pt = 0, tv = 0, tw = 0, tpost = 0;
     if (image)
         prepare_video_palette();
     lcd_sync();
@@ -2767,8 +2770,11 @@ static void draw_frame(void)                     /* the picture, the bars over i
                 vs_paint(BY[b], BH[b], cv_px);
             if (b == 0)
                 post_on = !kept && post_frame();
-            if (post_on)
+            if (post_on) {
+                const uint32_t tp = plat_ticks24();
                 post_band(BY[b], BH[b]);
+                tpost += plat_ticks24() - tp;
+            }
             tv += plat_ticks24() - t1;
         }
         if (snap) {
@@ -2797,6 +2803,7 @@ static void draw_frame(void)                     /* the picture, the bars over i
     ui.paint_us += ((int32_t)(pt / 24u) - (int32_t)ui.paint_us) / 8;
     ui.vsp_us += ((int32_t)(tv / 24u) - (int32_t)ui.vsp_us) / 8;
     ui.wait_us += ((int32_t)(tw / 24u) - (int32_t)ui.wait_us) / 8;
+    ui.post_us += ((int32_t)(tpost / 24u) - (int32_t)ui.post_us) / 8;
     ui.lcd_us += ((int32_t)(lw / 24u) - (int32_t)ui.lcd_us) / 8;
     if (snap) {
         photo_req = 0;
@@ -2826,6 +2833,18 @@ static void speak(void)
     if (vs_get(ST_VMODE) >= VS_NMODE) {          /* (first: a screen reader's message is cut near 240 characters) */
         const int source = vs_get(ST_VMODE) - VS_NMODE + 1;
         char u2[12];
+        cat_n(t, clean_on ? "Clean 240" : "Sharp 120");
+        cat_n(t, " frame ");
+        vs_itoa((int)(ui.frame_us / 1000u), u2), cat_n(t, u2);
+        cat_n(t, " gen ");
+        vs_itoa((int)(ui.gen_us / 1000u), u2), cat_n(t, u2);
+        cat_n(t, " paint ");
+        vs_itoa((int)(ui.paint_us / 1000u), u2), cat_n(t, u2);
+        cat_n(t, " post ");
+        vs_itoa((int)(ui.post_us / 1000u), u2), cat_n(t, u2);
+        cat_n(t, " dec ");
+        vs_itoa((int)(ui_dec_us / 1000u), u2), cat_n(t, u2);
+        cat_n(t, " ms. ");
         cat_n(t, "Video frames ");
         vs_itoa((int)video_rx.frames, u2);
         cat_n(t, u2);
