@@ -177,6 +177,58 @@ static set_t set;
 static scenes_t scn;
 static uint8_t set_dirty, scn_dirty;
 
+/* the store before CAMERA 240's four settings (ST_CSTYLE .. ST_CSEG, between DELAY and the react slots): the same
+ * objects with four settings fewer, carried over (the new ones at their defaults) */
+#define ST_NEW_AT ST_CSTYLE
+#define ST_NEW_N 4
+static uint8_t video_ble_rx[VLINK_CODEC_MAX] PLAT_POOL;          /* (a frame coming in: 60 x 60 RGB332, or coded;
+                                                  * at the start, the store's old objects read for carrying over) */
+#define store_old video_ble_rx
+_Static_assert(VLINK_CODEC_MAX >= PLAT_STORE_MAX, "the old objects fit");
+static int old_index(int i) { return i < ST_NEW_AT ? i : i + ST_NEW_N; }
+static void set_defaults(void);
+static int store_migrate_set(void)
+{
+    const int got = plat_store_load(OBJ_SET, store_old, sizeof store_old);
+    uint32_t magic, n;
+    int i;
+    if (got < 8)
+        return 0;
+    memcpy(&magic, store_old, 4), memcpy(&n, store_old + 4, 4);
+    if (magic != SET_MAGIC || n != ST_N - ST_NEW_N || got != (int)(sizeof set - 2u * ST_NEW_N))
+        return 0;
+    set_defaults();
+    for (i = 0; i < (int)n; i++)
+        memcpy(&set.par[old_index(i)], store_old + 8 + 2 * i, 2);
+    memcpy(&set.page, store_old + 8 + 2 * n, sizeof set - __builtin_offsetof(set_t, page));
+    if (set.page >= 21)                          /* (a page past MODULATE: one on, CAMERA 240 came before it) */
+        set.page++;
+    set.n = ST_N;
+    set_dirty = 1;
+    return 1;
+}
+static int store_migrate_scenes(void)
+{
+    const int got = plat_store_load(OBJ_SCENES, store_old, sizeof store_old);
+    uint32_t magic, n, used;
+    int s, i;
+    if (got < 12)
+        return 0;
+    memcpy(&magic, store_old, 4), memcpy(&n, store_old + 4, 4), memcpy(&used, store_old + 8, 4);
+    if (magic != SET_MAGIC || n != ST_N - ST_NEW_N || got < (int)(12u + NSCENE * n))
+        return 0;
+    memset(&scn, 0, sizeof scn);
+    scn.magic = SET_MAGIC, scn.n = ST_N, scn.used = used;
+    for (s = 0; s < NSCENE; s++) {
+        for (i = 0; i < ST_N; i++)               /* (the new ones: their defaults, over their low ends) */
+            scn.par[s][i] = (uint8_t)(vs_par_info(i)->def - vs_par_info(i)->lo);
+        for (i = 0; i < (int)n; i++)
+            scn.par[s][old_index(i)] = store_old[12 + s * n + i];
+    }
+    scn_dirty = 1;
+    return 1;
+}
+
 static void set_defaults(void)
 {
     int k;
@@ -305,7 +357,6 @@ static struct {
 static volatile uint8_t video_ble_write, video_ble_read, video_ble_mode;
 static uint16_t video_ble_offset;
 static uint8_t video_ble_id, video_ble_kind, video_ble_front;
-static uint8_t video_ble_rx[VLINK_CODEC_MAX] PLAT_POOL;          /* (a frame coming in: 60 x 60 RGB332, or coded) */
 static uint8_t video_ble_pixels[1][VLINK_VIDEO_SIDE * VLINK_VIDEO_SIDE] PLAT_POOL;   /* (one: a frame copied in whole) */
 static uint8_t video_sharp[VLINK_HQ_BYTES] PLAT_POOL;            /* (the sharp picture, decoded) */
 static uint8_t video_ble_hq[2], video_ble_sharp;
@@ -485,6 +536,9 @@ static int codec_decode(const uint8_t *p, unsigned n)
  * the others as runs), then the colour blocks in it (Cb then Cr, each so). Decoded into the engine's planes, lent
  * (vs_lend: the clean picture is painted as it is, no effects), and the colour into video_sharp's */
 static uint8_t clean_on;                         /* (the last sharp frame was a clean one: the engine's planes lent) */
+static uint8_t clean_age[900];                   /* (each light block: 255 when it last came, falling: STYLE Motion) */
+static uint32_t clean_rnd = 0x2545F491u;
+static uint32_t clean_rand(void) { clean_rnd ^= clean_rnd << 13, clean_rnd ^= clean_rnd >> 17, clean_rnd ^= clean_rnd << 5; return clean_rnd; }
 static int codec_decode240(const uint8_t *p, unsigned n)
 {
     uint8_t *luma = vs_lend(), *cb = video_sharp + VLINK_HQ_LUMA, *cr = cb + 3600;
@@ -503,12 +557,21 @@ static int codec_decode240(const uint8_t *p, unsigned n)
         cstep[k] = s < 1 ? 1 : s;
     }
     cbits.p = p + 146, cbits.pos = 0, cbits.end = (n - 146u) * 8u, cbits.bad = 0;
+    /* MOSH: a block's news dropped (what was there stays, the motion smears over it), more on the beat; CORRUPT: a
+     * block put elsewhere or flattened to its mean; TRAILS: the news blended over what was there */
+    const float beat = vs_beat();
+    const uint32_t mosh = (uint32_t)((float)vs_eff(ST_VMOSH) * (0.5f + 0.5f * beat) * 655.36f * 0.9f),
+                   corrupt = (uint32_t)((float)vs_eff(ST_VCORRUPT) * (0.3f + beat) * 655.36f * 0.15f);
+    const int tr = vs_eff(ST_VTRAIL), keep = tr * tr * 220 / 10000;
+    for (k = 0; k < 900; k++)
+        clean_age[k] = (uint8_t)(clean_age[k] > 24 ? clean_age[k] - 24 : 0);
     for (b = 0; b < 900; b++) {
-        const int by = b / 30, bx = b - by * 30;
+        int by = b / 30, bx = b - by * 30;
         float F[64], T[64];
-        int pos = 0, x, y, u, nz;
+        int pos = 0, x, y, u, nz, flat = 0;
         if (!(p[4 + (b >> 3)] >> (b & 7) & 1u))
             continue;
+        clean_age[b] = 255;
         memset(F, 0, sizeof F);
         dc += cb_seg();
         F[0] = (float)(dc * step[0]);
@@ -539,7 +602,30 @@ static int codec_decode240(const uint8_t *p, unsigned n)
                 for (u = 0; u < 8; u++)
                     s += idct_t[y][u] * T[u * 8 + x];
                 v = (int)(s + 0.5f);
-                luma[(by * 8 + y) * 240 + bx * 8 + x] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+                T[y * 8 + x] = (float)(v < 0 ? 0 : v > 255 ? 255 : v);   /* (the block decoded, before it goes) */
+            }
+        if (mosh && (clean_rand() & 0xFFFFu) < mosh)
+            continue;                            /* MOSH: dropped */
+        if (corrupt && (clean_rand() & 0xFFFFu) < corrupt) {
+            const uint32_t r = clean_rand();
+            if (r & 1u) {                        /* CORRUPT: somewhere else */
+                by = (int)(r >> 8 & 0xFFu) % 30, bx = (int)(r >> 16 & 0xFFu) % 30;
+            } else {
+                flat = 1;                        /* ... or its mean */
+            }
+        }
+        if (flat) {
+            float m = 0.0f;
+            for (k = 0; k < 64; k++)
+                m += T[k];
+            for (k = 0; k < 64; k++)
+                T[k] = m * (1.0f / 64.0f);
+        }
+        for (y = 0; y < 8; y++)
+            for (x = 0; x < 8; x++) {
+                uint8_t *q = &luma[(by * 8 + y) * 240 + bx * 8 + x];
+                const int v = (int)T[y * 8 + x];
+                *q = (uint8_t)(keep ? (*q * keep + v * (256 - keep)) >> 8 : v);   /* TRAILS */
             }
     }
     for (b = 0; b < 225; b++) {
@@ -595,26 +681,41 @@ static void clean_off(void)                      /* (the engine's planes back to
     }
 }
 
-/* the clean picture painted, with the effects that need no field (a row or a pixel at a time): CHROMA's map (KEY,
- * COLORAMA's fold, POSTER, BRIGHT, INVERT, STROBE: vs_lut), COLORAMA's palette colour, PULSE's flash, SYNC's and
- * SLICE's row shifts, RGB's split, MIRROR (Mirror, Flip, Quad, Kaleido), PIXEL's blocks, TRANSFORM's zoom, turn and
- * shift (the picture tiled). Straight (no MIRROR, PIXEL, TRANSFORM): the colour between the four nearest of the 60 x
- * 60; else the nearest. To the screen through tables (each plane's share, swapped: no clamps). RAM code */
+/* the clean picture painted, with the effects that need no field (a row or a pixel at a time):
+ *  - where each pixel comes from: TRANSFORM (zoom, turn, shift; the picture tiled), FLOW (a wave), LENS and SWIRL
+ *    (MODULATE's), SEGMENTS (a tunnel; a kaleidoscope of 2 .. 12), FEEDBACK (a zoom blur to the middle, on the beat),
+ *    then MIRROR (Mirror, Flip, Quad, Kaleido) and PIXEL's blocks. A map of 60 x 60 points a frame, the pixels between
+ *    (in video_sharp's light, unused by the clean picture);
+ *  - the light: LAYER Osc over it (OSC's waves, BLEND, MIX), PULSE, CHROMA's map (KEY, COLORAMA's fold, POSTER,
+ *    BRIGHT, INVERT, STROBE), SORT's ramps along the row;
+ *  - the colour: HUE turning it (above 10), SATURATION, COLORAMA's palette colour;
+ *  - STYLE: CRT, VHS, Edges, Emboss, Halftone, LED, Solarize, Swap, Motion (its AMOUNT);
+ *  - the row: SYNC's and SLICE's shifts, RGB's split.
+ * To the screen through tables (each plane's share, swapped: no clamps). RAM code: no calls */
+enum { CS_OFF, CS_CRT, CS_VHS, CS_EDGES, CS_EMBOSS, CS_HALF, CS_LED, CS_SOLAR, CS_SWAP, CS_MOTION };
 struct clean_fx {
-    const uint8_t *L, *cb, *cr, *lut, *qx, *j0, *wx;
+    const uint8_t *L, *cb, *cr, *lut, *qx, *j0, *wx, *age, *sin256, *hpos;
+    const int16_t *mu, *mv;                      /* (the map: 60 x 60, 1/16 pixel; 0: none) */
     const uint16_t *pal, *TR, *TG, *TB;
-    int pm, neg, gain, mirror, ps, straight;
-    int32_t a, b, cx, cy;                        /* (TRANSFORM: u = cx + dx a - dy b, v = cy + dx b + dy a; 16.16) */
+    int pm, neg, gain, mirror, ps, mapped, style, amt, blur;
+    int hc, hs;                                  /* (the colour turned and saturated: 1/256) */
+    int osc, blend, mix, oa, ob, ofreq2, ocomb, oshape, ring;   /* (LAYER Osc: phase steps a pixel across and down) */
+    int32_t ophase;
+    int halfc;                                   /* (Halftone's, LED's cell) */
+    int vhs_band, vhs_h;                         /* (VHS: the tracking band's top, height) */
+    const int8_t *vhs_jit;
 };
 static uint16_t clean_tr[768], clean_tg[768], clean_tb[768];
-static uint8_t clean_j0[240], clean_wx[240], clean_qx[240];
-static PLAT_RAM_CODE void clean_row(const struct clean_fx *f, int y, int o, int spr, int16_t *vb, int16_t *vr,
-                                    uint16_t *row, uint16_t *out)
+static uint8_t clean_j0[240], clean_wx[240], clean_qx[240], clean_sin[256], clean_hpos[240];
+static int8_t clean_jit[240];
+static PLAT_RAM_CODE void clean_row(const struct clean_fx *f, int y, int o, int spr, int16_t *ru, int16_t *rv,
+                                    int16_t *vb, int16_t *vr, uint8_t *ly, uint16_t *row, uint16_t *out)
 {
     const uint16_t *TR = f->TR, *TG = f->TG, *TB = f->TB;
-    const uint8_t *lut = f->lut;
+    const uint8_t *lut = f->lut, *L = f->L;
+    const int style = f->style, amt = f->amt;
     int x;
-    if (f->straight) {                           /* (the colour's row between its two nearest 60 x 60 rows) */
+    {                                            /* the colour's row between its two nearest 60 x 60 rows; the map's */
         const int fy = y * 64 - 96, i0 = fy < 0 ? 0 : fy >> 8, i1 = i0 + 1 < 60 ? i0 + 1 : 59, wy = fy < 0 ? 0 : fy & 255;
         const uint8_t *b0 = f->cb + i0 * 60, *b1 = f->cb + i1 * 60, *r0 = f->cr + i0 * 60, *r1 = f->cr + i1 * 60;
         for (x = 0; x < 60; x++) {
@@ -622,50 +723,166 @@ static PLAT_RAM_CODE void clean_row(const struct clean_fx *f, int y, int o, int 
             vr[x] = (int16_t)((((int)r0[x] - 128) * (256 - wy) + ((int)r1[x] - 128) * wy) >> 8);
         }
         vb[60] = vb[59], vr[60] = vr[59];
+        if (f->mapped) {
+            const int16_t *u0 = f->mu + i0 * 60, *u1 = f->mu + i1 * 60, *v0 = f->mv + i0 * 60, *v1 = f->mv + i1 * 60;
+            for (x = 0; x < 60; x++) {
+                ru[x] = (int16_t)((u0[x] * (256 - wy) + u1[x] * wy) >> 8);
+                rv[x] = (int16_t)((v0[x] * (256 - wy) + v1[x] * wy) >> 8);
+            }
+            ru[60] = ru[59], rv[60] = rv[59];
+        }
     }
     {
-        int32_t u = f->cx + (-120) * f->a - (y - 120) * f->b, v = f->cy + (-120) * f->b + (y - 120) * f->a;
-        for (x = 0; x < 240; x++, u += f->a, v += f->b) {
-            int px = x, py = y, cb, cr, Y, r, g, bl;
-            if (!f->straight) {
-                px = u >> 16, py = v >> 16;
+        const int vhs_in = style == CS_VHS && y >= f->vhs_band && y < f->vhs_band + f->vhs_h;
+        const int hcell = f->halfc, hcy = y - f->hpos[y] + hcell / 2, dy = y - 120;
+        int32_t ph = f->ophase + y * f->ob, ph2 = f->ophase + y * f->oa;   /* (OSC 2 square to the first) */
+        for (x = 0; x < 240; x++, ph += f->oa, ph2 -= f->ob) {
+            int px = x, py = y, Y, cb, cr, r, g, bl, j, w;
+            if (style == CS_HALF || style == CS_LED) {   /* (the cell's middle stands for it) */
+                px = x - f->hpos[x] + hcell / 2, py = hcy;
+                px = px > 239 ? 239 : px, py = py > 239 ? 239 : py;
+            } else if (f->mapped) {
+                const int jj = f->j0[x], ww = f->wx[x];
+                px = ((ru[jj] * (256 - ww) + ru[jj + 1] * ww) >> 8) >> 4;
+                py = ((rv[jj] * (256 - ww) + rv[jj + 1] * ww) >> 8) >> 4;
                 while (px < 0) px += 240;
                 while (px >= 240) px -= 240;
                 while (py < 0) py += 240;
                 while (py >= 240) py -= 240;
-                if (f->mirror == 1 || f->mirror >= 3)
-                    px = px >= 120 ? 239 - px : px;
-                if (f->mirror == 2 || f->mirror >= 3)
-                    py = py >= 120 ? 239 - py : py;
-                if (f->mirror == 4 && px > py) {
-                    const int s = px;
-                    px = py, py = s;
-                }
-                px = f->qx[px], py = f->qx[py];
+            }
+            if (f->mirror == 1 || f->mirror >= 3)
+                px = px >= 120 ? 239 - px : px;
+            if (f->mirror == 2 || f->mirror >= 3)
+                py = py >= 120 ? 239 - py : py;
+            if (f->mirror == 4 && px > py) {
+                const int s = px;
+                px = py, py = s;
+            }
+            px = f->qx[px], py = f->qx[py];
+            if (style == CS_VHS)                 /* (VHS: the colour a little behind the light) */
+                j = (px >> 2) - 1 - amt / 40, j = j < 0 ? 0 : j, w = 0;
+            else
+                j = px >> 2, w = 0;
+            if (!f->mapped && style != CS_VHS && !f->mirror && f->ps <= 1 && style != CS_HALF && style != CS_LED)
+                j = f->j0[x], w = f->wx[x];       /* (straight: the colour between its nearest) */
+            cb = (vb[j] * (256 - w) + vb[j + 1] * w) >> 8;
+            cr = (vr[j] * (256 - w) + vr[j + 1] * w) >> 8;
+            if (py != y) {                       /* (another row: the colour's nearest there) */
                 cb = (int)f->cb[(py >> 2) * 60 + (px >> 2)] - 128;
                 cr = (int)f->cr[(py >> 2) * 60 + (px >> 2)] - 128;
-            } else {
-                const int j = f->j0[x], w = f->wx[x];
-                cb = (vb[j] * (256 - w) + vb[j + 1] * w) >> 8;
-                cr = (vr[j] * (256 - w) + vr[j + 1] * w) >> 8;
             }
-            Y = (f->L[py * 240 + px] * f->gain) >> 8;
-            Y = lut[Y > 255 ? 255 : Y];
-            if (!Y) {
+            Y = L[py * 240 + px];
+            if (f->blur) {                       /* FEEDBACK: three more steps to the middle */
+                const int kx = ((120 - px) * f->blur) >> 8, ky = ((120 - py) * f->blur) >> 8;
+                Y = (Y + L[(py + ky) * 240 + px + kx] + L[(py + 2 * ky) * 240 + px + 2 * kx] +
+                     L[(py + 3 * ky) * 240 + px + 3 * kx]) >> 2;
+            }
+            if (style == CS_EDGES || style == CS_EMBOSS) {
+                const int xl = px > 0 ? px - 1 : 0, xr = px < 239 ? px + 1 : 239, yu = py > 0 ? py - 1 : 0,
+                          yd = py < 239 ? py + 1 : 239;
+                if (style == CS_EDGES) {
+                    int e = L[py * 240 + xr] - L[py * 240 + xl], e2 = L[yd * 240 + px] - L[yu * 240 + px];
+                    e = (e < 0 ? -e : e) + (e2 < 0 ? -e2 : e2);
+                    e = e * (2 + amt / 12);
+                    Y = (Y * (100 - amt) / 400) + (e > 255 ? 255 : e);
+                } else {
+                    Y = 128 + ((L[yd * 240 + xr] - L[yu * 240 + xl]) * (1 + amt / 20));
+                    cb = cb * (100 - amt) / 100, cr = cr * (100 - amt) / 100;
+                }
+                Y = Y < 0 ? 0 : Y > 255 ? 255 : Y;
+            }
+            if (f->osc) {                        /* LAYER Osc: OSC's waves, BLEND, MIX */
+                int ov, ov2;
+                if (f->oshape == 5) {            /* (Rings: a zone plate, the distance squared) */
+                    const int ddx = x - 120;
+                    ov = f->sin256[((((uint32_t)(ddx * ddx + dy * dy) * (uint32_t)f->ring) >> 8) +
+                                    (uint32_t)(f->ophase >> 16)) & 255u];
+                } else {
+                    const int k = (ph >> 16) & 255;
+                    ov = f->oshape == 1 ? (k < 128 ? k * 2 : 511 - k * 2) : f->oshape == 2 ? k :
+                         f->oshape == 3 ? (k < 128 ? 255 : 0) : f->sin256[k];
+                }
+                if (f->ofreq2) {
+                    ov2 = f->sin256[(ph2 >> 16) & 255];
+                    ov = f->ocomb == 1 ? ov * ov2 >> 8 : f->ocomb == 2 ? (ov > ov2 ? ov - ov2 : ov2 - ov) :
+                         (ov + ov2) >> 1;
+                }
+                if (f->ocomb == 4)               /* (Field: the camera's light bends it) */
+                    ov = f->sin256[(ov + Y) & 255];
+                ov = ov * f->mix >> 8;
+                switch (f->blend) {
+                case 1: Y = 255 - (((255 - Y) * (255 - ov)) >> 8); break;   /* Screen */
+                case 2: Y = Y > ov ? Y : ov; break;                         /* Max */
+                case 3: Y = Y > ov ? Y - ov : ov - Y; break;                /* Difference */
+                case 4: Y = Y * (ov + 256 - f->mix) >> 8; break;            /* Mask: the waves let it through */
+                default: Y = Y + ov; break;                                 /* Add */
+                }
+                Y = Y > 255 ? 255 : Y;
+            }
+            if (style == CS_SOLAR)               /* (Solarize: the light over the half turned back) */
+                Y = Y < 128 ? Y : Y + ((255 - 2 * Y) * amt) / 100;
+            if (vhs_in)                          /* (VHS: the tracking band's noise) */
+                Y += (int)((x * 2654435761u + y * 40503u + (uint32_t)f->ophase) >> 26) - 32;
+            Y = (Y * f->gain) >> 8;
+            ly[x] = (uint8_t)(Y < 0 ? 0 : Y > 255 ? 255 : Y);
+            vb[61 + x] = (int16_t)cb, vr[61 + x] = (int16_t)cr;   /* (each pixel's colour, after the row's 61) */
+        }
+    }
+    for (x = 0; x < 240; x++) {
+        int Y = lut[ly[x]], cb = vb[61 + x], cr = vr[61 + x], r, g, bl;
+        if (!Y) {
+            row[x] = 0;
+            continue;
+        }
+        if (f->neg)
+            cb = -cb, cr = -cr;
+        {                                        /* (HUE's turn, SATURATION) */
+            const int c2 = (cb * f->hc - cr * f->hs) >> 8, r2 = (cb * f->hs + cr * f->hc) >> 8;
+            cb = c2, cr = r2;
+        }
+        if (style == CS_MOTION && amt) {         /* (Motion: what moved lit and tinted) */
+            const int a = f->age[(y >> 3) * 30 + (x >> 3)] * amt / 100;
+            Y = Y + (((255 - Y) * a) >> 9);
+            cb = cb * (256 - a) >> 8, cr = cr + (a >> 2);
+        }
+        r = Y + ((359 * cr) >> 8), g = Y - ((88 * cb + 183 * cr) >> 8), bl = Y + ((454 * cb) >> 8);
+        if (f->pm || style == CS_EDGES) {        /* COLORAMA (Edges: the palette's neon) */
+            const int pm = style == CS_EDGES ? 256 : f->pm;
+            const uint32_t P = f->pal[Y];
+            const int pr = (int)(P >> 11) << 3, pg = (int)(P >> 5 & 63u) << 2, pb = (int)(P & 31u) << 3;
+            r += ((pr - r) * pm) >> 8, g += ((pg - g) * pm) >> 8, bl += ((pb - bl) * pm) >> 8;
+        }
+        if (style == CS_SWAP) {                  /* (Swap: the planes round, or red and blue) */
+            const int s = r;
+            if (amt >= 50)
+                r = g, g = bl, bl = s;
+            else
+                r = bl, bl = s;
+        } else if (style == CS_CRT) {            /* (CRT: the scanlines, the phosphors' triads) */
+            const int k = x % 3, d = amt * 2;
+            if (y & 1)
+                r = r * (256 - d) >> 8, g = g * (256 - d) >> 8, bl = bl * (256 - d) >> 8;
+            if (k)
+                r = r * (256 - d / 2) >> 8;
+            if (k != 1)
+                g = g * (256 - d / 2) >> 8;
+            if (k != 2)
+                bl = bl * (256 - d / 2) >> 8;
+        } else if (style == CS_HALF || style == CS_LED) {   /* (a round dot in each cell: its size the light's) */
+            const int c = f->halfc, dx = f->hpos[x] - c / 2, dy = f->hpos[y] - c / 2,
+                      rad = style == CS_LED ? c * c * 3 / 16 : (ly[x] * c * c) >> 9;
+            if (dx * dx + dy * dy > rad) {
                 row[x] = 0;
                 continue;
             }
-            if (f->neg)
-                cb = -cb, cr = -cr;
-            r = Y + ((359 * cr) >> 8), g = Y - ((88 * cb + 183 * cr) >> 8), bl = Y + ((454 * cb) >> 8);
-            if (f->pm) {
-                const uint32_t P = f->pal[Y];
-                const int pr = (int)(P >> 11) << 3, pg = (int)(P >> 5 & 63u) << 2, pb = (int)(P & 31u) << 3;
-                r += ((pr - r) * f->pm) >> 8, g += ((pg - g) * f->pm) >> 8, bl += ((pb - bl) * f->pm) >> 8;
-            }
-            row[x] = (uint16_t)(TR[r + 256] | TG[g + 256] | TB[bl + 256]);
         }
+        r = r < -256 ? -256 : r > 511 ? 511 : r;
+        g = g < -256 ? -256 : g > 511 ? 511 : g;
+        bl = bl < -256 ? -256 : bl > 511 ? 511 : bl;
+        row[x] = (uint16_t)(TR[r + 256] | TG[g + 256] | TB[bl + 256]);
     }
+    if (style == CS_VHS)                         /* (VHS: each row's wobble) */
+        o += f->vhs_jit[y];
     {                                            /* SYNC's and SLICE's shift, RGB's split */
         int xg = -o, xr, xb;
         while (xg < 0) xg += 240;
@@ -691,12 +908,27 @@ static PLAT_RAM_CODE void clean_row(const struct clean_fx *f, int y, int o, int 
     }
 }
 static struct clean_fx cfx;
-static float clean_ang, clean_offx, clean_offy;
-static void clean_frame_fx(void)                 /* (once a frame: the effects' settings, TRANSFORM moving on) */
+static float clean_ang, clean_offx, clean_offy, clean_ophase;
+static float clean_atan2(float y, float x)       /* (within a hundredth of a radian) */
+{
+    const float ax = fm_fabsf(x), ay = fm_fabsf(y), mx = fm_maxf(ax, ay), mn = fm_minf(ax, ay);
+    float a, s, r;
+    if (mx < 1e-6f)
+        return 0.0f;
+    a = mn / mx, s = a * a;
+    r = ((-0.0464964749f * s + 0.15931422f) * s - 0.327622764f) * s * a + a;
+    if (ay > ax) r = 1.57079637f - r;
+    if (x < 0.0f) r = 3.14159274f - r;
+    return y < 0.0f ? -r : r;
+}
+static void clean_frame_fx(void)                 /* (once a frame: the effects' settings, the map, all moving on) */
 {
     const int zoom = vs_eff(ST_VXZOOM), rot = vs_eff(ST_VXROT), sh = vs_eff(ST_VXSHX), tgt = vs_get(ST_VXTGT),
-              pulse = vs_eff(ST_VPULSE), fold = vs_eff(ST_VFOLD);
+              pulse = vs_eff(ST_VPULSE), fold = vs_eff(ST_VFOLD), flow = vs_eff(ST_VFLOW), lens = vs_eff(ST_MLENS),
+              swirl = vs_eff(ST_MSWIRL), seg = vs_eff(ST_CSEG), feed = vs_eff(ST_VFEED), hue = vs_eff(ST_VHUE),
+              sat = vs_eff(ST_CSAT);
     const int moving = tgt != 1 && (zoom || rot || sh);
+    const float beat = vs_beat(), t = vs_clock();
     int i;
     if (!clean_tr[767]) {
         for (i = 0; i < 768; i++) {
@@ -710,36 +942,110 @@ static void clean_frame_fx(void)                 /* (once a frame: the effects' 
             clean_j0[i] = (uint8_t)(fx < 0 ? 0 : fx >> 8);
             clean_wx[i] = (uint8_t)(fx < 0 ? 0 : fx & 255);
         }
+        for (i = 0; i < 256; i++)
+            clean_sin[i] = (uint8_t)(127.5f + 127.5f * fm_sinf((float)i * (FM_TWO_PI / 256.0f)));
     }
     cfx.L = vs_lend(), cfx.cb = video_sharp + VLINK_HQ_LUMA, cfx.cr = cfx.cb + 3600;
     cfx.lut = vs_lut(), cfx.pal = vs_pal(), cfx.qx = clean_qx, cfx.j0 = clean_j0, cfx.wx = clean_wx;
-    cfx.TR = clean_tr, cfx.TG = clean_tg, cfx.TB = clean_tb;
+    cfx.TR = clean_tr, cfx.TG = clean_tg, cfx.TB = clean_tb, cfx.age = clean_age, cfx.sin256 = clean_sin;
     cfx.pm = fold >= 40 ? 256 : fold * 256 / 40;
     cfx.neg = vs_eff(ST_VINVERT) >= 50;
-    cfx.gain = 256 + (int)(120.0f * vs_beat() * (float)pulse * 0.01f);   /* (PULSE: the beat's flash) */
+    cfx.gain = 256 + (int)(120.0f * beat * (float)pulse * 0.01f);   /* (PULSE: the beat's flash) */
     cfx.mirror = vs_eff(ST_VMIRROR);
     cfx.ps = vs_pixel_size();
     for (i = 0; i < 240; i++)
         clean_qx[i] = (uint8_t)(cfx.ps > 1 ? i / (2 * cfx.ps) * (2 * cfx.ps) : i);
-    if (moving) {                                /* (ZOOM: 2^(zoom / 100) nearer; ROTATE turning, up to 2.4 rad a
-                                                  * second; SHIFT along Osc's ANGLE, 2 pixels a frame at 100) */
-        const float s = fm_exp2f(-(float)zoom * 0.01f), an = (float)vs_eff(ST_VOANGLE) * (FM_PI / 100.0f);
-        clean_ang += (float)rot * 0.0008f;
-        clean_offx += (float)sh * 0.02f * fm_cosf(an), clean_offy += (float)sh * 0.02f * fm_sinf(an);
-        while (clean_offx < 0.0f) clean_offx += 240.0f;
-        while (clean_offx >= 240.0f) clean_offx -= 240.0f;
-        while (clean_offy < 0.0f) clean_offy += 240.0f;
-        while (clean_offy >= 240.0f) clean_offy -= 240.0f;
-        cfx.a = (int32_t)(s * fm_cosf(clean_ang) * 65536.0f), cfx.b = (int32_t)(s * fm_sinf(clean_ang) * 65536.0f);
-        cfx.cx = (int32_t)((120.0f + clean_offx) * 65536.0f), cfx.cy = (int32_t)((120.0f + clean_offy) * 65536.0f);
-    } else {
-        cfx.a = 65536, cfx.b = 0, cfx.cx = 120 * 65536, cfx.cy = 120 * 65536;
+    cfx.style = vs_get(ST_CSTYLE), cfx.amt = vs_eff(ST_CAMT);
+    cfx.halfc = 4 + cfx.amt / 10;
+    for (i = 0; i < 240; i++)
+        clean_hpos[i] = (uint8_t)(i % cfx.halfc);
+    cfx.hpos = clean_hpos;
+    cfx.blur = feed > 0 ? (int)((float)feed * (0.25f + 0.75f * beat) * 0.25f) : 0;   /* (1/256 of the way a step) */
+    {                                            /* HUE turns the camera's colour above 10, SATURATION */
+        static float hue_ang;
+        const float s = (float)sat * 0.01f;
+        if (hue > 10)
+            hue_ang += (float)(hue - 10) * 0.002f;
+        cfx.hc = (int)(256.0f * s * fm_cosf(hue_ang)), cfx.hs = (int)(256.0f * s * fm_sinf(hue_ang));
     }
-    cfx.straight = !moving && !cfx.mirror && cfx.ps <= 1;
+    {                                            /* LAYER Osc over the camera */
+        const float an = (float)vs_eff(ST_VOANGLE) * (FM_PI / 100.0f),
+                    fr = 1.0f + (float)vs_eff(ST_VOFREQ) * 0.4f;   /* (cycles across the screen) */
+        cfx.osc = vs_get(ST_VLAYER) == VS_OSC + 1;
+        cfx.blend = vs_get(ST_VBLEND), cfx.mix = vs_eff(ST_VMIX) * 256 / 100;
+        cfx.oshape = vs_get(ST_VOSHAPE), cfx.ocomb = vs_get(ST_VOCOMB);
+        cfx.ofreq2 = vs_eff(ST_VOFREQ2);
+        cfx.oa = (int)(fm_cosf(an) * fr * 65536.0f * 256.0f / 240.0f);
+        cfx.ob = (int)(fm_sinf(an) * fr * 65536.0f * 256.0f / 240.0f);
+        clean_ophase += (float)vs_eff(ST_VOSPEED) * 0.08f;
+        cfx.ring = 1 + vs_eff(ST_VOFREQ) / 4;
+        cfx.ophase = (int32_t)(clean_ophase * 65536.0f);
+    }
+    if (cfx.style == CS_VHS) {                   /* VHS: the rows' wobble, the tracking band rolling down */
+        static int band;
+        for (i = 0; i < 240; i++)
+            clean_jit[i] = (int8_t)(((int)(clean_rand() & 7u) - 3) * cfx.amt / 50);
+        band = (band + 3) % 300;
+        cfx.vhs_band = band - 30, cfx.vhs_h = 6 + cfx.amt / 6;
+        for (i = cfx.vhs_band; i < cfx.vhs_band + cfx.vhs_h; i++)
+            if (i >= 0 && i < 240)
+                clean_jit[i] = (int8_t)(clean_jit[i] * 3 + 8);
+        cfx.vhs_jit = clean_jit;
+    }
+    cfx.mapped = moving || flow || lens || swirl || seg;
+    if (cfx.mapped) {                            /* the map: where each of 60 x 60 points comes from */
+        int16_t *mu = (int16_t *)(void *)video_sharp, *mv = mu + 3600;
+        const float s = fm_exp2f(-(float)zoom * 0.01f), an = (float)vs_eff(ST_VOANGLE) * (FM_PI / 100.0f),
+                    fa = (float)flow * 0.08f * (0.5f + vs_level(2)), sw = (float)swirl * 0.03f, le = (float)lens * 0.008f;
+        int gx, gy;
+        float ca, sa;
+        if (moving) {
+            clean_ang += (float)rot * 0.0008f;
+            clean_offx += (float)sh * 0.02f * fm_cosf(an), clean_offy += (float)sh * 0.02f * fm_sinf(an);
+            while (clean_offx < 0.0f) clean_offx += 240.0f;
+            while (clean_offx >= 240.0f) clean_offx -= 240.0f;
+            while (clean_offy < 0.0f) clean_offy += 240.0f;
+            while (clean_offy >= 240.0f) clean_offy -= 240.0f;
+        }
+        ca = (moving ? s : 1.0f) * fm_cosf(moving ? clean_ang : 0.0f);
+        sa = (moving ? s : 1.0f) * fm_sinf(moving ? clean_ang : 0.0f);
+        for (gy = 0; gy < 60; gy++)
+            for (gx = 0; gx < 60; gx++) {
+                float dx = (float)(gx * 4 + 2) - 120.0f, dy = (float)(gy * 4 + 2) - 120.0f, u, v;
+                if (seg == 1) {                  /* SEGMENTS Tunnel: around and in, moving */
+                    const float r = fm_sqrtf(dx * dx + dy * dy) + 4.0f, a = clean_atan2(dy, dx);
+                    u = a * (240.0f / FM_TWO_PI) + 120.0f, v = 2400.0f / r + t * 20.0f;
+                    dx = u - 120.0f, dy = v - 120.0f;
+                } else if (seg >= 2) {           /* SEGMENTS 2 .. 12: a kaleidoscope, its wedge folded */
+                    const float r = fm_sqrtf(dx * dx + dy * dy), w = FM_TWO_PI / (float)seg;
+                    float a = clean_atan2(dy, dx) + FM_PI;
+                    a -= w * fm_floorf(a / w);
+                    if (a > w * 0.5f)
+                        a = w - a;
+                    dx = r * fm_cosf(a), dy = r * fm_sinf(a);
+                }
+                if (le != 0.0f || sw != 0.0f) {  /* LENS (pushed out, pulled in), SWIRL (turned, most in the middle) */
+                    const float r2 = (dx * dx + dy * dy) * (1.0f / 14400.0f), k = 1.0f + le * (r2 - 0.4f);
+                    const float rr = fm_minf(fm_sqrtf(r2), 1.0f), th = sw * (1.0f - rr) * (1.0f - rr);
+                    const float c = fm_cosf(th), si = fm_sinf(th), nx = (dx * c - dy * si) * k, ny = (dx * si + dy * c) * k;
+                    dx = nx, dy = ny;
+                }
+                u = 120.0f + dx * ca - dy * sa + (moving ? clean_offx : 0.0f);
+                v = 120.0f + dx * sa + dy * ca + (moving ? clean_offy : 0.0f);
+                if (fa != 0.0f) {                /* FLOW: a wave across and down */
+                    u += fa * fm_sinf((float)gy * 0.21f + t * 1.3f);
+                    v += fa * fm_cosf((float)gx * 0.21f - t * 1.1f);
+                }
+                mu[gy * 60 + gx] = (int16_t)fm_clampf(u * 16.0f, -32000.0f, 32000.0f);
+                mv[gy * 60 + gx] = (int16_t)fm_clampf(v * 16.0f, -32000.0f, 32000.0f);
+            }
+        cfx.mu = mu, cfx.mv = mv;
+    }
 }
 static void paint_clean_band(int y0, int h)
 {
-    static int16_t vb[61], vr[61];
+    static int16_t ru[61], rv[61], vb[61 + 240], vr[61 + 240];
+    static uint8_t ly[240];
     static uint16_t row[240];
     int y;
     if (y0 == 0)
@@ -747,7 +1053,7 @@ static void paint_clean_band(int y0, int h)
     for (y = 0; y < h; y++) {
         int o, spr;
         vs_row_fx(y0 + y, &o, &spr);
-        PLAT_FAR(clean_row)(&cfx, y0 + y, o, spr, vb, vr, row, cv_px + y * 240);
+        PLAT_FAR(clean_row)(&cfx, y0 + y, o, spr, ru, rv, vb, vr, ly, row, cv_px + y * 240);
     }
 }
 static volatile uint32_t video_ble_taken, video_ble_full;   /* (diagnostics: packets queued, refused: the queue full) */
@@ -2435,11 +2741,13 @@ void app_init(void)
 {
     int k;
     if (plat_store_load(OBJ_SET, &set, sizeof set) != (int)sizeof set || set.magic != SET_MAGIC || set.n != ST_N)
-        set_defaults();
-    if (plat_store_load(OBJ_SCENES, &scn, sizeof scn) != (int)sizeof scn || scn.magic != SET_MAGIC || scn.n != ST_N) {
-        memset(&scn, 0, sizeof scn);
-        scn.magic = SET_MAGIC, scn.n = ST_N;
-    }
+        if (!store_migrate_set())
+            set_defaults();
+    if (plat_store_load(OBJ_SCENES, &scn, sizeof scn) != (int)sizeof scn || scn.magic != SET_MAGIC || scn.n != ST_N)
+        if (!store_migrate_scenes()) {
+            memset(&scn, 0, sizeof scn);
+            scn.magic = SET_MAGIC, scn.n = ST_N;
+        }
     set.page = (uint8_t)(set.page % NPAGE), set.slot = (uint8_t)(set.slot % VS_NSLOT);
     set.look = (uint8_t)(set.look % NLOOK), set.scene = (uint8_t)(set.scene % NSCENE);
     set.bpm = (uint16_t)clamp(set.bpm, 40, 240);
