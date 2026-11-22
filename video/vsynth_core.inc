@@ -13,8 +13,9 @@ static uint8_t vf[VF_H][VF_W] VS_POOL;
  * picture while the engine is idle */
 static uint8_t vshared[4][VF_H][VF_W] VS_POOL __attribute__((aligned(4)));
 #define vtmp (vshared[0])
-uint8_t *vs_lend(void) { return &vshared[0][0][0]; }
-void vs_unlend(void) { memset(vshared, 0, sizeof vshared); }
+static uint8_t vlent;                            /* (lent: the engine keeps its hands off) */
+uint8_t *vs_lend(void) { vlent = 1; return &vshared[0][0][0]; }
+void vs_unlend(void) { vlent = 0; memset(vshared, 0, sizeof vshared); }
 static uint16_t vpal_screen[256] VS_POOL;     /* screen byte order, prepared once per visual frame */
 static uint16_t vpal[256] VS_POOL;            /* (RGB565, not yet swapped: its planes taken apart) */
 static uint8_t vline[2][240] VS_POOL __attribute__((aligned(4)));         /* (a screen row of the field, smoothed; its colour index) */
@@ -816,6 +817,7 @@ static void vis_react(void)                      /* this frame's settings: the k
     }
 }
 static void vis_draw(int mode, float tr);
+static uint8_t vlight;                           /* (vs_frame_light: no drawing) */
 static void vis_step(int mode)                   /* a frame of the field and the geometry */
 {
     static const float BW[VS_NBAND] = {1.0f, 1.4f, 2.0f, 2.8f, 4.0f, 6.0f};
@@ -826,7 +828,8 @@ static void vis_step(int mode)                   /* a frame of the field and the
     int x, y, k;
     if (!vis_ok) {                               /* (the pool isn't cleared at the start) */
         memset(vf, 0, sizeof vf);
-        memset(vtmp, 0, sizeof vtmp);
+        if (!vlent)
+            memset(vtmp, 0, sizeof vtmp);
         memset(vpart, 0, sizeof vpart);
         memset(vring, 0, sizeof vring);
         memset(vsq, 0, sizeof vsq);
@@ -892,6 +895,22 @@ static void vis_step(int mode)                   /* a frame of the field and the
     }
     for (k = 0; k < VS_NVOX; k++)
         vlv[k] = fm_minf(en_vox_level[k] * vgain * 2.0f, 1.5f);
+    if (vlight) {                                /* (the clean picture's step, vs_frame_light: the clock, the ear,
+                                                  * the beats, the palette, SLICE's and SYNC's rows; nothing drawn,
+                                                  * the planes lent) */
+        vis_slice();
+        if (syn > 0.0f && vband[0] > 0.45f && vband[0] > vbass_prev * 1.4f)
+            for (k = 0; k < 3; k++) {
+                const int y0 = (int)(vis_rnd() * VF_H), n = 2 + (int)(vis_rnd() * 6.0f);
+                const int8_t o = (int8_t)((vis_rnd() - 0.5f) * 40.0f * syn);
+                for (y = y0; y < y0 + n && y < VF_H; y++)
+                    vtear[y] = o;
+            }
+        vbass_prev = vband[0];
+        for (y = 0; y < VF_H; y++)               /* (the tears heal, as vis_band lets them) */
+            vtear[y] = (int8_t)(vtear[y] * 3 / 4);
+        return;
+    }
     if (fb > 0.0f && keep) {                     /* FEEDBACK: the last frame back in, zoomed in and turned (the bass
                                                   * pushes it), fading by TRAILS */
         const float pu = (float)VPAR(VPULSE) * 0.01f, fl = (float)VPAR(VFLOW) * 0.01f,

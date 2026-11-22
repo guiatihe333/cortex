@@ -265,7 +265,8 @@ void vs_reset(uint32_t seed)                     /* every moving part as at the 
     int k;
     vis_ok = 0;                                  /* (the field and the shapes cleared at the next frame) */
     memset(vf, 0, sizeof vf);
-    memset(vtmp, 0, sizeof vtmp);
+    if (!vlent)
+        memset(vtmp, 0, sizeof vtmp);   /* (lent: the clean picture's) */
     vnseg = 0, vpal_key = -1, vhist_w = 0;
     memset(vtear, 0, sizeof vtear);
     memset(vchroma, 0, sizeof vchroma);
@@ -335,9 +336,35 @@ void vs_frame(const vs_in_t *in)
                                                   * the last frame's triggers left them) */
     }
     vis_lut();                                   /* (CHROMA's map now: the objects' colours take it too) */
+    if (vlight)
+        return;
     vobj_frame(vdtk);
     vobj_modulate();                             /* (MODULATE: the objects on the field, before it is painted) */
 }
+
+/* the clean picture's frame (the app paints it itself, the planes lent): the clock, the ear and the beats, the
+ * palette, CHROMA's map, SLICE's and SYNC's rows; nothing drawn. What it paints with: */
+void vs_frame_light(const vs_in_t *in)
+{
+    vlight = 1;
+    vs_frame(in);
+    vlight = 0;
+}
+const uint8_t *vs_lut(void) { return vlut; }      /* the light to CHROMA's (KEY, COLORAMA's fold, POSTER, BRIGHT,
+                                                  * INVERT, STROBE) */
+const uint16_t *vs_pal(void) { return vpal; }     /* COLOUR's palette (RGB565, not swapped) */
+float vs_level(int k) { return (unsigned)k < VS_NBAND ? vband[k] : 0.0f; }
+float vs_clock(void) { return vt; }
+void vs_row_fx(int y, int *o, int *spr)          /* screen row y's shift and RGB split, as vis_band makes them */
+{
+    const float syn = (float)VPAR(VSYNC) * 0.01f, rgb = (float)VPAR(VRGB) * 0.01f;
+    const int fi = y >> 1 < VF_H ? y >> 1 : VF_H - 1,
+              sp = (int)(2.0f * rgb * (1.0f + 3.0f * vband[4] + 2.0f * vband[5]) + 0.5f);
+    *o = 2 * ((int)((syn > 0.0f ? syn * 5.0f * fm_sinf((float)fi * 0.19f + vt * 2.3f) : 0.0f) + 0.5f) + vtear[fi]) +
+         ((fi & 1) ? (int)((float)VPAR(VSLICE) * 0.06f * (vband[3] + vbeat)) : 0);
+    *spr = sp + vchan[fi >> 3];
+}
+int vs_pixel_size(void) { return 1 + (int)((float)VPAR(VPIXEL) * 0.09f * (1.0f + vband[0])); }
 
 void vs_paint(int y0, int h, uint16_t *out)
 {

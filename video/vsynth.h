@@ -106,7 +106,15 @@ void vs_camera(const uint8_t *pic, int sharp);
 /* the engine's four work planes (FEEDBACK's, the camera's) lent whole: 240 x 240 bytes, for a clean picture the app
  * paints itself; no vs_frame / vs_paint meanwhile; vs_unlend clears them (the engine starts from black) */
 uint8_t *vs_lend(void);
-void vs_unlend(void);   /* sharp: vlink.h's VLINK_HQ layout */
+void vs_unlend(void);
+/* meanwhile, the engine's step without drawing, and what the app paints the clean picture with */
+void vs_frame_light(const vs_in_t *in);
+const uint8_t *vs_lut(void);
+const uint16_t *vs_pal(void);
+float vs_level(int band);
+float vs_clock(void);
+void vs_row_fx(int y, int *o, int *spr);
+int vs_pixel_size(void);   /* sharp: vlink.h's VLINK_HQ layout */
 #ifdef VS_HD
 void vs_paint_hd(int S, uint8_t *rgba);           /* (the mirror's) the whole frame at 240 S square, RGBA, instead of
                                                    * vs_paint: the same picture, sharper (vhd.inc) */

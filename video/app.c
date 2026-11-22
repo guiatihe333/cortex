@@ -595,35 +595,110 @@ static void clean_off(void)                      /* (the engine's planes back to
     }
 }
 
-/* the clean picture painted: each screen row its light as it came, its colour between the four nearest of the 60 x 60
- * (bilinear), to the screen through tables (each plane's share of the pixel, its bytes swapped: no clamps). RAM code:
- * the paint's loop */
+/* the clean picture painted, with the effects that need no field (a row or a pixel at a time): CHROMA's map (KEY,
+ * COLORAMA's fold, POSTER, BRIGHT, INVERT, STROBE: vs_lut), COLORAMA's palette colour, PULSE's flash, SYNC's and
+ * SLICE's row shifts, RGB's split, MIRROR (Mirror, Flip, Quad, Kaleido), PIXEL's blocks, TRANSFORM's zoom, turn and
+ * shift (the picture tiled). Straight (no MIRROR, PIXEL, TRANSFORM): the colour between the four nearest of the 60 x
+ * 60; else the nearest. To the screen through tables (each plane's share, swapped: no clamps). RAM code */
+struct clean_fx {
+    const uint8_t *L, *cb, *cr, *lut, *qx, *j0, *wx;
+    const uint16_t *pal, *TR, *TG, *TB;
+    int pm, neg, gain, mirror, ps, straight;
+    int32_t a, b, cx, cy;                        /* (TRANSFORM: u = cx + dx a - dy b, v = cy + dx b + dy a; 16.16) */
+};
 static uint16_t clean_tr[768], clean_tg[768], clean_tb[768];
-static uint8_t clean_j0[240], clean_wx[240];
-static PLAT_RAM_CODE void clean_row(const uint8_t *L, const uint8_t *cb0, const uint8_t *cb1, const uint8_t *cr0,
-                                    const uint8_t *cr1, int wy, const uint8_t *j0, const uint8_t *wxs,
-                                    const uint16_t *TR, const uint16_t *TG, const uint16_t *TB, int16_t *vb,
-                                    int16_t *vr, uint16_t *out)
+static uint8_t clean_j0[240], clean_wx[240], clean_qx[240];
+static PLAT_RAM_CODE void clean_row(const struct clean_fx *f, int y, int o, int spr, int16_t *vb, int16_t *vr,
+                                    uint16_t *row, uint16_t *out)
 {
+    const uint16_t *TR = f->TR, *TG = f->TG, *TB = f->TB;
+    const uint8_t *lut = f->lut;
     int x;
-    for (x = 0; x < 60; x++) {
-        vb[x] = (int16_t)((((int)cb0[x] - 128) * (256 - wy) + ((int)cb1[x] - 128) * wy) >> 8);
-        vr[x] = (int16_t)((((int)cr0[x] - 128) * (256 - wy) + ((int)cr1[x] - 128) * wy) >> 8);
+    if (f->straight) {                           /* (the colour's row between its two nearest 60 x 60 rows) */
+        const int fy = y * 64 - 96, i0 = fy < 0 ? 0 : fy >> 8, i1 = i0 + 1 < 60 ? i0 + 1 : 59, wy = fy < 0 ? 0 : fy & 255;
+        const uint8_t *b0 = f->cb + i0 * 60, *b1 = f->cb + i1 * 60, *r0 = f->cr + i0 * 60, *r1 = f->cr + i1 * 60;
+        for (x = 0; x < 60; x++) {
+            vb[x] = (int16_t)((((int)b0[x] - 128) * (256 - wy) + ((int)b1[x] - 128) * wy) >> 8);
+            vr[x] = (int16_t)((((int)r0[x] - 128) * (256 - wy) + ((int)r1[x] - 128) * wy) >> 8);
+        }
+        vb[60] = vb[59], vr[60] = vr[59];
     }
-    vb[60] = vb[59], vr[60] = vr[59];
-    for (x = 0; x < 240; x++) {
-        const int j = j0[x], w = wxs[x], Y = L[x] + 256;
-        const int cb = (vb[j] * (256 - w) + vb[j + 1] * w) >> 8, cr = (vr[j] * (256 - w) + vr[j + 1] * w) >> 8;
-        out[x] = (uint16_t)(TR[Y + ((359 * cr) >> 8)] | TG[Y - ((88 * cb + 183 * cr) >> 8)] | TB[Y + ((454 * cb) >> 8)]);
+    {
+        int32_t u = f->cx + (-120) * f->a - (y - 120) * f->b, v = f->cy + (-120) * f->b + (y - 120) * f->a;
+        for (x = 0; x < 240; x++, u += f->a, v += f->b) {
+            int px = x, py = y, cb, cr, Y, r, g, bl;
+            if (!f->straight) {
+                px = u >> 16, py = v >> 16;
+                while (px < 0) px += 240;
+                while (px >= 240) px -= 240;
+                while (py < 0) py += 240;
+                while (py >= 240) py -= 240;
+                if (f->mirror == 1 || f->mirror >= 3)
+                    px = px >= 120 ? 239 - px : px;
+                if (f->mirror == 2 || f->mirror >= 3)
+                    py = py >= 120 ? 239 - py : py;
+                if (f->mirror == 4 && px > py) {
+                    const int s = px;
+                    px = py, py = s;
+                }
+                px = f->qx[px], py = f->qx[py];
+                cb = (int)f->cb[(py >> 2) * 60 + (px >> 2)] - 128;
+                cr = (int)f->cr[(py >> 2) * 60 + (px >> 2)] - 128;
+            } else {
+                const int j = f->j0[x], w = f->wx[x];
+                cb = (vb[j] * (256 - w) + vb[j + 1] * w) >> 8;
+                cr = (vr[j] * (256 - w) + vr[j + 1] * w) >> 8;
+            }
+            Y = (f->L[py * 240 + px] * f->gain) >> 8;
+            Y = lut[Y > 255 ? 255 : Y];
+            if (!Y) {
+                row[x] = 0;
+                continue;
+            }
+            if (f->neg)
+                cb = -cb, cr = -cr;
+            r = Y + ((359 * cr) >> 8), g = Y - ((88 * cb + 183 * cr) >> 8), bl = Y + ((454 * cb) >> 8);
+            if (f->pm) {
+                const uint32_t P = f->pal[Y];
+                const int pr = (int)(P >> 11) << 3, pg = (int)(P >> 5 & 63u) << 2, pb = (int)(P & 31u) << 3;
+                r += ((pr - r) * f->pm) >> 8, g += ((pg - g) * f->pm) >> 8, bl += ((pb - bl) * f->pm) >> 8;
+            }
+            row[x] = (uint16_t)(TR[r + 256] | TG[g + 256] | TB[bl + 256]);
+        }
+    }
+    {                                            /* SYNC's and SLICE's shift, RGB's split */
+        int xg = -o, xr, xb;
+        while (xg < 0) xg += 240;
+        while (xg >= 240) xg -= 240;
+        if (!spr) {
+            for (x = 0; x < 240; x++) {
+                out[x] = row[xg];
+                if (++xg == 240) xg = 0;
+            }
+        } else {
+            xr = xg - spr, xb = xg + spr;
+            while (xr < 0) xr += 240;
+            while (xr >= 240) xr -= 240;
+            while (xb < 0) xb += 240;
+            while (xb >= 240) xb -= 240;
+            for (x = 0; x < 240; x++) {
+                out[x] = (uint16_t)((row[xr] & 0x00F8u) | (row[xg] & 0xE007u) | (row[xb] & 0x1F00u));
+                if (++xg == 240) xg = 0;
+                if (++xr == 240) xr = 0;
+                if (++xb == 240) xb = 0;
+            }
+        }
     }
 }
-static void paint_clean_band(int y0, int h)
+static struct clean_fx cfx;
+static float clean_ang, clean_offx, clean_offy;
+static void clean_frame_fx(void)                 /* (once a frame: the effects' settings, TRANSFORM moving on) */
 {
-    static int16_t vb[61], vr[61];
-    const uint8_t *L = vs_lend(), *cb = video_sharp + VLINK_HQ_LUMA, *cr = cb + 3600;
-    int y;
+    const int zoom = vs_eff(ST_VXZOOM), rot = vs_eff(ST_VXROT), sh = vs_eff(ST_VXSHX), tgt = vs_get(ST_VXTGT),
+              pulse = vs_eff(ST_VPULSE), fold = vs_eff(ST_VFOLD);
+    const int moving = tgt != 1 && (zoom || rot || sh);
+    int i;
     if (!clean_tr[767]) {
-        int i;
         for (i = 0; i < 768; i++) {
             const int v = i - 256 < 0 ? 0 : i - 256 > 255 ? 255 : i - 256;
             clean_tr[i] = swap16((uint16_t)((v >> 3) << 11));
@@ -636,11 +711,43 @@ static void paint_clean_band(int y0, int h)
             clean_wx[i] = (uint8_t)(fx < 0 ? 0 : fx & 255);
         }
     }
+    cfx.L = vs_lend(), cfx.cb = video_sharp + VLINK_HQ_LUMA, cfx.cr = cfx.cb + 3600;
+    cfx.lut = vs_lut(), cfx.pal = vs_pal(), cfx.qx = clean_qx, cfx.j0 = clean_j0, cfx.wx = clean_wx;
+    cfx.TR = clean_tr, cfx.TG = clean_tg, cfx.TB = clean_tb;
+    cfx.pm = fold >= 40 ? 256 : fold * 256 / 40;
+    cfx.neg = vs_eff(ST_VINVERT) >= 50;
+    cfx.gain = 256 + (int)(120.0f * vs_beat() * (float)pulse * 0.01f);   /* (PULSE: the beat's flash) */
+    cfx.mirror = vs_eff(ST_VMIRROR);
+    cfx.ps = vs_pixel_size();
+    for (i = 0; i < 240; i++)
+        clean_qx[i] = (uint8_t)(cfx.ps > 1 ? i / (2 * cfx.ps) * (2 * cfx.ps) : i);
+    if (moving) {                                /* (ZOOM: 2^(zoom / 100) nearer; ROTATE turning, up to 2.4 rad a
+                                                  * second; SHIFT along Osc's ANGLE, 2 pixels a frame at 100) */
+        const float s = fm_exp2f(-(float)zoom * 0.01f), an = (float)vs_eff(ST_VOANGLE) * (FM_PI / 100.0f);
+        clean_ang += (float)rot * 0.0008f;
+        clean_offx += (float)sh * 0.02f * fm_cosf(an), clean_offy += (float)sh * 0.02f * fm_sinf(an);
+        while (clean_offx < 0.0f) clean_offx += 240.0f;
+        while (clean_offx >= 240.0f) clean_offx -= 240.0f;
+        while (clean_offy < 0.0f) clean_offy += 240.0f;
+        while (clean_offy >= 240.0f) clean_offy -= 240.0f;
+        cfx.a = (int32_t)(s * fm_cosf(clean_ang) * 65536.0f), cfx.b = (int32_t)(s * fm_sinf(clean_ang) * 65536.0f);
+        cfx.cx = (int32_t)((120.0f + clean_offx) * 65536.0f), cfx.cy = (int32_t)((120.0f + clean_offy) * 65536.0f);
+    } else {
+        cfx.a = 65536, cfx.b = 0, cfx.cx = 120 * 65536, cfx.cy = 120 * 65536;
+    }
+    cfx.straight = !moving && !cfx.mirror && cfx.ps <= 1;
+}
+static void paint_clean_band(int y0, int h)
+{
+    static int16_t vb[61], vr[61];
+    static uint16_t row[240];
+    int y;
+    if (y0 == 0)
+        clean_frame_fx();
     for (y = 0; y < h; y++) {
-        const int Y = y0 + y, fy = Y * 64 - 96, i0 = fy < 0 ? 0 : fy >> 8, i1 = i0 + 1 < 60 ? i0 + 1 : 59,
-                  wy = fy < 0 ? 0 : fy & 255;
-        PLAT_FAR(clean_row)(L + Y * 240, cb + i0 * 60, cb + i1 * 60, cr + i0 * 60, cr + i1 * 60, wy, clean_j0,
-                            clean_wx, clean_tr + 256, clean_tg + 256, clean_tb + 256, vb, vr, cv_px + y * 240);
+        int o, spr;
+        vs_row_fx(y0 + y, &o, &spr);
+        PLAT_FAR(clean_row)(&cfx, y0 + y, o, spr, vb, vr, row, cv_px + y * 240);
     }
 }
 static volatile uint32_t video_ble_taken, video_ble_full;   /* (diagnostics: packets queued, refused: the queue full) */
@@ -2383,6 +2490,8 @@ void app_frame(void)
             const uint8_t *cam = photo_view ? 0 : live_image();
             vs_camera(cam, live_hq);
             vs_frame(&fin);
+        } else {
+            vs_frame_light(&fin);                /* (the clean picture: the clock, the ear, CHROMA; nothing drawn) */
         }
         ui.gen_us += ((int32_t)((plat_ticks24() - t0) / 24u) - (int32_t)ui.gen_us) / 8;
         sum = lk.on && !clean_on && !(video_mode() && !photo_view && live_image()) ? vs_sum() : 0u;   /* (0: the camera's,
