@@ -70,10 +70,13 @@
     } catch (e) {}
 
     function say(text) { state.textContent = text; }
+    // the sound asked for in mono at 192 kbit/s: iOS's recorder takes WebRTC's stereo as twice as many mono samples
+    // (half speed, an octave down, garbled; seen 2026-11-22), and a voice call's rate would be thin
     function stereo(sdp) {
       const m = sdp.match(/a=rtpmap:(\d+) opus\/48000/i);
       if (!m) return sdp;
-      return sdp.replace(new RegExp(`a=fmtp:${m[1]} ([^\r\n]*)`), (all, p) => `a=fmtp:${m[1]} ${p};stereo=1;sprop-stereo=1`);
+      return sdp.replace(new RegExp(`a=fmtp:${m[1]} ([^\r\n]*)`), (all, p) =>
+        `a=fmtp:${m[1]} ${p.replace(/;?(stereo|sprop-stereo|maxaveragebitrate)=\d+/g, "")};stereo=0;maxaveragebitrate=192000`);
     }
     async function startPc() {
       try { localStorage.setItem("cortexPcAddress", address.value.trim()); } catch (e) {}

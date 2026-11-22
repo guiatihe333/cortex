@@ -785,6 +785,7 @@ async function startPhone() {
       if (session.active) stopPhone("A entrada de áudio foi desligada. Reconecte o R20.");
     }, { once: true });
     const video = $("out").captureStream(30).getVideoTracks();
+    for (const track of video) { try { track.contentHint = "detail"; } catch (e) {} }   // (the picture's detail kept)
     const stream = new MediaStream([...video, ...audio]);
     const pc = new RTCPeerConnection({ iceServers: [] });
     session.pc = pc;
@@ -802,7 +803,10 @@ async function startPhone() {
     await pc.setLocalDescription(offer);
     for (const sender of pc.getSenders()) if (sender.track?.kind === "video") {
       const params = sender.getParameters();
-      params.encodings[0].maxBitrate = 8000000;
+      params.encodings = params.encodings?.length ? params.encodings : [{}];
+      params.encodings[0].maxBitrate = 6000000;  // (720 x 720 at most, and kept: the Wi-Fi's frames, not a blur)
+      params.encodings[0].scaleResolutionDownBy = Math.max(1, $("out").width / 720);
+      params.degradationPreference = "maintain-resolution";
       await sender.setParameters(params).catch(() => {});
     }
     await iceGathered(pc);
