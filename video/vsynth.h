@@ -122,7 +122,8 @@ float vs_clock(void);
 void vs_row_fx(int y, int *o, int *spr);
 int vs_pixel_size(void);   /* sharp: vlink.h's VLINK_HQ layout */
 #ifdef VS_HD
-void vs_paint_hd(int S, uint8_t *rgba);           /* (the mirror's) the whole frame at 240 S square, RGBA, instead of
+void vs_paint_hd(int S, uint8_t *rgba);
+void vs_style_rgba(uint8_t *rgba, int W, int S);   /* (the mirror's) STYLE on a frame enlarged S times */           /* (the mirror's) the whole frame at 240 S square, RGBA, instead of
                                                    * vs_paint: the same picture, sharper (vhd.inc) */
 #endif                            /* the field and the random state, hashed: two engines agree */
 float vs_beat(void);                              /* the beat now, 1 .. 0 */

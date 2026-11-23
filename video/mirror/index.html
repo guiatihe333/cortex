@@ -145,10 +145,16 @@ meter { width:100%; height:10px; }
         <option value="2160x2160">2160 × 2160</option>
       </select></label>
       <label>Resolução <select id="hd">
+        <option value="r4">FM-1 refinada 960 (a imagem do FM-1, mais limpa)</option>
+        <option value="r3" selected>FM-1 refinada 720</option>
         <option value="4">HD 960 (redesenhada)</option>
-        <option value="3" selected>HD 720 (redesenhada)</option>
+        <option value="3">HD 720 (redesenhada)</option>
         <option value="2">HD 480 (redesenhada)</option>
         <option value="0">240 (a tela do FM-1)</option>
+      </select></label>
+      <label>Tela do FM-1 <select id="lcdLook">
+        <option value="0">limpa</option>
+        <option value="1">imitar o LCD (grade, contraste)</option>
       </select></label>
       <label>Ampliação <select id="smooth">
         <option value="0">pixels nítidos</option>
@@ -315,7 +321,10 @@ function layout() {
 function setHD() {                                // (HD: the WebAssembly paints the frame again at 240 S)
   synthFrame = false;
   synthDirty = true;
-  wx.mx_set_hd(+$("hd").value);
+  const look = $("hd").value;
+  if (look.startsWith("r")) wx.mx_set_refine(+look.slice(1));   // (the FM-1's own frame, refined)
+  else wx.mx_set_hd(+look);
+  wx.mx_set_lcd(+$("lcdLook").value);
   const n = wx.mx_size();
   $("lcd").width = $("lcd").height = n;
   img = lcd.createImageData(n, n);
@@ -1059,7 +1068,7 @@ $("avDelay").oninput = () => {
   if (routeDelay) routeDelay.delayTime.value = +$("avDelay").value / 1000;
   if (inputDelay) inputDelay.delayTime.value = +$("avDelay").value / 1000;
 };
-$("hd").onchange = () => { if (wx) setHD(); };
+$("hd").onchange = $("lcdLook").onchange = () => { if (wx) setHD(); };
 $("size").onchange = layout;
 $("recBtn").onclick = () => recorder ? stopRec() : startRec();
 $("phoneBtn").onclick = () => phone ? stopPhone() : startPhone();

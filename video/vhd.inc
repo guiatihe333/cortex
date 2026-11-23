@@ -206,6 +206,22 @@ static void vhd_post(uint8_t *px, int W, int S)
 #undef LUMA
 }
 
+/* (the mirror's refined FM-1 picture: STYLE on its enlarged frame, the palette in 24 bits as vs_paint_hd makes it) */
+void vs_style_rgba(uint8_t *rgba, int W, int S)
+{
+    int i;
+    for (i = 0; i < 256; i++) {
+        const int s0 = (i >> 6) * 64, s1 = s0 + 64 > 255 ? 255 : s0 + 64;
+        uint8_t a[3], b[3];
+        const float t = (float)(i & 63) / 64.0f;
+        int k;
+        vhd_rgb(vpal[s0], a), vhd_rgb(vpal[s1], b);
+        for (k = 0; k < 3; k++)
+            vhd_pal[i][k] = (uint8_t)((float)a[k] + ((float)b[k] - (float)a[k]) * t + 0.5f);
+    }
+    vhd_post(rgba, W, S);
+}
+
 void vs_paint_hd(int S, uint8_t *rgba)
 {
     const int W = 240 * S, ps = 1 + (int)((float)VPAR(VPIXEL) * 0.09f * (1.0f + vband[0]));
